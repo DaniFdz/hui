@@ -42,11 +42,9 @@ test("a conversation at ten watchers refuses a new one, and the agent's own dism
   await expect(watchers.getByText("9 running", { exact: true })).toBeVisible({ timeout: 90_000 });
   await watchers.getByText(/^Watcher details/u).tap();
 
-  // Each prompt's run closes the panel it opened by itself; this test reads the rows again through the operator's own
-  // open, once the turn it waited for has settled and its panel is closed.
+  // This test reads the rows again through the operator's own open, once the turn it waited for has settled.
   const reopened = async () => {
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-    await expect(screen.getByLabel("Run status")).toBeHidden();
     const rows = await openWatchers(screen);
     await showRows(rows, rows.getByText("Wait 1"));
     return rows;

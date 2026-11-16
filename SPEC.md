@@ -1927,8 +1927,10 @@ motion gets no morph and opens and closes at once, and only a real open or close
 animates: a streamed frame that changes the plan or the helpers never restarts
 it. On a wide window it opens by itself while a run streams, so the run's state
 is readable without a press, and closes again when that run ends; the operator's
-own open or close holds for that run and the next run starts from the default,
-and a reload forgets that choice, so the wide window's default applies again:
+own open holds until they close it, because a run the conversation starts on its
+own — a watcher settling, a helper finishing — must never shut the panel they are
+reading, while their own close lasts that run and the next run starts from the
+default. A reload forgets both, so the wide window's default applies again:
 open while the run still streams, closed once it has settled. A phone keeps it
 collapsed until the operator opens it.
 The popover holds **Goal** (the objective, its status note, when it was set, its
@@ -1949,12 +1951,13 @@ conversation, and the question it answers — what is this run doing? — is the
 the operator looks for while it works, so it opens as soon as a run streams. On
 a phone the same panel would cover the conversation it describes, so it waits
 for the operator there; that is the phone's own limit, not a second behaviour.
-The panel follows the run, so an explicit open or close answers the run it was
-made in: it holds for the rest of that run, which keeps a streamed frame from
-overriding it, and the next run starts from the default. Neither choice is
-stored, past that run or a reload: a stored one would hide a run's panel or
-reopen one the operator already shut, so an arrival re-reads the window and the
-run instead of a preference. The trigger stays the one
+The panel follows the run, but the operator is not pulled along with it: an
+explicit open is theirs until they close it, so a run the conversation starts on
+its own cannot shut the panel they are reading, and an explicit close answers the
+run it was made in and is cleared by the next one. Neither choice is stored, past
+that run or a reload: a stored one would hide a run's panel or reopen one the
+operator already shut, so an arrival re-reads the window and the run instead of a
+preference. The trigger stays the one
 toggle and the X is the operator's close with focus returning to the trigger.
 Because the pill becomes the panel, the head repeats the state word and count the
 trigger shows; the trigger's own copy is hidden while the panel is open, so the

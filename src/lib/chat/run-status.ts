@@ -62,17 +62,18 @@ export function goalStatusLabel(status: SessionGoal["status"]): string {
 
 /**
  * The Run status popover across renders. On a wide window it opens by itself while a run streams; the operator's own
- * open or close is a `choice` that belongs to the run it was made in: it holds for the rest of that run and its end, so a
- * streamed frame never overrides it, and the next run starts from the default. A reload starts from the default too, so it
- * never reopens a panel the operator closed.
+ * open or close is a `choice` that belongs to them: an open holds until they close the panel, because a run the
+ * conversation starts on its own (a watcher settling, a helper finishing) must not shut the panel they are reading,
+ * while a close answers the run it was made in and is cleared by the next one. A reload starts from the default too, so
+ * it never reopens a panel the operator closed.
  */
 export type RunStatusPanelState = { running: boolean; choice: boolean | undefined };
 
-/** The state after a render, with the operator's choice kept for its run and cleared when the next run starts. */
+/** The state after a render, with the operator's open kept and their close cleared when the next run starts. */
 export function runStatusPanel(previous: RunStatusPanelState | undefined, input: { running: boolean }): RunStatusPanelState {
   if (!previous) return { running: input.running, choice: undefined };
   const started = input.running && !previous.running;
-  return { running: input.running, choice: started ? undefined : previous.choice };
+  return { running: input.running, choice: started && previous.choice === false ? undefined : previous.choice };
 }
 
 /** Whether the popover is open: the operator's choice wins, else a wide window opens it while a run streams. */

@@ -155,7 +155,7 @@ test("the Run status popover opens by itself on a wide window while a run stream
   assert.equal(runStatusPanelOpen(started, { running: true, wide: false }), false, "a phone stays closed mid-run");
 });
 
-test("the operator's close holds until the next run, and their open does too", () => {
+test("the operator's close lasts one run, and their open lasts until they close it", () => {
   const running = runStatusPanel(undefined, { running: true });
   const closed = runStatusPanelChosen(running, false);
   assert.deepEqual(closed, { running: true, choice: false });
@@ -166,35 +166,38 @@ test("the operator's close holds until the next run, and their open does too", (
   assert.equal(runStatusPanelOpen(ended, { running: false, wide: true }), false, "a finished run keeps the operator's close");
 
   const next = runStatusPanel(ended, { running: true });
-  assert.deepEqual(next, { running: true, choice: undefined }, "a new run starts with the default");
+  assert.deepEqual(next, { running: true, choice: undefined }, "a new run starts with the default after a close");
   assert.equal(runStatusPanelOpen(next, { running: true, wide: true }), true);
 
-  // An open belongs to its run as well: it holds for the rest of that run and its end, and the next run starts from the
-  // default instead of carrying forward a choice that answered the earlier run.
+  // An open is the operator's own: a run the conversation starts on its own — a watcher settling, a helper finishing —
+  // must not shut the panel they are reading, so the open outlives that run and the next one until they close it.
   const opened = runStatusPanelChosen(running, true);
   const settled = runStatusPanel(opened, { running: false });
   assert.deepEqual(settled, { running: false, choice: true }, "the open holds through its run's end");
   assert.equal(runStatusPanelOpen(settled, { running: false, wide: true }), true);
-  assert.deepEqual(runStatusPanel(settled, { running: true }), { running: true, choice: undefined }, "the next run clears the open");
+  const carried = runStatusPanel(settled, { running: true });
+  assert.deepEqual(carried, { running: true, choice: true }, "a later run leaves the operator's open alone");
+  assert.equal(runStatusPanelOpen(carried, { running: true, wide: false }), true, "on a phone too, until they close it");
+  assert.equal(runStatusPanelOpen(runStatusPanelChosen(carried, false), { running: true, wide: false }), false, "and their close still ends it");
 });
 
-test("an operator's open during a run is cleared when the next run starts", () => {
-  // A phone's operator opened the panel while the run streamed, and it held through that run's end.
+test("an operator's open outlives the run it was made in, on a phone too", () => {
+  // A phone's operator opened the panel while the run streamed; a run the conversation starts on its own then ends.
   const opened = runStatusPanelChosen(runStatusPanel(undefined, { running: true }), true);
   assert.equal(runStatusPanelOpen(opened, { running: true, wide: false }), true, "an explicit open works on a phone");
   const phoneEnded = runStatusPanel(opened, { running: false });
   assert.equal(runStatusPanelOpen(phoneEnded, { running: false, wide: false }), true, "the open holds through its run's end");
 
-  // The next run starts from the default: collapsed on a phone...
+  // A later run, which the operator did not start, leaves it open: closing under them was the defect.
   const phoneNext = runStatusPanel(phoneEnded, { running: true });
-  assert.deepEqual(phoneNext, { running: true, choice: undefined }, "a new run starts with the default");
-  assert.equal(runStatusPanelOpen(phoneNext, { running: true, wide: false }), false, "a phone's next run is collapsed");
+  assert.equal(runStatusPanelOpen(phoneNext, { running: true, wide: false }), true, "a phone keeps the panel the operator opened");
 
-  // ...and open on a wide window, whatever the operator did with the earlier run's panel.
-  const wide = runStatusPanelChosen(runStatusPanel(undefined, { running: true }), true);
-  const wideNext = runStatusPanel(runStatusPanel(wide, { running: false }), { running: true });
-  assert.deepEqual(wideNext, { running: true, choice: undefined });
-  assert.equal(runStatusPanelOpen(wideNext, { running: true, wide: true }), true, "a wide window's next run opens");
+  // Only their own close ends it, and the run after that starts from the default again.
+  const phoneClosed = runStatusPanelChosen(phoneNext, false);
+  assert.equal(runStatusPanelOpen(phoneClosed, { running: true, wide: false }), false);
+  const afterClose = runStatusPanel(runStatusPanel(phoneClosed, { running: false }), { running: true });
+  assert.deepEqual(afterClose, { running: true, choice: undefined });
+  assert.equal(runStatusPanelOpen(afterClose, { running: true, wide: false }), false, "the next run after a close is collapsed on a phone");
 });
 
 test("an operator's open while idle survives and works on a phone", () => {

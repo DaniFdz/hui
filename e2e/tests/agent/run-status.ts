@@ -37,9 +37,9 @@ export async function openWatchers(screen: Screen): Promise<Locator> {
  * Opens Run status once the run a prompt just started has settled, and returns the popover. A wide window opens it by
  * itself while a run streams and closes it with that run, so a read after the turn must open it again. `expected` is what
  * the turn leaves in the popover — the rows it starts and the states the gateway's poll records for them — and waiting for
- * it first proves the run began, because `Session status: Idle` also holds in the moment before a prompt's run starts, and
- * an open made then is the choice that run clears. The panel has to read closed as well, so a run still taking it away is
- * waited out rather than opened against.
+ * it first proves the run began, because `Session status: Idle` also holds in the moment before a prompt's run starts.
+ * The panel may still be closing; `openRunStatus` presses the one toggle only once what it reports and what is on screen
+ * agree, so a read never starts against a panel mid-transition.
  */
 export async function openSettledRunStatus(screen: Screen, ...expected: readonly string[]): Promise<Locator> {
   const popover = screen.getByLabel("Run status");
@@ -51,7 +51,6 @@ export async function openSettledRunStatus(screen: Screen, ...expected: readonly
     return expected.every((part) => shown.includes(part));
   }, { timeout: 90_000 }).toBe(true);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await expect(popover).toBeHidden();
   return openRunStatus(screen);
 }
 
