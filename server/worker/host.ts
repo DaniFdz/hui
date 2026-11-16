@@ -61,7 +61,7 @@ import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILE
 import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
-import type { WorkerPaths } from "./paths.ts";
+import { mirroredUserSkillPaths, type WorkerPaths } from "./paths.ts";
 import { createHostMetrics, sampleInBackground } from "../host-metrics.ts";
 
 /** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and kept for its chart meanwhile. */
@@ -219,6 +219,8 @@ export class WorkerHost {
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
+      // The gateway's `~/.agents/skills` live in the mirror, not in the home PI discovers here.
+      hostSkillPaths: () => mirroredUserSkillPaths(paths),
       invokeTool: ({ callerSessionId, action, params, signal, runOrigins }) => this.#gatewayTool(callerSessionId, action, params, signal, runOrigins),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
       // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
@@ -499,6 +501,7 @@ export class WorkerHost {
       ...options, agentDir: this.paths.agentDir,
       hostLaunch: {
         disabledSkills: launch.disabledSkills ?? [],
+        hostSkillPaths: mirroredUserSkillPaths(this.paths),
         bundledSkillPaths: strings(launch["bundledSkillPaths"]),
         disabledPluginIds: strings(launch["disabledPluginIds"]),
         // Settings → Tools → Browser, as the gateway mirrored it: this host runs the browser.

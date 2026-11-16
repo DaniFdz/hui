@@ -178,6 +178,8 @@ export function autonomousSection(delegates: boolean, supervisedByChief = false)
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
+  /** Skill directories this host keeps outside the agent dir and the home PI discovers, read once per loader. */
+  readonly #hostSkillPaths: () => readonly string[];
   /** Context files and skills load once per directory (and a bot's own skill folders), like a PI session. */
   #loaders = new Map<string, Promise<DefaultResourceLoader>>();
   #built = new WeakMap<PromptInput, Promise<Record<string, string>>>();
@@ -207,9 +209,10 @@ export class DurablePrompt {
   gatewayPrompt: () => Promise<string | undefined> = async () => undefined;
   readonly extension;
 
-  constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
+  constructor(agentDir: string, readSettings: () => Promise<PromptSettings>, hostSkillPaths: () => readonly string[] = () => []) {
     this.#agentDir = agentDir;
     this.#readSettings = readSettings;
+    this.#hostSkillPaths = hostSkillPaths;
     this.extension = defineExtension({
       name: "hui-prompt",
       sections: SECTION_KEYS.map((key) => section(key, async (input) => (await this.#build(input))[key], { tag: false })),
@@ -217,12 +220,14 @@ export class DurablePrompt {
   }
 
   /** PI resources for one working directory, honoring HUI's skill controls; `skillDirs` adds a bot's own skills, after
-   * its directory's (a skill of the directory wins a shared name, as PI's own skills win over HUI's bundled ones). */
+   * the host's own paths and before HUI's bundled ones (a skill of an earlier path wins a shared name, as PI's own
+   * skills win over HUI's bundled ones). */
   loader(cwd: string, skillDirs: readonly string[] = []): Promise<DefaultResourceLoader> {
-    const key = [cwd, ...skillDirs].join("\0");
+    const dirs = [...this.#hostSkillPaths(), ...skillDirs];
+    const key = [cwd, ...dirs].join("\0");
     let loading = this.#loaders.get(key);
     if (!loading) {
-      loading = this.#load(cwd, skillDirs);
+      loading = this.#load(cwd, dirs);
       loading.catch(() => this.#loaders.delete(key));
       this.#loaders.set(key, loading);
     }
