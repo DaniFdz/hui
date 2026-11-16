@@ -25,7 +25,7 @@ process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
 // files' worker hosts on this machine.
 process.env["HUI_WORKER_HOOK_PORT"] = "0";
 const { workerPaths } = await import("./paths.ts");
-const { WorkerHost, hostIdles, serveRequested } = await import("./host.ts");
+const { WorkerHost, hostIdles, serveRequested, hookPortFrom } = await import("./host.ts");
 const { HOOK_QUEUE_DIR } = await import("./hook-endpoint.ts");
 const { waitFor } = await import("../test-support/wait-for.ts");
 const { attachPeer } = await import("./protocol.ts");
@@ -200,6 +200,17 @@ test("a host was asked to serve by its flag or its environment, and by nothing e
   assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: "yes" }), true);
   for (const value of ["0", "false", "FALSE", " "]) {
     assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: value }), false, `HUI_WORKER_SERVE=${JSON.stringify(value)}`);
+  }
+});
+
+test("the hook port a host binds is HUI_WORKER_HOOK_PORT when it names a port, and the default when it does not", () => {
+  assert.equal(hookPortFrom({}), 4180, "the port a listener on the machine can expect");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "" }), 4180, "an empty value is no choice");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "0" }), 0, "any free one, for a machine running several");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "4319" }), 4319, "the port it names");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: " 4319 " }), 4319, "as typed around spaces");
+  for (const value of ["http", "1.5", "-1", "65536", "4319abc"]) {
+    assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: value }), 4180, `HUI_WORKER_HOOK_PORT=${JSON.stringify(value)} is not a port`);
   }
 });
 

@@ -1872,12 +1872,13 @@ at most 64 KiB, answered with the trigger decision the gateway's own route
 makes (`{status,body}`, 202, 400, 404, 409 or 413), which the endpoint gives the
 listener as it came. A host sends it as soon as its socket is up, before the
 gateway has finished registering the connection, and the gateway waits for that
-connection instead of refusing it; only a connected worker's own peer can make
-it. The gateway answers `secret-request` only for a
-session on that worker, a bot's chat there included, and a secret request from
-anywhere else for a worker's session is refused. A Stop on the worker cancels
-the request and closes the card. With no gateway connected a `bridge` or
-`secret-request` call fails at once, and one in flight fails when the
+connection, and for the sessions of that worker to reattach, instead of
+refusing it or waking a bot's chat that still says it is reconnecting; only a
+connected worker's own peer can make it. The gateway answers `secret-request`
+only for a session on that worker, a bot's chat there included, and a secret
+request from anywhere else for a worker's session is refused. A Stop on the
+worker cancels the request and closes the card. With no gateway connected a
+`bridge` or `secret-request` call fails at once, and one in flight fails when the
 connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
@@ -2002,8 +2003,11 @@ Description=HUI worker host
 After=network-online.target
 
 [Service]
-# The release HUI installed here: the newest one under this worker's data directory.
-ExecStart=/bin/sh -c 'cd "$HOME/.local/share/hui-worker/releases" && exec node "$(ls -1dt */ | head -n 1)server/worker/main.js" daemon --serve'
+# The newest release HUI installed under this worker's data directory. A
+# release installed from a package carries its entry at
+# build/server/worker/main.js; one installed by a gateway running in a checkout
+# carries it at server/worker/main.ts.
+ExecStart=/bin/sh -c 'D="${XDG_DATA_HOME:-$HOME/.local/share}/hui-worker"; R=$(ls -1dt "$D/releases"/*/ | head -n 1); E="$R/build/server/worker/main.js"; [ -f "$E" ] || E="$R/server/worker/main.ts"; exec node "$E" daemon --serve'
 Restart=on-failure
 RestartSec=5
 
@@ -2789,10 +2793,13 @@ take a report (none attached, one from before the relay, a link that failed or
 timed out) it answers `202 { "status": "queued" }` and keeps the report,
 unparsed, in its state directory; `503` when 500 reports already wait there, so
 the listener sends that one again later. What waited is relayed, in order, when
-the next gateway attaches. A queued report is dropped once the gateway answered
-definitively (202, 400, 404, 409, 413) and kept on a transport failure, a
-timeout or a 5xx; sending it again is harmless, since the ids HUI keeps wake
-each event once.
+the next gateway attaches, and a report that arrives while older ones wait goes
+behind them rather than past the queue. A queued report is dropped once the
+gateway answered definitively (202, 400, 404, 409, 413) and kept on a transport
+failure, a timeout or a 5xx; sending it again is harmless, since the ids HUI
+keeps wake each event once. While a gateway is still attached, a drain that
+stopped that way offers the queue again by itself after 15 seconds; one a
+gateway from before the relay refused waits for a gateway that can take it.
 
 Several gateways may be attached to one worker: its host asks the newest first,
 and a 404 (a trigger that gateway does not own) falls through to the next, so a

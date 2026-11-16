@@ -11,6 +11,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -71,16 +72,22 @@ const server = createServer((request, response) => middleware(request, response,
 let origin = "";
 let workerId = "";
 
-beforeAll(async () => {
-  // Pre-install this checkout as the remote release (the container E2E covers the real npm install): no network.
+/** Pre-install this checkout as the release of a remote whose data directory is `data`, as a container image would:
+ * the files, this checkout's installed dependencies, and the marker that says the release is there. */
+async function installRelease(data: string): Promise<void> {
   const release = await workerRelease();
-  const dir = join(remoteData, "releases", release.id);
+  const dir = join(data, "releases", release.id);
   for (const file of release.files) {
     await mkdir(dirname(join(dir, file.path)), { recursive: true });
     await writeFile(join(dir, file.path), file.data, { mode: file.mode });
   }
   await symlink(join(repo, "node_modules"), join(dir, "node_modules"));
   await writeFile(join(dir, ".ready"), "");
+}
+
+beforeAll(async () => {
+  // Pre-install this checkout as the remote release (the container E2E covers the real npm install): no network.
+  await installRelease(remoteData);
   await startBackend();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -892,4 +899,46 @@ test("a listener on the worker reports to that machine's own endpoint, and a rep
   await workers.connect(workerId);
   const delivered = await waitFor(() => runOf("worker-endpoint-2"), "the queued report's run", 120_000);
   assert.equal(delivered.status, "fired");
+});
+
+// `devbox` is already up with a working endpoint, so a host that could not bind one needs a remote of its own: it reads
+// its hook port when it starts. Its hello then offers neither the feature nor a port (`host.ts` keeps serving its
+// sessions), and the gateway must say that instead of blaming an old release.
+test("a worker whose listener endpoint could not bind says so, not that it runs an older release", { timeout: 240_000 }, async (t) => {
+  const taken = createNetServer().listen(0, "127.0.0.1");
+  await once(taken, "listening");
+  t.onTestFinished(() => { taken.close(); });
+  const address = taken.address();
+  assert.ok(address && typeof address !== "string");
+  const home = join(root, "bindless");
+  const data = join(home, ".local", "share", "hui-worker");
+  await installRelease(data);
+  // The port stays taken for as long as this host runs, so what it reports is a bind failure, never a race.
+  const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "PI_OFFLINE",
+    `HUI_WORKER_HOOK_PORT=${address.port}`, `HOME=${home}`, "SHELL=/bin/sh"];
+  const added = await call("/__hui/workers", "POST", { name: "bindless", command: command.map((word) => `'${word}'`).join(" ") });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  const id = (added.body["worker"] as { id: string }).id;
+  t.onTestFinished(async () => {
+    // The host stops itself, and its remote goes; a bot this test made is deleted before this, while the worker runs.
+    await workers.hostRequest(id, "shutdown").catch(() => undefined);
+    await call(`/__hui/workers/${id}`, "DELETE");
+    try { execFileSync("pkill", ["-f", home]); } catch { /* no pkill on this machine, or already gone */ }
+    await rm(home, { recursive: true, force: true, maxRetries: 3 });
+  });
+  await workers.connect(id);
+  assert.equal(workers.connected(id), true, "the host serves its socket and its sessions even though its endpoint could not bind");
+  assert.equal(workers.hookPort(id), undefined, "and it offers no listener port");
+
+  const created = await call("/__hui/bots", "POST", { name: "Bindless chat", worker: "bindless", soul: "# Who I am\nBindless." });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const bot = botOf(created);
+  // Its chat and its home on the worker go first: this runs before the worker's own cleanup above.
+  t.onTestFinished(async () => { await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE"); });
+  const made = await call(`/__hui/bots/${bot.handle}/triggers`, "POST", { name: "Nowhere" });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const hook = made.body["hook"] as { token: string; path: string; worker?: { id: string; name: string; url?: string; error?: string } };
+  assert.equal(hook.worker?.id, id);
+  assert.equal(hook.worker?.url, undefined, "there is no URL a listener here could report to");
+  assert.equal(hook.worker?.error, "bindless does not serve its listener endpoint: it runs an older HUI release, or its endpoint could not open.");
 });

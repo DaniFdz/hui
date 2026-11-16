@@ -26,7 +26,8 @@
  * A listener on this machine reaches its trigger here, without the gateway's
  * tailnet route: the host opens a loopback endpoint (`hook-endpoint.ts`), relays
  * each report to a connected gateway (`hooks.report`) and keeps what no gateway
- * could take in its own queue until one attaches. A host started with `--serve`
+ * could take in its own queue until one attaches, offering that queue again by
+ * itself after a link that failed or timed out. A host started with `--serve`
  * stays up for that queue even with nobody connected.
  */
 import { randomUUID } from "node:crypto";
@@ -296,6 +297,9 @@ export class WorkerHost {
       dir: join(this.paths.stateDir, HOOK_QUEUE_DIR),
       port: hookPort,
       relay: (token, body) => this.#relayHook(token, body),
+      // A report waiting behind a failure is offered again by itself while some gateway is still attached: only a
+      // connection that ended means nothing can take it until another one does.
+      canRelay: () => [...this.#peers].some((peer) => !peer.closed),
       onActivity: () => this.#touch(),
     });
     try {
@@ -809,8 +813,10 @@ export class WorkerHost {
   /**
    * `hooks.report { token, body }` on a connected gateway: its trigger decision, as its own route makes it. The newest
    * gateway is asked first, and a 404 (a trigger the gateway does not own) lets the next one answer, so a machine that
-   * runs several gateways' listeners finds the one holding the trigger. Nothing else is retried: an older gateway, or a
-   * link that fails or times out, leaves the report to the queue instead of holding the listener across a reconnect.
+   * runs several gateways' listeners finds the one holding the trigger. Nothing else is retried here: an older gateway,
+   * or a link that fails or times out, leaves the report to the queue instead of holding the listener across a
+   * reconnect. The queue retries a link that failed or timed out by itself, never a gateway too old to serve the relay
+   * (`HookRelayUnavailable.retry`).
    */
   async #relayHook(token: string, body: string): Promise<HookAnswer> {
     this.#touch();
@@ -821,10 +827,10 @@ export class WorkerHost {
       try {
         answer = await peer.request<HookAnswer>(HOOK_REPORT_OP, { token, body }, HOOK_RELAY_TIMEOUT_MS);
       } catch (error) {
-        // `isUnsupportedRequest`: a gateway from before this relay, which would only refuse the next one too.
-        throw new HookRelayUnavailable(isUnsupportedRequest(error, HOOK_REPORT_OP)
-          ? "The connected HUI serves no trigger relay."
-          : "No HUI answered the report.");
+        // `isUnsupportedRequest`: a gateway from before this relay, which would only refuse the next one too; a link
+        // that failed or timed out may answer the next time.
+        const older = isUnsupportedRequest(error, HOOK_REPORT_OP);
+        throw new HookRelayUnavailable(older ? "The connected HUI serves no trigger relay." : "No HUI answered the report.", { retry: !older });
       }
       const status = isRecord(answer) ? answer["status"] : undefined;
       const reply = isRecord(answer) ? answer["body"] : undefined;
