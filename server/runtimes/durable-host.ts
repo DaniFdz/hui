@@ -203,6 +203,9 @@ export type DurableHostOptions = {
   dir: string;
   /** PI agent directory: settings, skills, models.json, auth. */
   agentDir: string;
+  /** Skill directories this host keeps outside the agent dir and the home PI discovers, such as a worker's mirror of the
+   * gateway's `~/.agents/skills`; read whenever a loader is built. */
+  hostSkillPaths?: () => readonly string[];
   readSettings?: () => Promise<PromptSettings>;
   /** In-process HUI agent tool handler; defaults to the gateway's bridge handler. */
   invokeTool?: DurableToolInvoker;
@@ -383,7 +386,7 @@ export class DurableHost implements ExtensionHost {
         : options.readSettings ? {} : { utilityModel: async () => (await readHuiSettings()).models.utility || undefined }),
       ...(options.optchat ? { tuning: options.optchat } : {}),
     });
-    this.prompt = new DurablePrompt(options.agentDir, this.settings);
+    this.prompt = new DurablePrompt(options.agentDir, this.settings, options.hostSkillPaths);
     this.prompt.extras = (conversationId) => {
       const extensions = this.#extensionsOf(conversationId);
       const gateway = this.#gateway?.contributions() ?? {};

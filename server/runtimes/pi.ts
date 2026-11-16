@@ -1313,6 +1313,8 @@ export class PiSession implements RuntimeSession {
 
 export type HostLaunch = {
   disabledSkills: { name: string; path: string }[];
+  /** The gateway's `~/.agents/skills`, as this host's mirror holds it. */
+  hostSkillPaths: string[];
   bundledSkillPaths: string[];
   disabledPluginIds: string[];
   browserTool: boolean;
@@ -1374,8 +1376,10 @@ async function startPi(options: {
   // Bundled opt-out controls only the fallback. A PI/user/project skill with
   // the same name remains independently configurable through its own path.
   const disabledSkills = hostLaunch?.disabledSkills ?? disabled.filter((entry) => !isBundledSkillPreference(entry));
+  const hostSkillPaths = options.safeProbe ? [] : hostLaunch?.hostSkillPaths ?? [];
   const bundledSkillPaths = options.safeProbe ? [] : hostLaunch?.bundledSkillPaths ?? enabledBundledSkillPaths(disabled);
-  for (const path of bundledSkillPaths) args.push("--skill", path);
+  // Host paths first, then HUI's bundled skills: PI keeps the first of a shared name.
+  for (const path of [...hostSkillPaths, ...bundledSkillPaths]) args.push("--skill", path);
   const disabledPluginIds = hostLaunch?.disabledPluginIds ?? huiSettings?.disabledPlugins.map((plugin) => plugin.id) ?? [];
   const agentToolEnv = options.huiSessionId && !options.safeProbe
     ? await agentToolEnvironment(options.huiSessionId)
@@ -1399,7 +1403,7 @@ async function startPi(options: {
   const child = backend === "sdk"
     ? spawn(process.execPath, [fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./pi-sdk-worker.ts" : "./pi-sdk-worker.js", import.meta.url))], {
         cwd: options.cwd, stdio: ["pipe", "pipe", "pipe", "ipc"],
-        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...withoutHostLaunch(options), agentDir, disabledPluginIds, bundledSkillPaths, browserTool }) },
+        env: { ...env, HUI_PI_WORKER_LAUNCH: JSON.stringify({ ...withoutHostLaunch(options), agentDir, disabledPluginIds, hostSkillPaths, bundledSkillPaths, browserTool }) },
       }) as ChildProcessWithoutNullStreams
     : spawn(cli.command, cli.args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], env });
   if (hostLaunch && backend === "sdk") relayCredentials(child);

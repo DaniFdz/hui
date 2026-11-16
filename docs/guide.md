@@ -1168,6 +1168,18 @@ Events within a trigger's cooldown (5 minutes unless you choose another,
 most 12 trigger messages an hour; more wait for the next free slot rather than
 being dropped. Each delivery shows under **Latest trigger runs**.
 
+For a bot on a worker (Settings → Workers) the URL the panel shows is on that
+machine, `http://127.0.0.1:<port>/__hui/hooks/<token>`: copy that one and run
+its listener there, where it reaches the address without the tailnet. The
+worker's host hands each report to HUI, and while HUI is away it keeps them, so
+that worker should run `daemon --serve` (see
+[A host that keeps serving](api.md#a-host-that-keeps-serving)); a daemon HUI started
+with `connect` still stops once it has been idle, and reports waiting for HUI
+need it up. The panel names the machine beside the address, and says why when
+it has none to give (HUI is not connected to the worker, it runs an older
+release, or it could not open its endpoint); a bot on this machine keeps the
+URL it always had.
+
 - **Each event once.** `id` is the event's own (a Slack message's channel and
   timestamp, an issue key): HUI remembers the last 500 ids it was told, so a
   report sent again, even after a restart, wakes nobody, and an event from
@@ -1192,7 +1204,8 @@ being dropped. Each delivery shows under **Latest trigger runs**.
   delivers a backlog as one message.
 - **On your tailnet.** The URL answers only this machine and your tailnet;
   exposing it to the internet with Tailscale Funnel is up to you, and then its
-  token is all that guards it.
+  token is all that guards it. A bot on a worker reports to that machine's own
+  loopback instead, never the tailnet.
 
 **Review requests, by a bot without a shell.** Give reviews to a bot that can't
 run commands, so what someone writes can't make it act on your machine or on

@@ -1,5 +1,6 @@
 /** HUI connections overlay PI's runtime without writing PI configuration, its models.json `!command` keys run
- * without blocking the process, and a request for a local model server waits while a manual start is in progress. */
+ * without blocking the process, a request for a local model server waits while a manual start is in progress, and a
+ * gateway request says HUI rather than the terminal agent the shared models.json names. */
 import { exec } from "node:child_process";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -97,6 +98,25 @@ export async function keyCommandFails(runtime: ModelRuntime, provider: string, s
   }
 }
 
+/** The AI Gateway names its LLM Observability application after these request tags, and every PI process on the
+ * machine shares one models.json that names the terminal agent. A HUI session therefore states who it is itself.
+ * Only gateway requests are tagged: no other provider has any use for a Datadog application name. */
+const GATEWAY_APP_TAGS: Record<string, string> = { "x-dd-tag-ml_app": "hui", "x-dd-tag-ml_app_id": "aidevx.hui" };
+const GATEWAY_HOST = "ai-gateway";
+
+function tagGatewayRequests(runtime: ModelRuntime): ModelRuntime {
+  const getAuth = runtime.getAuth.bind(runtime) as (target: AuthTarget, overrides?: ModelRuntimeAuthOverrides) => ReturnType<ModelRuntime["getAuth"]>;
+  runtime.getAuth = (async (target: AuthTarget, overrides: ModelRuntimeAuthOverrides = {}) => {
+    const result = await getAuth(target, overrides);
+    const provider = typeof target === "string" ? target : target.provider;
+    if (!result || !runtime.getProvider(provider)?.baseUrl?.includes(GATEWAY_HOST)) return result;
+    const tags = Object.keys(GATEWAY_APP_TAGS).map((tag) => tag.toLowerCase());
+    const headers = Object.fromEntries(Object.entries(result.auth.headers ?? {}).filter(([name]) => !tags.includes(name.toLowerCase())));
+    return { ...result, auth: { ...result.auth, headers: { ...headers, ...GATEWAY_APP_TAGS } } };
+  }) as ModelRuntime["getAuth"];
+  return runtime;
+}
+
 export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
   return ModelRuntime.create({ authPath: join(dir, "auth.json"), modelsPath: null, allowModelNetwork: false });
 }
@@ -144,7 +164,7 @@ export async function createSessionModelRuntime(
   const selections = await readProviderSelections(dir);
   const pi = await ModelRuntime.create({ credentials: credentialStore(join(agentDir, "auth.json")), modelsPath: join(agentDir, "models.json") });
   const commands = await keyCommands(agentDir, selections);
-  if (!Object.keys(selections).length) return withLocalModelGate(runKeyCommandsAsync(pi, commands), gate);
+  if (!Object.keys(selections).length) return withLocalModelGate(tagGatewayRequests(runKeyCommandsAsync(pi, commands)), gate);
   const managed = await createHuiModelRuntime(dir);
   const accounts = new ProviderAccounts(dir);
   const routing = await accountRouting(accounts, options);
@@ -171,5 +191,5 @@ export async function createSessionModelRuntime(
   }
   routing.install(combined, new Set(Object.keys(selections)));
   await combined.refresh({ allowNetwork: false });
-  return withLocalModelGate(runKeyCommandsAsync(combined, commands), gate);
+  return withLocalModelGate(tagGatewayRequests(runKeyCommandsAsync(combined, commands)), gate);
 }

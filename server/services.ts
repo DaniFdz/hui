@@ -17,6 +17,7 @@ import { createStaffRoutes } from "./routes/staff.ts";
 import { createHeartbeat } from "./heartbeat.ts";
 import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
+import { HOOK_REPORT_OP } from "./worker/protocol.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
 import { BotTemplateService } from "./bots/template-import.ts";
@@ -169,14 +170,30 @@ const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
-// and stop showing a reconnect once HUI no longer tries.
-function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
-  void readRegistry().then((records) => {
-    for (const record of records) if (record.worker === workerId && liveSessions.isLive(record.id)) act(record);
-  }).catch(() => undefined);
+// and stop showing a reconnect once HUI no longer tries. They start together,
+// so one session's slow reattach does not hold up the others; the returned
+// promise settles only once every one of them has.
+function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void | Promise<void>): Promise<void> {
+  return readRegistry().then(async (records) => {
+    const due = records.filter((record) => record.worker === workerId && liveSessions.isLive(record.id));
+    await Promise.all(due.map((record) => act(record)));
+  });
 }
-workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
-workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+
+/** The sweep reattaching a worker's sessions, from the moment it connects: a report its host relays as soon as the
+ * connection is up waits for this, so it reaches a bot's chat once the chat is back instead of failing on a session
+ * that still says it is reconnecting. Held only while the sweep runs. */
+const reattaching = new Map<string, Promise<void>>();
+workers.onConnected((workerId) => {
+  const sweep = forWorkerSessions(workerId, async (record) => {
+    liveSessions.ensure(record, true);
+    await liveSessions.booted(record.id);
+  }).catch(() => undefined).finally(() => { if (reattaching.get(workerId) === sweep) reattaching.delete(workerId); });
+  reattaching.set(workerId, sweep);
+});
+workers.onStopped((workerId) => {
+  void forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)).catch(() => undefined);
+});
 
 /** Bots: their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
@@ -995,12 +1012,35 @@ async function browserStatus(): Promise<BrowserStatus> {
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
 /** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
- * same `gh`. */
+ * same `gh`. A bot whose chat runs on a worker takes its listeners' reports on that machine's own endpoint, which relays
+ * them here (`hooks.report`). */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  hookWorker: (bot) => {
+    const id = bot.worker;
+    if (!id) return undefined;
+    const name = workers.nameOf(id) ?? id;
+    if (!workers.connected(id)) return { id, name, error: `HUI is not connected to ${name}: connect it to take its listener URL.` };
+    // The port alone answers it: a host that could not bind its endpoint offers none either, and it is a current release.
+    const port = workers.hookPort(id);
+    if (port === undefined) return { id, name, error: `${name} does not serve its listener endpoint: it runs an older HUI release, or its endpoint could not open.` };
+    return { id, name, base: `http://127.0.0.1:${port}` };
+  },
+});
+/** A worker's own listener endpoint relays its reports to the gateway that owns the trigger: only a connected worker's
+ * host can make this request, and its loopback bind is the caller rule on that machine. A host relays as soon as its
+ * socket is up, before the gateway has registered the connection, so the report waits for it, and for the sweep that
+ * reattaches that worker's sessions (`reattaching`): only then does it reach the worker's own chats, instead of
+ * failing on a chat that still says it is reconnecting. A reattachment slower than the host's own relay cap leaves the
+ * report in the host's queue, which offers it again by itself (`hook-endpoint.ts`), so a listener is never told a
+ * report fired while the chat it wakes was still coming back. */
+workers.serve(HOOK_REPORT_OP, async (workerId, params) => {
+  await workers.ready(workerId);
+  await reattaching.get(workerId);
+  return triggers.relay(params);
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
