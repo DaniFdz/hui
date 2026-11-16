@@ -283,15 +283,10 @@ export class WorkerHost {
     if (existsSync(join(this.#durable.dir, "harness.sqlite"))) {
       await this.#durable.open().catch((error: unknown) => console.error(`Durable store did not open: ${error instanceof Error ? error.message : String(error)}`));
     }
-    this.#server = createServer((socket) => this.#accept(socket));
-    await new Promise<void>((resolveListen, reject) => {
-      this.#server!.once("error", reject);
-      this.#server!.listen(this.paths.socket, () => { this.#server!.off("error", reject); resolveListen(); });
-    });
-    await chmod(this.paths.socket, 0o600);
-    await writeFile(join(this.paths.stateDir, "release"), this.#release);
-    // The endpoint a listener on this machine reports to. An address already in use, or a port this host may not bind,
-    // costs the endpoint only: the host serves its sessions either way, and its hello leaves the feature out.
+    // The endpoint a listener on this machine reports to comes first, before the socket gateways reach: a gateway that
+    // connects the moment that socket accepts keeps the `hello` it gets, so the endpoint has to be in it already. An
+    // address already in use, or a port this host may not bind, costs the endpoint only: the host serves its sessions
+    // either way, and its hello leaves the feature out.
     const hookPort = hookPortFrom(process.env);
     const hook = new WorkerHookEndpoint({
       dir: join(this.paths.stateDir, HOOK_QUEUE_DIR),
@@ -308,6 +303,20 @@ export class WorkerHost {
     } catch (error) {
       console.error(`HUI could not open its trigger hook endpoint on 127.0.0.1:${hookPort}: ${error instanceof Error ? error.message : String(error)}`);
     }
+    this.#server = createServer((socket) => this.#accept(socket));
+    try {
+      await new Promise<void>((resolveListen, reject) => {
+        this.#server!.once("error", reject);
+        this.#server!.listen(this.paths.socket, () => { this.#server!.off("error", reject); resolveListen(); });
+      });
+    } catch (error) {
+      // No socket to serve: the endpoint goes with it instead of holding a port nothing can reach.
+      await this.#hook?.close().catch(() => undefined);
+      this.#hook = undefined;
+      throw error;
+    }
+    await chmod(this.paths.socket, 0o600);
+    await writeFile(join(this.paths.stateDir, "release"), this.#release);
     this.#timer = setInterval(() => this.#sweep(), 30_000);
     this.#timer.unref();
   }

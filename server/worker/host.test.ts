@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
@@ -69,6 +69,16 @@ async function report(url: string, body: string): Promise<{ status: number; body
 }
 
 const hookUrl = (port: number, token: string) => `http://127.0.0.1:${port}/__hui/hooks/${token}`;
+
+/** The first connection the host's socket takes, asked for until it takes one: a gateway that starts with the host
+ * connects as early as that socket allows, and the `hello` it gets then is the one it keeps. */
+async function connectWhenAccepted(path: string): Promise<Socket> {
+  return waitFor("the host's socket to take a connection", () => new Promise<Socket | undefined>((resolve) => {
+    const socket = connect(path);
+    socket.once("connect", () => resolve(socket));
+    socket.once("error", () => { socket.destroy(); resolve(undefined); });
+  }));
+}
 
 /** A gateway for this worker that answers `hooks.report` for `token` only, as a gateway that owns the trigger would; any
  * other token is a 404, its own gateway not holding it. */
@@ -683,8 +693,8 @@ test("Git operations run on the worker, and a new worktree lands in its own fold
   }
 });
 
-// Last in this file: a second WorkerHost re-registers the process-wide bridge and credential hooks, so no test may run
-// after it that needs the first host's.
+// A second WorkerHost re-registers the process-wide bridge and credential hooks, so this test and the one after it,
+// which both start their own host, are the end of this file: nothing after them may rely on the first host's hooks.
 test("a host whose hook port is taken still serves its socket, and its hello leaves the endpoint out", async (t) => {
   const taken = createServer((_request, response) => response.end());
   taken.listen(0, "127.0.0.1");
@@ -726,5 +736,33 @@ test("a host whose hook port is taken still serves its socket, and its hello lea
     }
   } finally {
     await other.close();
+  }
+});
+
+test("a host's socket never answers hello before its hook endpoint is listening", async (t) => {
+  const env = {
+    ...process.env,
+    HOME: join(root, "early", "home"),
+    XDG_DATA_HOME: join(root, "early", "data"),
+    XDG_CONFIG_HOME: join(root, "early", "config"),
+  };
+  const paths = workerPaths(env);
+  // A stop that left a queue behind: the endpoint clears those temporary names before it binds, so this is the work a
+  // gateway's first hello must not beat.
+  const queue = join(paths.stateDir, HOOK_QUEUE_DIR);
+  await mkdir(queue, { recursive: true, mode: 0o700 });
+  await Promise.all(Array.from({ length: 3_000 }, (_, index) => writeFile(join(queue, `.tmp-${index}`), "")));
+  const early = new WorkerHost(paths, { persistent: true });
+  t.onTestFinished(() => early.close());
+  const listening = early.listen();
+  const socket = await connectWhenAccepted(paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const hello = await peer.request<HostInfo>("hello");
+    assert.ok((hello.hookPort ?? 0) > 0, "the endpoint a listener reports to was up before the socket answered");
+    assert.ok(hello.features?.includes("trigger-hooks"), "and hello says where on this machine to report");
+  } finally {
+    socket.destroy();
+    await listening;
   }
 });

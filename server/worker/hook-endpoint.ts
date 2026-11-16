@@ -15,17 +15,19 @@
  * per report, `{ token, body }`, named by its place in line and a random id,
  * never by the token, which is a secret. A report is written under a private
  * temporary name and renamed to its place in line, so a drain reading the
- * queue sees whole reports only, and one that arrives while older ones wait
- * goes behind them instead of overtaking the queue. A report that waited is
- * relayed, in order, when the next gateway attaches, and an answer of 500 or
- * more (the gateway could not decide) keeps it, with the rest behind it, for
- * the next attach or for the next offer a retry makes: a drain that stopped at
+ * queue sees whole reports only, and one that arrives while older ones wait —
+ * or while an older one is still being written — goes behind them instead of
+ * overtaking the queue. A report that waited is relayed, in order, when the
+ * next gateway attaches, and an answer of 500 or more (the gateway could not
+ * decide) keeps it, with the rest behind it, for the next attach or for the
+ * next offer a retry makes: a drain that stopped at
  * a link that failed or timed out asks again after `retryMs` while a gateway
  * is attached, while one an older gateway refused waits for a gateway that can
  * take it. The queue holds `HOOK_QUEUE_LIMIT` reports, and a listener that
  * arrives past it is told to send its report again later (503) rather than
  * having it dropped. `close()` stops taking reports and waits for the relay in
- * flight only, leaving what still waits on disk.
+ * flight only, leaving what still waits — and what a drain had read but not yet
+ * offered — on disk.
  *
  * Only loopback: the host binds `127.0.0.1`, never another address, so nothing
  * off this machine reaches the endpoint, and the gateway's tailnet rule never
@@ -89,6 +91,11 @@ export type WorkerHookEndpointOptions = {
   retryMs?: number;
   /** A report started or ended here: the host is at work, never idle. */
   onActivity?(): void;
+  /** A test's standing point in the queue's own ordering, absent in production: `admitting`, with a report that has
+   * read the queue and not yet counted what is being written into it; `publishing`, with a report whole under its
+   * temporary name and not yet renamed into line; and `listed`, with the names a drain has just read and not yet acted
+   * on. */
+  pause?(point: "admitting" | "publishing" | "listed", listing: readonly string[]): Promise<void> | void;
 };
 
 export class WorkerHookEndpoint {
@@ -98,6 +105,7 @@ export class WorkerHookEndpoint {
   readonly #canRelay: () => boolean;
   readonly #retryMs: number;
   readonly #onActivity: (() => void) | undefined;
+  readonly #pause: ((point: "admitting" | "publishing" | "listed", listing: readonly string[]) => Promise<void> | void) | undefined;
   #server: Server | undefined;
   #bound: number | undefined;
   /** Requests being answered and drains running; the host is not idle while one is. */
@@ -110,6 +118,9 @@ export class WorkerHookEndpoint {
   #closed = false;
   /** Queue writes, one at a time, so each report gets its own place in line. */
   #writes: Promise<unknown> = Promise.resolve();
+  /** Reports being written into the queue now: one is in line from the moment its write starts, so a report that
+   * arrives while it is still being written waits behind it instead of reaching the gateway first. */
+  #publishing = 0;
   /** The newest place in line handed out, also read back from the queue so a restart keeps the order. */
   #sequence = 0;
   /** In-flight work, waited for by `close()`. */
@@ -122,6 +133,7 @@ export class WorkerHookEndpoint {
     this.#canRelay = options.canRelay ?? (() => false);
     this.#retryMs = options.retryMs ?? HOOK_RETRY_MS;
     this.#onActivity = options.onActivity;
+    this.#pause = options.pause;
   }
 
   /** The port it bound, or undefined before `listen()` and after `close()`. */
@@ -243,24 +255,36 @@ export class WorkerHookEndpoint {
   /** Keeps one report for the next gateway, or tells the listener to report again later. */
   async #queue(response: ServerResponse, token: string, body: string): Promise<void> {
     let result: "queued" | "full";
+    // In line from here: counted across the write, so a report that arrives between the temporary write and the rename
+    // that makes this one readable already waits behind it.
+    this.#publishing += 1;
     try {
       const write = this.#writes.then(() => this.#writeReport(token, body));
       this.#writes = write.catch(() => undefined);
       result = await write;
     } catch {
       return this.#answer(response, 500, { error: "The report could not be kept on this machine." });
+    } finally {
+      this.#publishing -= 1;
     }
     if (result === "full") {
       return this.#answer(response, 503, { error: `${HOOK_QUEUE_LIMIT} reports are already waiting for HUI to reconnect: report this one again later.` });
     }
-    // Behind reports that were already here, over the gateway attached now when nothing is sending them yet.
-    if (!this.#draining && this.#canRelay()) this.drain();
+    // Behind reports that were already here, over the gateway attached now. Asked for even while a drain runs: its pass
+    // may have listed the queue before this report was renamed into it, and it takes another one when it ends.
+    if (this.#canRelay()) this.drain();
     this.#answer(response, 202, { status: "queued" });
   }
 
-  /** Whether a report has to wait its turn: a drain sends what is queued, or the queue holds a report. */
+  /** Whether a report has to wait its turn: one is being written into the queue, or the queue holds one. A drain is not
+   * a reason by itself: the report it is sending stays on disk until its answer, so what keeps the order is the report
+   * in line, never the drain. */
   async #waiting(): Promise<boolean> {
-    return this.#draining || (await this.#queued()).length > 0;
+    const listing = await this.#queued();
+    if (this.#pause) await this.#pause("admitting", listing);
+    // The listing first, then the count: a report whose write is still running when the queue is listed is invisible
+    // to that listing, and its write counts until the rename puts it in line — the place this report has to respect.
+    return listing.length > 0 || this.#publishing > 0;
   }
 
   /** The reports in the queue, oldest first: their final names only, never one being written. */
@@ -284,6 +308,7 @@ export class WorkerHookEndpoint {
     try {
       // `wx`: a name two writers somehow shared is never overwritten by one of them.
       await writeFile(temporary, JSON.stringify(report), { mode: 0o600, flag: "wx" });
+      if (this.#pause) await this.#pause("publishing", []);
       // The same directory, so the rename is atomic: the report is absent or whole, never a file to read half of.
       await rename(temporary, final);
     } catch (error) {
@@ -301,7 +326,9 @@ export class WorkerHookEndpoint {
       for (;;) {
         // Shutdown waits for the relay in flight and leaves the rest on disk for the next host.
         if (this.#closed) return;
-        const name = (await this.#queued())[0];
+        const listing = await this.#queued();
+        if (this.#pause) await this.#pause("listed", listing);
+        const name = listing[0];
         if (!name) return;
         const file = join(this.#dir, name);
         const report = await this.#readQueued(file);
@@ -311,6 +338,9 @@ export class WorkerHookEndpoint {
           if (QUEUED.test(name)) await rm(file, { force: true });
           continue;
         }
+        // The host may have stopped for shutdown while this report was read: it was not in flight then, so it stays on
+        // disk for the next host rather than being sent and deleted here.
+        if (this.#closed) return;
         let answer: HookAnswer;
         try {
           answer = await this.#relay(report.token, report.body);

@@ -43,13 +43,19 @@ function gateway(decide: (token: string, body: unknown) => HookAnswer | Promise<
   };
 }
 
-async function endpoint(t: TestContext, relay: Relay, options: { port?: number; canRelay?: () => boolean; retryMs?: number } = {}) {
+async function endpoint(t: TestContext, relay: Relay, options: {
+  port?: number;
+  canRelay?: () => boolean;
+  retryMs?: number;
+  pause?: (point: "admitting" | "publishing" | "listed", listing: readonly string[]) => Promise<void> | void;
+} = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-hook-endpoint-"));
   let activity = 0;
   const ep = new WorkerHookEndpoint({
     dir, port: options.port ?? 0, relay, onActivity: () => { activity += 1; },
     ...(options.canRelay ? { canRelay: options.canRelay } : {}),
     ...(options.retryMs === undefined ? {} : { retryMs: options.retryMs }),
+    ...(options.pause ? { pause: options.pause } : {}),
   });
   await ep.listen();
   t.onTestFinished(async () => {
@@ -272,6 +278,85 @@ test("a report posted while older ones drain waits behind them: the queue goes o
   }
 });
 
+test("a report that lands while a drain has already listed an empty queue is relayed without another drain", async (t) => {
+  let attached = false;
+  let takeSecond = false;
+  let standing = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const relayed: string[] = [];
+  const reports = ["first", "second"].map((text) => JSON.stringify({ events: [{ id: text, summary: text }] }));
+  const { ep, dir, url } = await endpoint(t, async (_token, body) => {
+    if (!attached) throw new HookRelayUnavailable("no gateway attached");
+    // The one offer the second report gets as it is posted is not answered: it waits in line, behind the pass already
+    // running, and that pass is what has to send it when it ends.
+    if (body === reports[1] && !takeSecond) throw new HookRelayUnavailable("No HUI answered the report.");
+    relayed.push(body);
+    return { status: 202, body: { status: "fired" } };
+  }, {
+    canRelay: () => attached,
+    pause: async (point, listing) => {
+      // The drain has read an empty queue and has not acted on the listing yet: the second report is published here.
+      if (point !== "listed" || listing.length > 0 || standing) return;
+      standing = true;
+      await held;
+    },
+  });
+  try {
+    assert.deepEqual((await post(`${url}/__hui/hooks/${TOKEN}`, reports[0]!)).body, { status: "queued" }, "no gateway took the first report");
+    attached = true;
+    ep.drain();
+    await waitFor("the drain to stand on an empty listing", () => standing || undefined);
+    assert.deepEqual((await post(`${url}/__hui/hooks/${TOKEN}`, reports[1]!)).body, { status: "queued" }, "it waits its turn");
+    assert.deepEqual(relayed, [reports[0]], "the pass that was running sent only what it had listed");
+    takeSecond = true;
+  } finally {
+    release();
+  }
+  await waitFor("the queue to drain", async () => (await names(dir)).length === 0);
+  assert.deepEqual(relayed, reports, "the pass the queued report asked for sent it, behind the one already relayed");
+});
+
+test("a report that arrives while an older one is still being written queues behind it instead of relaying first", async (t) => {
+  let failures = 1;
+  let admitting = 0;
+  let standing = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const relayed: string[] = [];
+  const reports = ["older", "newer"].map((text) => JSON.stringify({ events: [{ id: text, summary: text }] }));
+  const { dir, url } = await endpoint(t, async (_token, body) => {
+    // The gateway answers neither report as it is posted: the older one waits in line, and the newer one must wait
+    // behind it instead of reaching the gateway while the older one is only half in line.
+    if (failures > 0) { failures -= 1; throw new HookRelayUnavailable("No HUI answered the report."); }
+    relayed.push(body);
+    return { status: 202, body: { status: "fired" } };
+  }, {
+    canRelay: () => true,
+    pause: async (point) => {
+      if (point === "admitting") { admitting += 1; return; }
+      // The older report is whole under its temporary name and not yet renamed into its place in line.
+      if (point !== "publishing" || standing) return;
+      standing = true;
+      await held;
+    },
+  });
+  try {
+    const older = post(`${url}/__hui/hooks/${TOKEN}`, reports[0]!);
+    await waitFor("the older report to be written under its temporary name", () => standing || undefined);
+    const newer = post(`${url}/__hui/hooks/${TOKEN}`, reports[1]!);
+    // The newer report reads the queue while the older one is still being written: that is the report it must count.
+    await waitFor("the newer report to read the queue", () => admitting === 2 || undefined);
+    release();
+    assert.deepEqual((await newer).body, { status: "queued" }, "the newer report waits in line behind the older one");
+    assert.deepEqual((await older).body, { status: "queued" }, "the older report is in line behind nothing");
+  } finally {
+    release();
+  }
+  await waitFor("the queue to drain", async () => (await names(dir)).length === 0);
+  assert.deepEqual(relayed, reports, "oldest first, as they came in");
+});
+
 test("a drain asked for again while it runs gets another pass when it ends, even when the one it was asked for failed", async (t) => {
   let reachable = false;
   let failFirst: (() => void) | undefined;
@@ -378,6 +463,26 @@ test("close() waits for the relay in flight and leaves the rest of the queue on 
   }
 });
 
+test("close() between a drain's reads and its relay leaves the report on disk and sends nothing", async (t) => {
+  let attached = false;
+  const relayed: string[] = [];
+  const { ep, dir, url } = await endpoint(t, async (_token, body) => {
+    if (!attached) throw new HookRelayUnavailable("no gateway attached");
+    relayed.push(body);
+    return { status: 202, body: { status: "fired" } };
+  }, { canRelay: () => attached });
+  const report = JSON.stringify({ events: [{ id: "kept", summary: "kept" }] });
+  assert.deepEqual((await post(`${url}/__hui/hooks/${TOKEN}`, report)).body, { status: "queued" });
+  attached = true;
+  // The drain's listing and read are still in flight when close() starts: nothing of this report was in flight.
+  ep.drain();
+  await ep.close();
+  assert.deepEqual(relayed, [], "a relay that was not in flight is never started");
+  const left = await names(dir);
+  assert.equal(left.length, 1, "the report it had already read stays for the next host");
+  assert.deepEqual(JSON.parse(await readFile(join(dir, left[0]!), "utf8")), { token: TOKEN, body: report });
+});
+
 test("a queued report the gateway refuses (404, 409, 400) is dropped, not retried forever", async (t) => {
   const answers: HookAnswer[] = [{ status: 404, body: { error: "No trigger has this URL." } }, { status: 409, body: { error: "This trigger is off." } }, { status: 400, body: { error: "A report is { events: [...] }." } }];
   let reachable = false;
@@ -439,6 +544,28 @@ test("a 5xx from the gateway keeps the queued report - and the rest behind it - 
   ep.drain();
   await waitFor("the queue to drain", async () => (await names(dir)).length === 0);
   assert.deepEqual(attempts, [reports[0]!, ...reports], "the kept report is offered again, then the one behind it");
+});
+
+test("a 5xx from the gateway is offered again after retryMs by itself, without another drain", async (t) => {
+  let attached = false;
+  let failures = 1;
+  const attempts: string[] = [];
+  const delivered: string[] = [];
+  const { ep, dir, url } = await endpoint(t, async (_token, body) => {
+    if (!attached) throw new HookRelayUnavailable("no gateway attached");
+    attempts.push(body);
+    // The gateway could not read its own state the first time and decided the next: the retry delivers the report.
+    if (failures > 0) { failures -= 1; return { status: 500, body: { error: "The gateway could not read its own state." } }; }
+    delivered.push(body);
+    return { status: 202, body: { status: "fired" } };
+  }, { canRelay: () => attached, retryMs: 10 });
+  const report = JSON.stringify({ events: [{ id: "answered-500", summary: "answered 500" }] });
+  assert.deepEqual((await post(`${url}/__hui/hooks/${TOKEN}`, report)).body, { status: "queued" });
+  attached = true;
+  ep.drain();
+  assert.equal(await waitFor("the retry to deliver the report", () => delivered[0], { timeoutMs: 5_000 }), report);
+  await waitFor("the queue to empty", async () => (await names(dir)).length === 0);
+  assert.deepEqual(attempts, [report, report], "the answer of 500, then the offer the retry made");
 });
 
 test("no log line carries a trigger's token, a report's body, or a queued report's", async (t) => {
