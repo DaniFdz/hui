@@ -110,6 +110,18 @@ test("an alert for the chat the operator has in front reports in-view instead of
   assert.match(result.message, /in front/);
 });
 
+/** The result says where the notification went: the relay, Web Push alone, or the desktop app's banner. */
+test("the result names the channel that carried the notification", async () => {
+  const taken = (channels: string[]) => async () => ({ status: "queued" as const, channels });
+  const message = async (channels: string[]) => (await notifyUser({ id: "session-a" }, { title: "Ready" }, undefined, taken(channels))).message;
+
+  assert.equal(await message(["ntfy"]), "HUI sent the notification to your phone or another device through ntfy.");
+  assert.equal(await message(["push"]), "HUI pushed the notification to the devices subscribed in Settings → Notifications → This device.");
+  // A push alongside the relay is still the relay's sentence: one result, and the relay is the fallback both names.
+  assert.equal(await message(["ntfy", "push"]), "HUI sent the notification to your phone or another device through ntfy.");
+  assert.match(await message(["desktop"]), /Your device's notification settings may suppress the banner/u);
+});
+
 test("unsupported, stale and failed delivery never falls back to Script Editor or reports sent", async () => {
   const params = { title: "Ready", message: "Open this chat." };
   host.platform = "linux";

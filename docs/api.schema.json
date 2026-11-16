@@ -8885,6 +8885,148 @@
         }
       ]
     },
+    "PushError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PushSettings": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "subject"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "subject": {
+          "type": "string"
+        }
+      }
+    },
+    "PushStatusResponse": {
+      "type": "object",
+      "required": [
+        "publicKey",
+        "devices"
+      ],
+      "properties": {
+        "publicKey": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PushSubscribeRequest": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "keys"
+      ],
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "object",
+          "required": [
+            "p256dh",
+            "auth"
+          ],
+          "properties": {
+            "p256dh": {
+              "type": "string"
+            },
+            "auth": {
+              "type": "string"
+            }
+          }
+        },
+        "device": {
+          "type": "string"
+        }
+      }
+    },
+    "PushSubscribeResponse": {
+      "type": "object",
+      "required": [
+        "subscribed",
+        "id"
+      ],
+      "properties": {
+        "subscribed": {
+          "type": "boolean",
+          "const": true
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "PushTestResponse": {
+      "type": "object",
+      "required": [
+        "sent",
+        "devices"
+      ],
+      "properties": {
+        "sent": {
+          "type": "number"
+        },
+        "devices": {
+          "type": "number"
+        }
+      }
+    },
+    "PushUnsubscribeRequest": {
+      "type": "object",
+      "required": [
+        "endpoint"
+      ],
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        }
+      }
+    },
+    "PushUnsubscribeResponse": {
+      "type": "object",
+      "required": [
+        "removed"
+      ],
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      }
+    },
     "QuestionnaireAnswer": {
       "type": "object",
       "required": [
@@ -11436,7 +11578,8 @@
             "runFinished",
             "runFailed",
             "needsInput",
-            "ntfy"
+            "ntfy",
+            "push"
           ],
           "properties": {
             "tool": {
@@ -11453,6 +11596,9 @@
             },
             "ntfy": {
               "$ref": "#/$defs/NtfySettings"
+            },
+            "push": {
+              "$ref": "#/$defs/PushSettings"
             }
           }
         },
@@ -15153,6 +15299,7 @@
       "BrowserSettings",
       "NtfyLink",
       "NtfySettings",
+      "PushSettings",
       "Settings",
       "SettingsError",
       "SettingsRequest",
@@ -15623,7 +15770,14 @@
     ],
     "notifications": [
       "NotificationTestError",
-      "NotificationTestResponse"
+      "NotificationTestResponse",
+      "PushError",
+      "PushStatusResponse",
+      "PushSubscribeRequest",
+      "PushSubscribeResponse",
+      "PushTestResponse",
+      "PushUnsubscribeRequest",
+      "PushUnsubscribeResponse"
     ]
   },
   "x-hui-routes": [
@@ -16415,6 +16569,40 @@
       "path": "/__hui/model-metrics/sessions/:session",
       "response": {
         "$ref": "#/$defs/ModelMetricSession"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/notifications/push",
+      "response": {
+        "$ref": "#/$defs/PushStatusResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/subscribe",
+      "request": {
+        "$ref": "#/$defs/PushSubscribeRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PushSubscribeResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/test",
+      "response": {
+        "$ref": "#/$defs/PushTestResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/unsubscribe",
+      "request": {
+        "$ref": "#/$defs/PushUnsubscribeRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PushUnsubscribeResponse"
       }
     },
     {

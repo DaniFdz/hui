@@ -13,13 +13,14 @@ import { MESSAGE_WIDTHS, SEND_SHORTCUTS, type ChatAppearance, type DeviceAppeara
 import { useModelRoles } from "../lib/provider-choices.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
-import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
+import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, describePushDevices, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
 import { lastSeenLabel, type GatewayView } from "../lib/gateways/gateway-list.ts";
+import type { PushDeviceState } from "../lib/notifications/web-push.ts";
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
 import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
@@ -114,6 +115,17 @@ export type SettingsProps = AutomationProps & {
   /** Saves the relay the form names, publishes one test message, and reports through the shell toast. */
   onTestNtfy: (ntfy: Settings["notifications"]["ntfy"]) => Promise<void>;
   onCopyNtfyAddress: () => void;
+  /** What this browser can do about Web Push; the controller reads it from the page, never from the gateway. */
+  pushDevice: PushDeviceState;
+  /** Whether this device already subscribed, so the button offers the other direction after a reload. */
+  pushSubscribed: boolean;
+  /** How many devices the gateway pushes to; `undefined` until it answers. */
+  pushDevices: number | undefined;
+  /** A failed read of the push state, shown instead of a count the gateway did not give. */
+  pushStatusError: string;
+  onEnablePush: () => void;
+  onDisablePush: () => void;
+  onTestPush: () => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   /** Opens New Session the way the app's own New Session control does. */
@@ -969,19 +981,80 @@ function renderMemoryPage(props: SettingsProps) {
   `;
 }
 
-function renderNotificationsPage(props: SettingsProps) {
+export function renderNotificationsPage(props: SettingsProps) {
   const notifications = props.settings.notifications;
   const toggle = (label: string, key: "runFinished" | "runFailed" | "needsInput") =>
     renderSettingsToggle(label, notifications[key], (on) => props.onChangeNotifications({ ...notifications, [key]: on }));
   return html`
-    <p class="settings-page__intro">These notifications reach the HUI app on macOS and, when a topic is set below, the ntfy app on your phone. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
+    <p class="settings-page__intro">These notifications reach the HUI app on macOS, every device that subscribed below, and, when a topic is set, the ntfy app on your phone. Clicking one opens its chat; only the HUI app stays quiet for the chat that is already in front.</p>
     ${renderSection("Notify me when", "", html`
       ${renderRow("A run finishes", "A run you started has ended and its chat is waiting for you. Subagents, bot routines and triggers don't count. Silent.", toggle("Run finished", "runFinished"))}
       ${renderRow("A run fails", "A run you started has stopped with an error. Silent.", toggle("Run failed", "runFailed"))}
       ${renderRow("A chat needs your input", "Any chat is waiting for you to answer a question, give a secret, allow access or confirm something. Plays a sound.", toggle("Needs your input", "needsInput"))}
     `)}
+    ${renderPushSection(props)}
     ${renderNtfySection(props)}
   `;
+}
+
+/** The line under "This device": one sentence per state this page is in, and what to do about it. */
+function pushStateCopy(props: SettingsProps): string {
+  if (props.pushDevice !== "ready") return SETTINGS_COPY.push.states[props.pushDevice];
+  return SETTINGS_COPY.push.states[props.pushSubscribed ? "subscribed" : "ready"];
+}
+
+/** The one control this device gets: subscribe it, forget it, or the reason neither is possible. */
+function renderPushControl(props: SettingsProps): TemplateResult {
+  const labels = SETTINGS_COPY.push.labels;
+  if (props.pushDevice !== "ready") return html`<button type="button" class="btn" disabled>${labels.enable}</button>`;
+  return props.pushSubscribed
+    ? html`<button type="button" class="btn" @click=${props.onDisablePush}>${labels.disable}</button>`
+    : html`<button type="button" class="btn primary" @click=${props.onEnablePush}>${labels.enable}</button>`;
+}
+
+/** Settings → Notifications → This device: Web Push through this browser's own push service, and the count of
+ * devices the gateway pushes to. Nothing here touches the browser: the controller subscribes and unsubscribes. */
+function renderPushSection(props: SettingsProps) {
+  const notifications = props.settings.notifications;
+  const push = notifications.push;
+  const labels = SETTINGS_COPY.push.labels;
+  // The contact address is optional, so it saves with the section's form rather than on every keystroke.
+  const submit = (event: SubmitEvent) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
+    const field = form.elements.namedItem("subject");
+    const subject = field instanceof HTMLInputElement ? field.value.trim() : push.subject;
+    props.onChangeNotifications({ ...notifications, push: { ...push, subject } });
+  };
+  return renderSection(
+    "This device",
+    "Web Push reaches this browser or phone through its own push service, so HUI can notify you with HUI closed. Every device subscribes here; the switch stops all of them.",
+    html`<form class="settings-push" @submit=${submit}>
+      ${renderRow(
+        labels.toggle,
+        "HUI pushes to the devices that subscribed below, this one included. Off stops every push, even to a device whose subscription this gateway still holds.",
+        renderSettingsToggle(labels.toggle, push.enabled, (enabled) => props.onChangeNotifications({ ...notifications, push: { ...push, enabled } })),
+      )}
+      ${renderRow("This device", pushStateCopy(props), renderPushControl(props))}
+      ${renderRow(
+        "Subscribed devices",
+        props.pushStatusError || describePushDevices(props.pushDevices),
+        html`<button type="button" class="btn" @click=${props.onTestPush}>${labels.test}</button>`,
+      )}
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Contact</span>
+          <span class="settings-row__desc">The address a push service may use to reach you, saved as the VAPID sub claim: a mailto: or https: address. Optional, and empty by default.</span>
+        </div>
+        <div class="settings-row__control">
+          <input class="settings-input" name="subject" type="text" autocomplete="off" spellcheck="false" aria-label="Push contact" placeholder="mailto:you@example.com" .value=${push.subject} />
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </div>
+      <p class="settings-page__note settings-page__intro">${SETTINGS_COPY.push.fallback}</p>
+    </form>`,
+  );
 }
 
 /** The fields the phone's ntfy app subscribes to, read from the form so a test never runs against an unsaved topic.
@@ -1024,8 +1097,8 @@ function renderNtfySection(props: SettingsProps) {
   };
   return renderSection(
     "Phone (ntfy)",
-    "HUI publishes each notification to this topic, and the ntfy app on your phone shows it even when the HUI app is closed. Install ntfy, add the address below as a subscription, and treat that address as a password.",
-    html`<form class="settings-ntfy" @submit=${submit}>
+    "The fallback: HUI publishes each notification to this topic, and the ntfy app on your phone shows it even when the HUI app is closed. Install ntfy, add the address below as a subscription, and treat that address as a password.",
+    html`<form class="settings-ntfy" data-testid="settings-ntfy" @submit=${submit}>
       <div class="settings-row settings-row--stacked">
         <div class="settings-row__text">
           <span class="settings-row__title">Opens in</span>
