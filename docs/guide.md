@@ -302,7 +302,9 @@ it while HUI is closed, locked or in the background.
    server.
 2. In HUI, open **Settings → Notifications → Phone (ntfy)**. Leave the server at
    `https://ntfy.sh` (or set your own), press **Generate** for a long random
-   topic, then **Save**.
+   topic, then **Save**. **Opens in** picks what a tap on the notification does:
+   the **Browser** (the default: the gateway's address, which every device can
+   open), **HUI on my phone** or **HUI on my desktop** (see below).
 3. In the ntfy app, add a subscription to the address HUI shows under the
    fields (`https://ntfy.sh/<topic>`). **Copy address** copies it.
 4. Press **Send test** in HUI: the phone should show the test notification.
@@ -311,6 +313,17 @@ After that, the three switches above cover both the macOS app and the phone, and
 `notify_user` alerts reach both as well. Tapping a notification opens its chat on
 the gateway. Clear the topic to turn phone notifications off; an empty topic
 sends nothing.
+
+**Opens in** decides where the tap lands. The default, **Browser**, sends the
+gateway's own address (`http://<gateway>/sessions/<id>`), which opens the web app
+on any device, whatever is installed on it. **HUI on my phone** sends the phone
+app's deep link instead — `hui://open?path=/sessions/<id>`, which opens the chat
+in the HUI app rather than in Safari or Chrome. **HUI on my desktop** sends the
+desktop app's link, `hui://sessions/<id>`. An app link carries no gateway
+address, by design: the app opens the chat on the gateway it is already
+connected to, so it only follows a notification from that same gateway, and a
+device without the app does nothing when tapped. The phone app needs the gateway
+over HTTPS (see "Run your own ntfy server" for the tailnet way).
 
 The address is the password: anyone who knows the topic can read its
 notifications. HUI never prints it in an error or a diagnostic. Chat names,

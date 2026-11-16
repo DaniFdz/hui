@@ -7605,11 +7605,28 @@
         }
       }
     },
+    "NtfyLink": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "web"
+        },
+        {
+          "type": "string",
+          "const": "phone"
+        },
+        {
+          "type": "string",
+          "const": "desktop"
+        }
+      ]
+    },
     "NtfySettings": {
       "type": "object",
       "required": [
         "server",
-        "topic"
+        "topic",
+        "link"
       ],
       "properties": {
         "server": {
@@ -7617,6 +7634,9 @@
         },
         "topic": {
           "type": "string"
+        },
+        "link": {
+          "$ref": "#/$defs/NtfyLink"
         }
       }
     },
@@ -15104,6 +15124,7 @@
     ],
     "settings": [
       "BrowserSettings",
+      "NtfyLink",
       "NtfySettings",
       "Settings",
       "SettingsError",

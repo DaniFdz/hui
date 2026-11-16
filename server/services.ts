@@ -80,7 +80,7 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
-import { deliverDesktopNotification, notificationChatUrl, notifyUser } from "./agent-tools/notifications.ts";
+import { deliverDesktopNotification, notificationChatLink, notifyUser } from "./agent-tools/notifications.ts";
 import { createNotificationDelivery } from "./notifications/delivery.ts";
 import { ntfyConfigured, ntfyMessage, publishNtfy } from "./notifications/ntfy.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
@@ -575,7 +575,7 @@ const notificationDelivery = createNotificationDelivery({
   ntfy: {
     settings: async () => (await readHuiSettings()).notifications.ntfy,
     publish: async (settings, chat, notification, url) => {
-      await publishNtfy(settings, ntfyMessage(notification, url ?? await notificationChatUrl(chat)), {
+      await publishNtfy(settings, ntfyMessage(notification, url ?? await notificationChatLink(chat, settings.link)), {
         // A protected server's token lives in the gateway's environment, never in settings a client can read.
         ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
       });

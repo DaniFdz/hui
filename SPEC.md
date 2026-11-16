@@ -501,6 +501,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Markdown pipe tables render semantic column headers and inline formatting,
   honor column alignment, and scroll horizontally inside a keyboard-focusable
   viewport on narrow screens. Fenced Markdown remains literal code.
+- `session:<id>` in a reply, a full session id or a unique prefix of at least
+  eight characters, becomes a chip carrying that session's title and runtime
+  status inside a link to `/sessions/<id>`; a click opens that chat in place and
+  modified clicks keep native link behavior. A reference no session has, a
+  prefix two sessions share and a list that has not loaded keep the text as
+  written; inline code and fenced code stay literal. A Markdown link to one of
+  HUI's own routes follows the same in-place rule.
 - Bare `http(s)`, `www` and email references render as safe links without
   consuming sentence punctuation or adjacent CJK text. GFM task-list items use
   read-only checkbox controls; inline code and fenced code remain literal. The
@@ -4963,6 +4970,7 @@ deliver independently: one failing does not stop the other, and a notification
 is reported as sent when either accepted it. A gateway with neither skips HUI's
 own events without an error and tells an agent's `notify_user` caller how to set
 one up.
+- **The tap opens the web app or an HUI app (2026-11-15).** The owner, with HUI installed on the iPhone, reported that a notification's tap landed in the browser instead of the app. *Phone (ntfy)* therefore carries **Opens in**: **Browser**, the default, publishes the gateway's own `http(s)` address, which any device can open; **HUI on my phone** publishes the phone shell's deep link (`hui://open?path=/sessions/<id>`, the link `mobile/AGENTS.md` already defines); **HUI on my desktop** publishes `hui://sessions/<id>`. An app link carries no address, because each shell appends the path to the gateway it is already connected to and refuses one that would point elsewhere — so an app link only resolves on the gateway that app is connected to, and a device without the app ignores the tap. The setting belongs to the relay and is saved beside its server and topic.
 - **No APNs, no browser push.** The relay is the phone channel: it needs the
 ntfy app installed and subscribed, and it carries no promise about delivery
 timing beyond ntfy's own queue. The HUI app itself is unchanged.

@@ -19,11 +19,19 @@ export const VscodeSettings = Type.Object({
 }, { $id: "VscodeSettings" });
 export type VscodeSettings = Static<typeof VscodeSettings>;
 
+/** What a notification's tap opens: the gateway's own address in a browser, or one of the HUI apps. An app link
+ * carries no address — `hui://open?path=/sessions/<id>` for the phone shell, `hui://sessions/<id>` for the desktop app —
+ * so it opens on the gateway that app is already connected to, and a device without the app ignores the tap. */
+export const NtfyLink = Type.Union([
+  Type.Literal("web"), Type.Literal("phone"), Type.Literal("desktop"),
+], { $id: "NtfyLink" });
+export type NtfyLink = Static<typeof NtfyLink>;
+
 /** The ntfy relay a phone or another device subscribes to. An empty topic means no relay; the server defaults to
  * `https://ntfy.sh`, and `HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected topic without the
  * token ever entering settings or a payload. */
 export const NtfySettings = Type.Object({
-  server: Type.String(), topic: Type.String(),
+  server: Type.String(), topic: Type.String(), link: NtfyLink,
 }, { $id: "NtfySettings" });
 export type NtfySettings = Static<typeof NtfySettings>;
 

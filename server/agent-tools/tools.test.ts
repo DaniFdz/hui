@@ -71,7 +71,7 @@ test("global tools expose real HUI definitions without loading configured packag
   assert.deepEqual(result.sources, ["danger.mjs", "nonexistent-test-package", "example.org/repo"]);
   assert.deepEqual(await readdir(dir), before);
   assert(!JSON.stringify(result).includes("hunter2"));
-  assert.equal(result.prompt.revision, "hui-v4");
+  assert.equal(result.prompt.revision, "hui-v5");
 });
 
 test("missing and malformed settings keep the shipped catalog usable with explicit diagnostics", async (t) => {

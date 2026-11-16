@@ -153,6 +153,7 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
+import { inAppLinkHandled, installInAppLinkNavigation } from "./lib/in-app-links.ts";
 import { appHandoffPath, appHandoffUrl } from "./lib/app-link.ts";
 import { openChatInApp } from "./api/app.ts";
 
@@ -424,6 +425,8 @@ export class HuiApp extends HuiElement {
   private mobileNavMedia: MediaQueryList | undefined;
   /** The phone shell's back button, while this app is the one answering it. */
   private stopNativeBack: (() => void) | undefined;
+  /** Markdown links to HUI's own routes navigate in place, in the shell and in a pane alike. */
+  private stopInAppLinks: (() => void) | undefined;
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
@@ -598,6 +601,13 @@ export class HuiApp extends HuiElement {
       this.addEventListener("hui-extensions-changed", this.onExtensionsChanged);
       void this.loadExtensionPages();
     }
+    // This delegation covers every in-app anchor in the shell: an anchor that relies on the browser's own navigation to a
+    // HUI route must call `event.preventDefault` itself, or be left out of what its view renders here.
+    this.stopInAppLinks = installInAppLinkNavigation(this.renderRoot, (target) => {
+      if (!inAppLinkHandled(target, { embedded: this.embeddedPane, paneNavigates: Boolean(this.onPaneNavigate) })) return false;
+      this.navigate(target);
+      return true;
+    });
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
       this.sessions.start();
@@ -626,6 +636,8 @@ export class HuiApp extends HuiElement {
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.stopNativeBack?.();
     this.stopNativeBack = undefined;
+    this.stopInAppLinks?.();
+    this.stopInAppLinks = undefined;
     this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
     this.followResize?.disconnect();

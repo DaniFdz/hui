@@ -2,6 +2,7 @@
 import type { TextScaleStop } from "../theme/appearance.ts";
 import type { ThemeMode } from "../theme/theme.ts";
 import type { MessageWidth, SendShortcut } from "../appearance/store.ts";
+import type { NtfySettings } from "../../api/schema/settings.ts";
 
 export const SETTINGS_PAGES = [
   { id: "appearance", label: "Appearance", group: "", icon: "palette" },
@@ -38,6 +39,7 @@ export const SETTINGS_COPY = {
   scales: { 90: "Small", 100: "Default", 110: "Large", 125: "XL", 140: "XXL" },
   messageWidths: { compact: "Compact", comfortable: "Comfortable", wide: "Wide" },
   sendShortcuts: { enter: "Enter", modifierEnter: "⌘/Ctrl + Enter" },
+  notificationLinks: { web: "Browser", phone: "HUI on my phone", desktop: "HUI on my desktop" },
   intros: {
     appearance: "Theme, chat, and sidebar preferences for this device. Each browser, app and phone keeps its own.",
     notifications: "Agents can send you a desktop notification that opens their chat, through the HUI app on macOS.",
@@ -57,5 +59,6 @@ export const SETTINGS_COPY = {
   scales: Record<TextScaleStop, string>;
   messageWidths: Record<MessageWidth, string>;
   sendShortcuts: Record<SendShortcut, string>;
+  notificationLinks: Record<NtfySettings["link"], string>;
   intros: Partial<Record<SettingsPage, string>>;
 };

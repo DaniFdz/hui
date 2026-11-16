@@ -6,7 +6,7 @@ import type { NtfySettings } from "./ntfy.ts";
 
 const CHAT: NotificationChat = { id: "session-a" };
 const NOTE: DesktopNotification = { title: "Fix the drawer", subtitle: "Finished", priority: "low" };
-const TOPIC: NtfySettings = { server: "https://ntfy.sh", topic: "hui-abc" };
+const TOPIC: NtfySettings = { server: "https://ntfy.sh", topic: "hui-abc", link: "web" };
 
 function delivery(options: {
   desktopAvailable?: boolean;
@@ -24,7 +24,7 @@ function delivery(options: {
     ntfy: {
       settings: async () => {
         if (options.ntfy instanceof Error) throw options.ntfy;
-        return options.ntfy ?? { server: "https://ntfy.sh", topic: "" };
+        return options.ntfy ?? { server: "https://ntfy.sh", topic: "", link: "web" };
       },
       publish: async (_settings, _chat, _notification, url) => {
         published.push(url);
@@ -105,5 +105,5 @@ test("canDeliver answers whether anybody would hear HUI's own events", async () 
   assert.equal(await delivery().canDeliver(), false);
   assert.equal(await delivery({ desktopAvailable: true }).canDeliver(), true);
   assert.equal(await delivery({ ntfy: TOPIC }).canDeliver(), true);
-  assert.equal(await delivery({ ntfy: { server: "https://ntfy.sh", topic: "" } }).canDeliver(), false);
+  assert.equal(await delivery({ ntfy: { server: "https://ntfy.sh", topic: "", link: "web" } }).canDeliver(), false);
 });

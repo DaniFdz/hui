@@ -4,9 +4,11 @@
  *
  * The agent's own replies render through a second parser (`renderAgentMarkdown`) that also wraps file references in
  * `<hui-file-ref>`, which becomes a link to the Files view once the gateway confirms the path
- * (`components/file-link.ts`). Fenced code, prose and other Markdown (hovercards, the Files view's preview, user
- * messages) are never wrapped. It draws Slack and X links as cards only when asked: the chat does so on its latest
- * messages and leaves older ones plain links.
+ * (`components/file-link.ts`), and draws a resolvable `session:<id>` as `<hui-session-ref>`, the chip that reads the
+ * app's session registry (`components/session-ref.ts`). Fenced code, prose and other Markdown (hovercards, the Files
+ * view's preview, user messages) are never wrapped. The chip's markup depends on the source alone, so the memo's
+ * source-only key stays correct; what the chip resolves to is read from the store when it connects. It draws Slack and
+ * X links as cards only when asked: the chat does so on its latest messages and leaves older ones plain links.
  */
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { createMarkdownParser } from "./parser.ts";
@@ -45,8 +47,8 @@ export function renderMarkdown(source: string) {
   return unsafeHTML(markdownToHtml(source));
 }
 
-const agentMarkdownParser = createMarkdownParser({ fileReferences: true });
-const agentLinksParser = createMarkdownParser({ fileReferences: true, linkCards: false });
+const agentMarkdownParser = createMarkdownParser({ fileReferences: true, sessionReferences: true });
+const agentLinksParser = createMarkdownParser({ fileReferences: true, sessionReferences: true, linkCards: false });
 
 /** The agent's replies: `markdownToHtml` plus file references (see the module header). */
 export const agentMarkdownToHtml = createMarkdownCache((source) => agentMarkdownParser.render(source));

@@ -160,12 +160,17 @@ notification is skipped and recorded as a `notification_skipped` diagnostic.
 
 #### The ntfy relay for phones
 
-`Settings.notifications.ntfy` (`{ server, topic }`) adds a second channel: HUI
-publishes the same notification as one JSON message to `{server}/{topic}`, and
+`Settings.notifications.ntfy` (`{ server, topic, link }`) adds a second channel:
+HUI publishes the same notification as one JSON message to `{server}/{topic}`, and
 the ntfy app on the operator's phone shows it even when the HUI app is closed or
 the phone is locked. `server` defaults to `https://ntfy.sh` and accepts only an
 `http(s)` base address with no credentials, query or fragment; `topic` is
-`[-_A-Za-z0-9]{1,64}` and an empty topic turns the relay off. A gateway with
+`[-_A-Za-z0-9]{1,64}` and an empty topic turns the relay off. `link` is what the
+message's `click` opens: `web` (the default) is the chat's address on this
+gateway; `phone` is `hui://open?path=/sessions/<id>`, the phone shell's deep
+link; `desktop` is `hui://sessions/<id>`, the desktop app's. An app link carries
+no address, so the app opens it on the gateway it is connected to, and one
+without that gateway ignores it. A gateway with
 `HUI_NTFY_TOKEN` in its environment sends it as a bearer token; the token never
 enters settings or any `/__hui/` payload. The topic is a capability: HUI never
 prints it in an error or diagnostic.

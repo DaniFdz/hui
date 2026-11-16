@@ -984,13 +984,23 @@ function renderNotificationsPage(props: SettingsProps) {
   `;
 }
 
-/** The fields the phone's ntfy app subscribes to, read from the form so a test never runs against an unsaved topic. */
-function ntfyFromForm(form: HTMLFormElement): Settings["notifications"]["ntfy"] {
+/** The fields the phone's ntfy app subscribes to, read from the form so a test never runs against an unsaved topic.
+ * What a tap opens is not a form field: the picker saves its own choice the moment it changes, so `link` is the
+ * saved one. */
+function ntfyFromForm(form: HTMLFormElement, link: Settings["notifications"]["ntfy"]["link"]): Settings["notifications"]["ntfy"] {
   const fields = new FormData(form);
   return {
     server: String(fields.get("server") ?? "").trim(),
     topic: String(fields.get("topic") ?? "").trim(),
+    link,
   };
+}
+
+/** The ways a notification can open its chat, in the order the picker offers them. */
+const NOTIFICATION_LINKS = ["web", "phone", "desktop"] as const;
+
+function notificationLink(value: string): Settings["notifications"]["ntfy"]["link"] {
+  return value === "phone" || value === "desktop" ? value : "web";
 }
 
 function renderNtfySection(props: SettingsProps) {
@@ -998,11 +1008,11 @@ function renderNtfySection(props: SettingsProps) {
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     const form = event.currentTarget;
-    if (form instanceof HTMLFormElement) void props.onSaveNtfy(ntfyFromForm(form));
+    if (form instanceof HTMLFormElement) void props.onSaveNtfy(ntfyFromForm(form, ntfy.link));
   };
   const test = (event: Event) => {
     const form = (event.currentTarget as HTMLElement).closest("form");
-    if (form instanceof HTMLFormElement) void props.onTestNtfy(ntfyFromForm(form));
+    if (form instanceof HTMLFormElement) void props.onTestNtfy(ntfyFromForm(form, ntfy.link));
   };
   // Any long, unguessable name is ntfy's own capability: it is the password the phone subscribes with.
   const generate = (event: Event) => {
@@ -1016,6 +1026,28 @@ function renderNtfySection(props: SettingsProps) {
     "Phone (ntfy)",
     "HUI publishes each notification to this topic, and the ntfy app on your phone shows it even when the HUI app is closed. Install ntfy, add the address below as a subscription, and treat that address as a password.",
     html`<form class="settings-ntfy" @submit=${submit}>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Opens in</span>
+          <span class="settings-row__desc">What tapping the notification opens, saved as soon as you pick it. An app opens the chat on the gateway it is already connected to, so it only follows links from that gateway; a device without the app ignores the tap.</span>
+        </div>
+        <div class="settings-row__control">
+          ${renderSettingsPicker(
+            "Notification link",
+            ntfy.link,
+            NOTIFICATION_LINKS.map((link) => ({ value: link, label: SETTINGS_COPY.notificationLinks[link] })),
+            () => undefined,
+            {
+              // The picker keeps its own display, so the choice is saved here: the page then renders the new value.
+              onChangeTarget: (value, select) => {
+                const form = select.closest("form");
+                const link = notificationLink(value);
+                void props.onSaveNtfy(form instanceof HTMLFormElement ? ntfyFromForm(form, link) : { ...ntfy, link });
+              },
+            },
+          )}
+        </div>
+      </div>
       <div class="settings-row settings-row--stacked">
         <div class="settings-row__text">
           <span class="settings-row__title">Server</span>
