@@ -1780,12 +1780,17 @@ test("extension commands run in the gateway, ask through HUI questions and keep 
   const users = (entries: TranscriptEntry[]) => entries.filter((entry) => entry.kind === "message" && entry.role === "user").length;
   const before = users(session.transcript());
   await settledAfter(session, "/fixture-trigger");
-  const triggered = (await providerRequests(f.log)).at(-2);
+  // The first request of the run the custom message started is the one that must not be ahead of the message,
+  // whatever background request follows it.
+  const requests = await providerRequests(f.log);
+  const startedAt = requests.findIndex((request) => JSON.stringify(request.messages).includes("from a custom message"));
+  assert(startedAt >= 0, "the custom message reached the model");
+  const triggered = requests[startedAt];
   assert.match(JSON.stringify(triggered?.messages), /from a custom message/u);
   // As in PI 1.2.0, the run it starts goes through before_agent_start too, which sees the run as busy already.
   assert.match(JSON.stringify(triggered?.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
   assert.doesNotMatch(JSON.stringify(triggered?.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
-  assert.match(JSON.stringify((await providerRequests(f.log)).at(-1)?.messages), /FIXTURE_STEER_MARKER/u, "but steers the run");
+  assert(requests.slice(startedAt + 1).some((request) => JSON.stringify(request.messages).includes("FIXTURE_STEER_MARKER")), "but steers the run");
   assert.deepEqual((await logged(f.events, "before_agent_start")).map(({ messageType, customType, idle }) => ({ messageType, customType, idle })), [
     { messageType: "user", customType: undefined, idle: false },
     { messageType: "custom", customType: "fixture-result", idle: false },
