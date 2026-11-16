@@ -45,6 +45,12 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
 
+  // That press closed the panel and stopped nothing: the provider is still holding the turn, so Escape never reached
+  // the pane's Stop. The status word alone cannot say so, because a stopped run whose provider is still held keeps
+  // reading Running; the Stop control is what shows the press asked for a stop, and stays disabled while it waits.
+  await expect(screen.getByLabel("Session status: Running")).toBeVisible();
+  await expect(screen.getByRole("button", "Stop")).toBeEnabled();
+
   // The trigger is one toggle: it opens the closed panel.
   await trigger.tap();
   await expect(popover).toBeVisible();
