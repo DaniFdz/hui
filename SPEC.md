@@ -2768,7 +2768,8 @@ everything the Bots tab can, through the same routes.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
   (decisions below). HUI reads no other service for them itself: a listener, a
   program the operator runs, watches what it watches and reports to the
-  trigger's URL, a secret on the tailnet; each event wakes the bot once. By
+  trigger's URL, a secret on the tailnet (or, for a bot on a worker, that
+  machine's own loopback); each event wakes the bot once. By
   default its delivery steers: event summaries, times and PR links only, without
   event details or fetched PR context, into the turn going on or as the next
   turn of an idle bot, before its next model call and without aborting work. The
@@ -3779,7 +3780,11 @@ can feed rather than one for Slack, and HUI's side first. The contract is
 
 - **A source anyone's program feeds.** A listener trigger has a URL with a secret
   token, made, shown once and replaced like a webhook's and answered by the same
-  route on the tailnet. The program (a listener) watches what it watches, as
+  route on the tailnet. Creating a trigger, and replacing its token, answer
+  `hook: { token, path }` once; for a bot whose chat runs on a worker,
+  `hook: { token, path, worker }`, where `worker.url` is that machine's own
+  loopback address for it and `worker.error` says why HUI has none to give. The
+  program (a listener) watches what it watches, as
   often as it likes, and after every check posts `{ events }`: each with its own
   id, one line, details, a time, links and fields. Nothing about any one service
   is in HUI; the work Slack listener lives with the owner's job setup.
@@ -4437,6 +4442,15 @@ session on that worker, as any remote session's.
   its own machine too (see *Shared terminals*). Its secret requests work as a
   worker session's: the card is answered on the gateway and the worker host
   writes the file.
+- **Its triggers' listeners report there.** A trigger of a bot on a worker takes
+  its listener's reports on that machine's own endpoint: `POST
+  /__hui/hooks/<token>` bound to `127.0.0.1`, port 4180 unless
+  `HUI_WORKER_HOOK_PORT` names another, served by the worker's host and relayed
+  to the gateway that owns the trigger. The gateway's route and its tailnet rule
+  are unchanged, and so is a listener that reports to them. While no gateway is
+  attached the host keeps what it could not deliver, so a worker whose listeners
+  report to it runs `daemon --serve` (a `connect`-started daemon still stops when
+  idle). The contract is [docs/api.md#triggers](docs/api.md#triggers).
 
 ### Bots are set up like Grok Bot (2026-10-06)
 

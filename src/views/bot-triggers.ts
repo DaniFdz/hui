@@ -71,13 +71,25 @@ function renderWatch(trigger: BotTrigger, now: number) {
   return trigger.enabled && polled ? html`<p class="bot-trigger__meta">Listener reported ${agoLabel(polled, now)}</p>` : nothing;
 }
 
+/** What the swap of clauses says: a bot on a worker reports on that machine, where its listener runs; a bot here
+ * reports on this page's origin. A worker with no endpoint has no address to send anything to, only the reason. */
+function renderHookHint(revealed: RevealedHook) {
+  if (!revealed.url) return html`<p class="bot-panel__hint bot-trigger-url__note">${revealed.note}</p>`;
+  const post = html`<code>{ "events": [...] }</code>`;
+  return html`<p class="bot-panel__hint">Copy it now: HUI keeps only a fingerprint of it and can't show it again. ${revealed.note
+    ? html`${revealed.note} After every check it POSTs ${post} to it there, the list empty when nothing happened.`
+    : html`Give it to your listener: after every check it POSTs ${post} to it from this machine or your tailnet, the list empty when nothing happened.`}</p>`;
+}
+
+/** A trigger's URL, once, with the machine it lives on: Copy takes it as it came, and only Done is offered when there is
+ * no address to copy. */
 function renderRevealed(revealed: RevealedHook, props: BotTriggersProps) {
   return html`<div class="bot-trigger-url" role="status" aria-live="polite">
     <p class="bot-trigger-url__title">${revealed.name}: its URL</p>
-    <p class="bot-panel__hint">Copy it now: HUI keeps only a fingerprint of it and can't show it again. Give it to your listener: after every check it POSTs <code>{ "events": [...] }</code> to it from this machine or your tailnet, the list empty when nothing happened.</p>
-    <code class="bot-trigger-url__value" aria-label=${`URL of ${revealed.name}`}>${revealed.url}</code>
+    ${renderHookHint(revealed)}
+    ${revealed.url ? html`<code class="bot-trigger-url__value" aria-label=${`URL of ${revealed.name}`}>${revealed.url}</code>` : nothing}
     <div class="bot-trigger-url__actions">
-      <button type="button" class="btn btn--sm bot-trigger-url__copy" @click=${props.onCopy}>${revealed.copied ? icons.check : icons.copy}<span>${revealed.copied ? "Copied" : "Copy"}</span></button>
+      ${revealed.url ? html`<button type="button" class="btn btn--sm bot-trigger-url__copy" @click=${props.onCopy}>${revealed.copied ? icons.check : icons.copy}<span>${revealed.copied ? "Copied" : "Copy"}</span></button>` : nothing}
       <button type="button" class="btn btn--sm btn--ghost" @click=${props.onDismissUrl}>Done</button>
     </div>
   </div>`;

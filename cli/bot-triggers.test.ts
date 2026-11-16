@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { BotTriggersList } from "../server/bots/triggers-format.ts";
-import { checkTriggerAdd, formatTriggers, parseCooldown, parseMatch, triggerBody } from "./bot-triggers.ts";
+import type { BotTriggersList, BotTriggerCreated } from "../server/bots/triggers-format.ts";
+import { checkTriggerAdd, formatAdded, formatTriggers, parseCooldown, parseMatch, triggerBody } from "./bot-triggers.ts";
 import { HELP, parseCli } from "./main.ts";
 
 test("hui bot trigger parses list, add, remove and test with their operands and only their own flags", () => {
@@ -58,6 +58,26 @@ test("the list says what each trigger watches, how it stands, and the hour's del
     "Reviews (3f2a1b2c) · Listener · fields.channel equals \"C0123\" · PR links only · cooldown 5 min · on · last fired 2026-10-07T10:00:00.000Z · 2 waiting until 2026-10-07T10:05:00.000Z · Listener: No report from the listener for 7 min.",
     "Deliveries in the last hour: 1 of 12.",
   ].join("\n"));
+});
+
+test("what add prints: the URL here, or the one on the bot's worker, or why it has none", () => {
+  const trigger = {
+    id: "3f2a1b2c-0000", botId: "id-ada", name: "Reviews", source: "listener" as const, filter: { match: { field: "fields.channel", op: "equals" as const, value: "C0123" } }, enabled: true,
+    cooldownSeconds: 300, createdBy: "operator" as const, createdAt: "", updatedAt: "",
+  };
+  const hook = { token: "tok", path: "/__hui/hooks/tok" };
+  const base = "http://build-box:8787";
+  assert.equal(formatAdded({ handle: "ada" }, { trigger, hook } as BotTriggerCreated, base),
+    `Added the trigger Reviews to @ada (fields.channel equals "C0123"). Its URL, shown this once: your listener POSTs { "events": [...] } to it after every check, from this machine or your tailnet (use the gateway's tailnet name from elsewhere):\nhttp://build-box:8787/__hui/hooks/tok`,
+    "a bot here keeps the sentence it always had");
+  const url = "http://127.0.0.1:4180/__hui/hooks/tok";
+  assert.equal(formatAdded({ handle: "ada" }, { trigger, hook: { ...hook, worker: { id: "w1", name: "devbox", url } } }, base),
+    `Added the trigger Reviews to @ada (fields.channel equals "C0123"). Its URL, shown this once, is on devbox: run your listener on that machine; after every check it POSTs { "events": [...] } to it:\n${url}`,
+    "a bot on a worker takes the report there, so the URL is that machine's");
+  const error = "HUI is not connected to devbox: connect it to take its listener URL.";
+  assert.equal(formatAdded({ handle: "ada" }, { trigger, hook: { ...hook, worker: { id: "w1", name: "devbox", error } } }, base),
+    `Added the trigger Reviews to @ada (fields.channel equals "C0123"). HUI has no listener URL for it yet: ${error}`);
+  assert.match(formatAdded({ handle: "ada" }, { trigger, hook: { ...hook, worker: { id: "w1", name: "devbox" } } }, base), /HUI has no listener URL for it yet: devbox has no listener endpoint\.$/u, "a worker that says nothing still says where the URL should have come from");
 });
 
 test("HELP lists the trigger commands and what a listener sends", () => {

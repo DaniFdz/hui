@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "vitest";
 import {
-  BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields,
+  BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, parseCreated, parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields,
 } from "./triggers.ts";
 
 test("trigger limits and labels match the portable fixtures", async () => {
@@ -45,4 +45,21 @@ test("the routes' answers are narrowed: unknown sources, bad entries and missing
   assert.deepEqual(list.runs.map((run) => [run.status, run.events, run.catchUp]), [["coalesced", 3, true]]);
   assert.deepEqual(list.deliveries, { lastHour: 2, perHour: 12 });
   assert.throws(() => parseTriggersList({}), /did not come back/u);
+});
+
+test("a created trigger's URL carries a worker's own address, or its reason, and invents neither", () => {
+  const created = (hook: unknown) => parseCreated({ trigger: TRIGGER, hook });
+  assert.deepEqual(created({ token: "tok", path: "/__hui/hooks/tok" }).hook, { token: "tok", path: "/__hui/hooks/tok" }, "a bot on this machine is exactly the token and the path it always was");
+  const url = "http://127.0.0.1:4180/__hui/hooks/tok";
+  assert.deepEqual(created({ token: "tok", path: "/__hui/hooks/tok", worker: { id: "w1", name: "devbox", url } }).hook.worker, { id: "w1", name: "devbox", url });
+  const error = "HUI is not connected to devbox: connect it to take its listener URL.";
+  assert.deepEqual(created({ token: "tok", path: "/__hui/hooks/tok", worker: { id: "w1", name: "devbox", error } }).hook.worker, { id: "w1", name: "devbox", error });
+  const both = created({ token: "tok", path: "/__hui/hooks/tok", worker: { id: "w1", name: "devbox", url, error } }).hook.worker;
+  assert.deepEqual(both, { id: "w1", name: "devbox", url, error }, "what the server said, either way round");
+  assert.equal(created({ token: "tok", path: "/__hui/hooks/tok", worker: { name: "devbox", url } }).hook.worker, undefined, "a worker it can't name is left out");
+  assert.equal(created({ token: "tok", path: "/__hui/hooks/tok", worker: { id: "w1", url } }).hook.worker, undefined);
+  assert.equal(created({ token: "tok", path: "/__hui/hooks/tok", worker: "devbox" }).hook.worker, undefined);
+  assert.deepEqual(created({ token: "tok", path: "/__hui/hooks/tok", worker: { id: "w1", name: "devbox", url: "", error: "" } }).hook.worker, { id: "w1", name: "devbox" });
+  assert.throws(() => created({ token: "", path: "/__hui/hooks/tok" }), /URL did not come back/u);
+  assert.throws(() => created({ path: "/__hui/hooks/tok" }), /URL did not come back/u);
 });

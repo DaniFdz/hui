@@ -3156,19 +3156,7 @@
           "$ref": "#/$defs/BotTrigger"
         },
         "hook": {
-          "type": "object",
-          "required": [
-            "token",
-            "path"
-          ],
-          "properties": {
-            "token": {
-              "type": "string"
-            },
-            "path": {
-              "type": "string"
-            }
-          }
+          "$ref": "#/$defs/BotTriggerHook"
         }
       }
     },
@@ -3201,6 +3189,45 @@
         "external": {
           "type": "boolean",
           "const": true
+        }
+      }
+    },
+    "BotTriggerHook": {
+      "type": "object",
+      "required": [
+        "token",
+        "path"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "worker": {
+          "$ref": "#/$defs/BotTriggerHookWorker"
+        }
+      }
+    },
+    "BotTriggerHookWorker": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
         }
       }
     },
@@ -15416,6 +15443,8 @@
       "BotTriggerCreated",
       "BotTriggerDeleted",
       "BotTriggerFilter",
+      "BotTriggerHook",
+      "BotTriggerHookWorker",
       "BotTriggerInput",
       "BotTriggerPatch",
       "BotTriggerResponse",

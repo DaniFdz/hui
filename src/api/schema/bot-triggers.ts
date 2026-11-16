@@ -2,11 +2,15 @@
 
 export type BotTrigger = { "id": string; "botId": string; "name": string; "source": BotTriggerSource; "filter": BotTriggerFilter; "prompt"?: string; "delivery"?: ("followUp") | ("steer"); "enabled": boolean; "cooldownSeconds": number; "createdBy": ("operator") | ("bot"); "createdAt": string; "updatedAt": string; "lastFiredAt"?: string; "tokenHint"?: string; "pending"?: { "events": number; "until": string; }; "watch"?: { "polledAt"?: string; "error"?: string; }; };
 
-export type BotTriggerCreated = { "trigger": BotTrigger; "hook": { "token": string; "path": string; }; };
+export type BotTriggerCreated = { "trigger": BotTrigger; "hook": BotTriggerHook; };
 
 export type BotTriggerDeleted = { "ok": true; };
 
 export type BotTriggerFilter = { "match"?: TriggerMatch; "prLinks"?: true; "bots"?: true; "external"?: true; };
+
+export type BotTriggerHook = { "token": string; "path": string; "worker"?: BotTriggerHookWorker; };
+
+export type BotTriggerHookWorker = { "id": string; "name": string; "url"?: string; "error"?: string; };
 
 export type BotTriggerInput = { "name": string; "source": BotTriggerSource; "filter": BotTriggerFilter; "prompt"?: string; "delivery"?: ("followUp") | ("steer"); "enabled"?: boolean; "cooldownSeconds"?: number; };
 
