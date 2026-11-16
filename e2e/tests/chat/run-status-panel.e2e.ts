@@ -1,5 +1,6 @@
-/** The chat header's Run status panel: the pill morphs into it and back, the head reads the same state as the pill, and
- * a wide window's automatic open, the X and the trigger are one toggle (CHAT-090). */
+/** The chat header's Run status panel: the pill morphs into it and back from one pinned top-right corner, the head reads
+ * the same state as the pill, and a wide window's automatic open, Close run status, Escape and an outside click own it
+ * (CHAT-090). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
@@ -21,7 +22,7 @@ const PANEL = "[data-testid=\"run-status\"]";
 const LABEL = `${TRIGGER} .chat-run-status__label`;
 const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
 
-test("Run status opens by itself while a run works, and its X and trigger are one toggle", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Run status opens by itself while a run works, and its chevron folds it back", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
   // HUI writes the plan with the utility model; this instance points it at the fixture.
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
@@ -53,23 +54,30 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   await expect(trigger).not.toBeExpanded();
 
   // The next turn holds the provider, and the pill morphs into the panel it opens: the head reads the same state as the
-  // trigger — mark, word and count — so one control visibly becomes the other. The trigger keeps its box, its mark and
-  // its chevron and only its copy steps aside, so the screen reads the word once while the accessible name, and that
-  // hidden copy, keep the whole summary.
+  // trigger — mark, word and count — so one control visibly becomes the other. The panel's settled top-right corner is
+  // the pill's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
+  // trigger keeps its box as the anchor and the aria-expanded, word and summary it gives back on close.
   await hold();
   await expect(popover).toBeVisible();
   await expect(message).toBeFocused();
   await expect(trigger).toBeExpanded();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, 1 of 2 steps done$/u);
-  await expect(trigger).toHaveText("Working 1/2");
+  // One box: the trigger keeps its box and its aria-expanded as the anchor, but the pill is not painted under or above
+  // the panel, whose head is the converted pill.
+  await expect(trigger).not.toBeVisible();
   await expect(popover.getByText("Working", { exact: true })).toBeVisible();
   await expect(popover.getByText("1/2", { exact: true })).toBeVisible();
 
-  // Escape closes it and gives the trigger focus.
-  await trigger.press("Escape");
+  // Escape closes it. The panel auto-opened onto the composer's focus and the pill is not painted, so a hidden trigger
+  // cannot take the focus back: the operator's caret stays in the composer, which is also where Escape must not reach
+  // the pane's Stop.
+  await message.press("Escape");
   await expect(popover).toBeHidden();
   await expect(trigger).not.toBeExpanded();
-  await expect(trigger).toBeFocused();
+  await expect(message).toBeFocused();
+  // The pill paints again once the close has landed, still reading the running state it carried into the panel.
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("Working 1/2");
 
   // That press closed the panel and stopped nothing: the provider is still holding the turn, so Escape never reached
   // the pane's Stop. The status word alone cannot say so, because a stopped run whose provider is still held keeps
@@ -93,9 +101,11 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   await hold();
   await expect(popover).toBeVisible();
 
-  // The trigger is one toggle: it closes the open panel and opens the closed one, and the chevron points up while the
-  // panel is out. Close run status closes it too and gives focus back. Each direction draws one painted card — the panel
-  // itself — whose width, height and corner grow out of the trigger's own box, read here from the frames the browser drew.
+  // One control: a closed panel's pill opens it, and the panel's own chevron closes it, with Escape and an outside click
+  // as the other ways out. Each direction draws one painted card — the panel itself — whose width, height and corner grow
+  // out of the trigger's own box, read here from the frames the browser drew. The pill is not painted in any of them: the
+  // panel's head is the converted pill, and the chevron it turns into is the close. Close run status starts the fold, and
+  // its first frame is already on the pinned corner.
   const chrome = await hui.cardChrome(PANEL);
   expect(chrome?.wrapper).not.toBeNull();
   expect(chrome?.wrapper?.background, "Web Awesome's shadow body paints no card of its own").toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/u);
@@ -104,21 +114,26 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   expect(chrome?.node?.border, "the panel is the card, and the box the morph moves").toBeGreaterThan(0);
   expect(chrome?.node?.shadow).not.toBe("none");
 
-  const closing = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap());
-  const shrinking = closing.filter((frame) => frame.box.width > 0);
+  const closing = await hui.morphFrames(PANEL, TRIGGER, () => screen.getByLabel("Close run status").tap());
+  const shrinking = closing.filter((frame) => frame.box.painted && frame.box.width > 0);
   const settledWidth = Math.max(...shrinking.map((frame) => frame.box.width));
   expect(shrinking.some((frame) => frame.box.width < settledWidth - 20), "the close draws the box shrinking").toBe(true);
+  const leaving = shrinking[0];
+  expect(leaving?.trigger.painted, "the close starts with no pill beside the panel").toBe(false);
+  expect(Math.abs((leaving?.box.top ?? 0) - (leaving?.trigger.top ?? 0)), "the close starts on the pill's own top edge").toBeLessThanOrEqual(1);
+  expect(Math.abs((leaving?.box.right ?? 0) - (leaving?.trigger.right ?? 0)), "and on its right edge").toBeLessThanOrEqual(1);
   const arrived = shrinking.at(-1);
   expect(Math.abs((arrived?.box.width ?? 0) - (arrived?.trigger.width ?? 0)), "it arrives as the pill's own box").toBeLessThanOrEqual(1);
   expect(Math.abs((arrived?.box.right ?? 0) - (arrived?.trigger.right ?? 0))).toBeLessThanOrEqual(1);
   expect(Math.abs((arrived?.box.top ?? 0) - (arrived?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
+  expect(arrived?.trigger.painted, "and the pill returns only once the close has landed").toBe(false);
   await expect(popover).toBeHidden();
   await expect(trigger).not.toBeExpanded();
   // The pill paints again once the box has arrived.
   await expect(trigger).toBeVisible();
 
   const opening = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap());
-  const travelling = opening.filter((frame) => frame.box.width > 0);
+  const travelling = opening.filter((frame) => frame.box.painted && frame.box.width > 0);
   const start = travelling[0];
   expect(start?.trigger.painted, "from the first frame only the panel is painted").toBe(false);
   expect(Math.abs((start?.box.width ?? 0) - (start?.trigger.width ?? 0)), "the first frame is the pill's own width").toBeLessThanOrEqual(1);
@@ -126,6 +141,22 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   expect(Math.abs((start?.box.top ?? 0) - (start?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
   expect(travelling.some((frame) => frame.box.width > (start?.trigger.width ?? 0) + 20 && frame.box.width < settledWidth - 20), "the box travels between the two").toBe(true);
   expect(Math.max(...travelling.map((frame) => frame.box.width)), "and ends on the panel's settled width").toBeGreaterThanOrEqual(settledWidth - 1);
+  // The corner is pinned for every frame of the growth, not only its first: the panel settles on the pill's top-right
+  // corner, so the box only widens left and its top and right edges never move — and the pill is painted in none of them.
+  for (const frame of travelling) {
+    expect(frame.trigger.painted, `the frame ${frame.box.width}px wide draws no second box`).toBe(false);
+    expect(Math.abs(frame.box.top - frame.trigger.top), `the frame ${frame.box.width}px wide keeps the pill's top edge`).toBeLessThanOrEqual(1);
+    expect(Math.abs(frame.box.right - frame.trigger.right), `the frame ${frame.box.width}px wide keeps the pill's right edge`).toBeLessThanOrEqual(1);
+  }
+  // And the settled panel is that corner, covering the pill's whole box: no fragment of the pill is left above it.
+  const settled = await popover.boundingBox();
+  const pill = await trigger.boundingBox();
+  expect(settled, "the panel is on screen").not.toBeNull();
+  expect(pill, "the trigger keeps its box").not.toBeNull();
+  expect(Math.abs((settled?.y ?? 0) - (pill?.y ?? 0)), "the settled panel's top is the trigger's").toBeLessThanOrEqual(1);
+  expect(Math.abs(((settled?.x ?? 0) + (settled?.width ?? 0)) - ((pill?.x ?? 0) + (pill?.width ?? 0))), "and its right edge is the trigger's").toBeLessThanOrEqual(1);
+  expect((settled?.x ?? Number.POSITIVE_INFINITY), "the panel reaches left of the pill").toBeLessThan((pill?.x ?? 0) - 20);
+  expect((settled?.y ?? 0) + (settled?.height ?? 0), "and its box covers the pill's").toBeGreaterThanOrEqual((pill?.y ?? 0) + (pill?.height ?? 0));
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
   await screen.getByLabel("Close run status").tap();

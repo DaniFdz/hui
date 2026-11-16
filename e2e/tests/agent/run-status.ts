@@ -10,13 +10,20 @@ const PANEL = "[data-testid=\"run-status\"]";
 export async function openRunStatus(screen: Screen): Promise<Locator> {
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
-  await expect(trigger).toBeVisible();
+  // One box at a time: while the panel is out its header is the converted pill, so the trigger keeps its box as the
+  // popover's anchor and its aria-expanded, but it is not painted. Attachment, not paint, is what this read needs until
+  // the pill itself has to be pressed.
+  await expect(trigger).toBeAttached();
   const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
   // A wide window opens and closes it by itself around a run, and Web Awesome's dialog stays on screen through its show
-  // and hide animations. Wait until the trigger's own state and what is on screen agree, so the one toggle is pressed in
-  // the settled state and never mid-animation.
+  // and hide animations. Wait until the trigger's own state and what is on screen agree, so the pill is pressed only in
+  // the settled closed state and never mid-animation.
   await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
-  if (!(await expanded())) await trigger.tap();
+  if (!(await expanded())) {
+    // A closed panel paints the pill, and the pill is the control the operator presses to open it.
+    await expect(trigger).toBeVisible();
+    await trigger.tap();
+  }
   await expect(popover).toBeVisible();
   return popover;
 }

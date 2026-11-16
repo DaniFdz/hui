@@ -11,6 +11,8 @@
   flex: none;
   gap: 6px;
   box-sizing: border-box;
+  /* The panel's popover overlays this box by exactly its height, so the panel's settled top-right is the pill's; the
+     trigger is not painted at all while the panel is out. */
   height: 28px;
   margin-inline-start: 4px;
   padding: 0 9px;
@@ -69,22 +71,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The pill and the head are one control. While the panel is open the trigger keeps its box, its mark and its chevron,
-   and only its copy steps aside, so the state reads once on screen; the trigger's accessible name keeps the whole
-   summary either way. Each direction has its own moment: a close brings the pill's word back while the folding copy is
-   still readable, so the state is never absent, and an open hides it only in the last fifth, once the head's copy is
-   legible. */
-.chat-run-status__trigger .chat-run-status__label,
-.chat-run-status__trigger .chat-run-status__count {
-  transition: opacity calc(var(--duration-normal) * 0.2) var(--ease-out) calc(var(--duration-normal) * 0.15);
-}
-
-.chat-run-status__trigger[aria-expanded="true"] .chat-run-status__label,
-.chat-run-status__trigger[aria-expanded="true"] .chat-run-status__count {
-  opacity: 0;
-  transition-duration: calc(var(--duration-normal) * 0.2);
-  transition-delay: calc(var(--duration-normal) * 0.8);
-}
+/* The pill and the head are one control: an open panel's header holds the pill's slot, and the trigger keeps its box only
+   as the popover's anchor and its aria-expanded, hidden by the show and painted again by the hide that ends a close. */
 
 .chat-run-status__trigger-chevron {
   display: inline-flex;
@@ -158,8 +146,12 @@
   flex-direction: column;
   box-sizing: border-box;
   /* The popover body shrink-wraps its content; a fixed panel width keeps a watchers-only or goal-only popover
-     as wide as the full one, and leaves room for a watcher row's purpose. */
-  width: min(420px, calc(100vw - 16px));
+     as wide as the full one, and leaves room for a watcher row's purpose.
+     The popover's own shift keeps its box 8px inside the viewport, and on a phone the pill sits 14px from the
+     viewport's right edge: a box only 16px narrower than the viewport has its left edge inside that padding and is
+     nudged right of the pill, so the settled panel's right edge would not be the trigger's. The 24px leaves both the
+     header's inset and that padding outside the box. */
+  width: min(420px, calc(100vw - 24px));
   /* Keep the popover above the composer on a short phone or in landscape. */
   max-height: min(72dvh, 640px, calc(100dvh - 160px));
   overflow: auto;
@@ -176,8 +168,8 @@
 
 /* The head is the pill's copy, so it hugs the box's right edge: the pill is the right-hand end of the box while the box
    grows leftward, and the state must not slide away from where the operator read it. Its padding is the pill's 9px plus
-   the chevron's slot, so the mark, word and count sit where the pill's do when the box is the pill's size, and the X
-   arrives in that slot once the box has grown. */
+   the chevron's slot, so the mark, word and count sit where the pill's do when the box is the pill's size, and the
+   chevron it turns into sits in that slot. */
 .chat-run-status__head {
   position: sticky;
   top: 0;
@@ -187,7 +179,7 @@
   justify-content: flex-end;
   gap: 6px;
   min-height: 28px;
-  padding: 0 30px 0 9px;
+  padding: 0 28px 0 9px;
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
@@ -215,11 +207,12 @@
   font-size: 12.5px;
 }
 
-/* The X sits in the pill's chevron slot, which the head keeps clear at its right edge; the trigger already carries the
-   chevron that says the panel is open. */
-.chat-run-status__close {
+/* The head's chevron is the pill's chevron, converted: it sits in the pill's slot at the right edge, points up while the
+   panel is out, and closes. The head keeps the pill's own padding plus that slot, so its mark, word and count sit where
+   the pill's did, and the chevron's hit area is 24px in place of the X it replaces. */
+.chat-run-status__collapse {
   position: absolute;
-  inset-inline-end: 6px;
+  inset-inline-end: 4px;
   top: 2px;
   display: inline-flex;
   flex: none;
@@ -234,22 +227,22 @@
   color: var(--muted);
 }
 
-.chat-run-status__close > svg {
-  width: 14px;
-  height: 14px;
+.chat-run-status__collapse > svg {
+  width: 13px;
+  height: 13px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.8px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  /* Pointing up, as the pill's own does while its panel is out: the morph turns it from the closed pill's down chevron,
+     and this is where it rests once the box has finished growing. */
+  transform: rotate(180deg);
 }
 
-.chat-run-status__close:hover {
+.chat-run-status__collapse:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.chat-run-status__close:focus-visible {
+.chat-run-status__collapse:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }

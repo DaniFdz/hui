@@ -81,6 +81,15 @@ export function runStatusPanelOpen(state: RunStatusPanelState, input: { running:
   return state.choice ?? (input.wide && input.running);
 }
 
+/**
+ * Whether the pill is painted, which is exactly while the panel is not out. An open panel's header holds the pill's slot
+ * — its mark, word, count and the chevron that now closes — so the trigger keeps its box only as the popover's anchor and
+ * as the aria-expanded state the close returns with, and the two boxes never show together.
+ */
+export function runStatusTriggerPainted(open: boolean): boolean {
+  return !open;
+}
+
 /** Records the operator's own open or close. */
 export function runStatusPanelChosen(state: RunStatusPanelState, open: boolean): RunStatusPanelState {
   return { running: state.running, choice: open };
@@ -91,7 +100,8 @@ export type RunStatusMorphRect = { x: number; y: number; width: number; height: 
 
 /**
  * One end of the morph: the panel's own box, in viewport pixels, with the corner it draws. The morph animates these
- * three properties on the panel itself, so it never scales the card or the copy inside it.
+ * three properties on the panel itself, so it never scales the card or the copy inside it, and the corner the box ends on
+ * is the one it started from.
  */
 export type RunStatusMorphBox = { x: number; y: number; width: number; height: number; radius: number };
 
@@ -120,8 +130,10 @@ function corner(value: number, height: number): number {
 
 /**
  * The morph's two ends: the trigger's own box — so the first frame is the pill, not a picture of it — and the panel's
- * settled box. Both are the panel's own box in viewport pixels: its top-right corner is the trigger's at the start, and
- * it travels down and left as the panel takes the room its content needs. Nothing here is a transform or a scale.
+ * settled box. Both are the panel's own box in viewport pixels, and the panel settles on the pill's top-right corner, so
+ * the top and right edges do not travel: the box only grows left and down into the content it holds. Nothing here is a
+ * transform or a scale, and nothing is clamped: a placement that moved the panel would make the two corners disagree,
+ * which the tests that read the settled box must fail on.
  */
 export function runStatusMorphBoxes(input: {
   pill: RunStatusMorphRect | undefined;

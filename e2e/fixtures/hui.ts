@@ -366,9 +366,11 @@ const statusRecorder = () => {
 /** The chrome a node paints, as the reads that decide which of two cards a person sees: a surface, a shadow, a border. */
 type CardChrome = { background: string; shadow: string; border: number; radius: string };
 
-/** One animation frame of a morph: the box travelling, and the trigger it starts and ends on. */
+/** One animation frame of a morph: the box travelling and whether it is painted at all, and the trigger it starts and
+ * ends on. A frame before the box's own show holds the panel's still-unpainted settled rect, so its paint is what tells a
+ * drawn frame from that one. */
 type MorphFrame = {
-  box: { width: number; height: number; right: number; top: number };
+  box: { width: number; height: number; right: number; top: number; painted: boolean };
   trigger: { width: number; right: number; top: number; painted: boolean };
 };
 
@@ -401,7 +403,7 @@ const startMorphSampling = ({ box, trigger }: { box: string; trigger: string }) 
     const shape = panel.getBoundingClientRect();
     const pill = anchor.getBoundingClientRect();
     state.frames.push({
-      box: { width: round(shape.width), height: round(shape.height), right: round(shape.right), top: round(shape.top) },
+      box: { width: round(shape.width), height: round(shape.height), right: round(shape.right), top: round(shape.top), painted: painted(panel) },
       trigger: { width: round(pill.width), right: round(pill.right), top: round(pill.top), painted: painted(anchor) },
     });
     if (running) state.started = true;
@@ -1447,12 +1449,17 @@ function huiTest(offline: boolean) {
         // popover, so no target branches here.
         const trigger = fixtures.screen.getByTestId("run-status-trigger");
         const popover = fixtures.screen.getByLabel("Run status");
-        await expect(trigger).toBeVisible();
+        // While the panel is out its header is the converted pill, so the trigger keeps its box and its aria-expanded but
+        // is not painted; the pill is pressed, and its visibility read, only in the closed state.
+        await expect(trigger).toBeAttached();
         const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
         // A wide window opens and closes it by itself around a run, and the dialog stays on screen through its show and
         // hide animations, so the one toggle is pressed only once its state and the screen agree.
         await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
-        if (!(await expanded())) await trigger.tap();
+        if (!(await expanded())) {
+          await expect(trigger).toBeVisible();
+          await trigger.tap();
+        }
         await expect(popover).toBeVisible();
         const helpers = popover.getByRole("region", { name: "Helpers" });
         const row = helpers.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));

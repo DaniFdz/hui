@@ -4,9 +4,13 @@
  * latest batch of helpers and its background watchers. The popover is HUI's only
  * home for those four surfaces; the trigger stays out of the transcript so a
  * phone keeps the whole conversation. The pill morphs into the panel and back as
- * one painted box: the panel's own width, height and corner grow out of the
- * trigger's box on open, the copy inside it fades in behind the box, and a close
- * draws the same box back into the pill before Web Awesome hides the dialog.
+ * one painted box: the panel's width and height grow out of the trigger's box
+ * from the same top-right corner, so the box only grows left and down, and the
+ * pill is not drawn at all while the panel is out — its header is the converted
+ * pill, its chevron now the close. The copy inside it fades in behind the box,
+ * and a close draws the same box back into the pill before Web Awesome hides the
+ * dialog; the pill returns once that close has landed. Escape and an outside
+ * click close it too.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -21,6 +25,7 @@ import {
   runStatusPanel,
   runStatusPanelChosen,
   runStatusPanelOpen,
+  runStatusTriggerPainted,
   type RunStatusModel,
   type RunStatusMorphBox,
   type RunStatusMorphPhase,
@@ -266,10 +271,12 @@ function renderGoal(props: RunStatusProps, model: RunStatusModel, id: string) {
   </section>`;
 }
 
-/** A `wa-popover` as this view drives it: `open` is the real state, `updateComplete` settles its first update, and
- * `popup` re-anchors the panel after a morph has taken it out of the popover's own flow. */
+/** A `wa-popover` as this view drives it: `open` is the real state, `updateComplete` settles its first update,
+ * `distance` is the main-axis offset it hands floating-ui, and `popup` re-anchors the panel after a morph has taken it
+ * out of the popover's own flow. */
 type RunStatusPopover = HTMLElement & {
   open: boolean;
+  distance: number;
   updateComplete: Promise<unknown>;
   hide: () => Promise<void> | void;
   popup?: { reposition: () => void };
@@ -373,6 +380,17 @@ function applyRunStatusPanel(trigger: HTMLElement, popover: RunStatusPopover, pa
   if (trigger.getAttribute("aria-expanded") !== String(popover.open)) trigger.setAttribute("aria-expanded", String(popover.open));
 }
 
+/**
+ * Puts the panel's settled top-right corner on the pill's. Web Awesome hands `distance` to floating-ui's
+ * `offset({ mainAxis })`, so overlapping the anchor by the trigger's own height lands the panel's top edge on the
+ * trigger's and leaves its right edge there; the box then only grows left and down. The height is read while the trigger
+ * is laid out, so the popover carries no second copy of the stylesheet's 28px.
+ */
+function pinRunStatusPanel(popover: RunStatusPopover, trigger: HTMLElement): void {
+  const height = trigger.offsetHeight;
+  if (height > 0) popover.distance = -height;
+}
+
 /** Whether this window asked for no motion; a morph then never starts and the panel opens and closes at once. */
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -411,20 +429,28 @@ const CONTENT_HIDDEN_BY = 0.25;
 /** The inline styles a morph borrows, in the names CSS knows them by. */
 const MORPH_STYLES = ["position", "left", "top", "width", "height", "border-radius", "overflow", "contain", "will-change", "visibility"] as const;
 
-/** Hands the panel the popover's own flow and scrolling back, and paints the trigger the morph hid. */
-function returnRunStatusPanel(panel: HTMLElement, trigger: HTMLElement): void {
+/** Hands the panel the popover's own flow and scrolling back. The trigger is not part of this: the show and hide own
+ * its paint, so an open panel never repaints the pill beside itself. */
+function returnRunStatusPanel(panel: HTMLElement): void {
   for (const name of MORPH_STYLES) panel.style.removeProperty(name);
-  trigger.style.removeProperty("visibility");
 }
 
 /** Takes the panel's box out of the popover's flow for the morph: the box is the only thing that travels, and the
- * trigger's space stays where the pill was. */
-function borrowRunStatusPanel(panel: HTMLElement, trigger: HTMLElement): void {
+ * trigger keeps its own box where the pill was. */
+function borrowRunStatusPanel(panel: HTMLElement): void {
   panel.style.position = "fixed";
   panel.style.overflow = "hidden";
   panel.style.contain = "layout paint";
   panel.style.willChange = "width, height";
-  trigger.style.visibility = "hidden";
+}
+
+/**
+ * The pill is drawn exactly while the panel is not out: while it is, the panel's header holds the pill's slot and the
+ * trigger keeps its box only as the anchor and for the name it gives back on close, so the two boxes never show together.
+ */
+function paintRunStatusTrigger(trigger: HTMLElement, open: boolean): void {
+  if (runStatusTriggerPainted(open)) trigger.style.removeProperty("visibility");
+  else trigger.style.visibility = "hidden";
 }
 
 /** The copy over the box: faded by hand, because nothing inside the panel is scaled. */
@@ -433,16 +459,18 @@ function runStatusContentMorphs(panel: HTMLElement, trigger: HTMLElement, timing
   const animations: Animation[] = [];
   const body = panel.querySelector<HTMLElement>(".chat-run-status__body");
   const head = panel.querySelector<HTMLElement>(".chat-run-status__head");
-  const close = panel.querySelector<HTMLElement>(".chat-run-status__close");
+  const chevron = panel.querySelector<HTMLElement>(".chat-run-status__collapse > svg");
   if (body) {
     animations.push(body.animate(phase === "opening"
       ? [{ opacity: 0 }, { opacity: 0, offset: CONTENT_SHOWN_FROM }, { opacity: 1, offset: CONTENT_SHOWN_TO }]
       : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
   }
-  if (close) {
-    animations.push(close.animate(phase === "opening"
-      ? [{ opacity: 0 }, { opacity: 0, offset: CHROME_SHOWN_FROM }, { opacity: 1 }]
-      : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
+  if (chevron) {
+    // The head's chevron is the pill's, converted: it starts pointing the way the closed pill's did and flips to the close
+    // over the growth, so the first frame is still the pill the operator pressed.
+    animations.push(chevron.animate(phase === "opening"
+      ? [{ transform: "rotate(0deg)" }, { transform: "rotate(180deg)" }]
+      : [{ transform: "rotate(180deg)" }, { transform: "rotate(0deg)" }], { duration: timing.duration, easing: timing.easing, fill: "both" }));
   }
   if (head) {
     // The rule under the head is the panel's: its colour is the only part of a border a box can fade.
@@ -472,14 +500,14 @@ function runStatusHeadWordMorphs(head: HTMLElement | null, trigger: HTMLElement,
   { duration: timing.duration, easing: "linear", fill: "both" })];
 }
 
-/** Stops whatever the last open or close started, leaving the panel its flow and the trigger its box. */
+/** Stops whatever the last open or close started, leaving the panel its flow. */
 function stopRunStatusMorph(state: RunStatusPopoverState): void {
   state.grow = undefined;
   const morph = state.morph;
   if (!morph) return;
   state.morph = undefined;
   for (const animation of morph.animations) animation.cancel();
-  returnRunStatusPanel(morph.panel, morph.trigger);
+  returnRunStatusPanel(morph.panel);
 }
 
 /** Gives a panel that has closed its flow back, once Web Awesome is done with it. */
@@ -488,7 +516,7 @@ function releaseRunStatusPainted(state: RunStatusPopoverState): void {
   if (!painted) return;
   state.painted = undefined;
   for (const animation of painted.animations) animation.cancel();
-  returnRunStatusPanel(painted.panel, painted.trigger);
+  returnRunStatusPanel(painted.panel);
   // The panel was out of the popover's flow while its box travelled, so the popup re-reads the anchor and the panel.
   painted.popover.popup?.reposition();
 }
@@ -528,10 +556,11 @@ function startRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverSt
     reducedMotion: false,
   });
   if (!boxes) {
+    // No morph at all (reduced motion): the panel is the only box, so it shows at once while the pill stays hidden.
     panel.style.removeProperty("visibility");
     return;
   }
-  borrowRunStatusPanel(panel, trigger);
+  borrowRunStatusPanel(panel);
   panel.style.removeProperty("visibility");
   const shape = panel.animate([runStatusBoxFrame(boxes.from), runStatusBoxFrame(boxes.to)], { duration: timing.duration, easing: timing.easing, fill: "both" });
   const morph: RunStatusMorph = { popover, panel, trigger, phase: "opening", animations: [shape, ...runStatusContentMorphs(panel, trigger, timing, "opening")] };
@@ -540,7 +569,8 @@ function startRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverSt
     if (state.morph !== morph) return;
     state.morph = undefined;
     for (const animation of morph.animations) animation.cancel();
-    returnRunStatusPanel(panel, trigger);
+    // Only the panel gets its flow back: the pill is not painted again until a close has landed.
+    returnRunStatusPanel(panel);
     popover.popup?.reposition();
   };
 }
@@ -562,7 +592,7 @@ function startRunStatusReverse(popover: RunStatusPopover, state: RunStatusPopove
     popover.open = false;
     return;
   }
-  borrowRunStatusPanel(panel, trigger);
+  borrowRunStatusPanel(panel);
   const shape = panel.animate([runStatusBoxFrame(boxes.to), runStatusBoxFrame(boxes.from)], { duration: timing.duration, easing: timing.easing, fill: "both" });
   const morph: RunStatusMorph = {
     popover,
@@ -582,10 +612,11 @@ function startRunStatusReverse(popover: RunStatusPopover, state: RunStatusPopove
   };
 }
 
-/** Finishes a close once Web Awesome has taken the dialog off screen: the panel gets its flow back and the trigger paints
- * where the box arrived, with the focus a close took from it. */
-function settleRunStatusClose(state: RunStatusPopoverState): void {
+/** Finishes a close once Web Awesome has taken the dialog off screen: the panel gets its flow back, the pill paints
+ * again where the box arrived, and the focus a close took from it comes back. */
+function settleRunStatusClose(state: RunStatusPopoverState, trigger: HTMLElement | undefined): void {
   releaseRunStatusPainted(state);
+  if (trigger) paintRunStatusTrigger(trigger, false);
   const focus = state.returnFocus;
   state.returnFocus = undefined;
   focus?.focus({ preventScroll: true });
@@ -614,13 +645,19 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       return anchor instanceof HTMLElement ? anchor : undefined;
     };
     surface.addEventListener("wa-show", () => {
+      const anchor = anchored();
+      // The show is dispatched before Web Awesome places its popup, so pinning the corner here decides the settled box and
+      // the morph's first frame alike.
+      if (anchor) pinRunStatusPanel(surface, anchor);
+      // The panel's header is the converted pill from here on: the pill itself is not drawn beside it, whether this open
+      // morphs or opens at once.
+      if (anchor) paintRunStatusTrigger(anchor, true);
       // A popover Web Awesome shows while a close is drawing would steal the panel's box: the close owns it until it
       // ends.
       if (state!.morph?.phase === "closing") return;
       settleRunStatusPanel(surface, true);
       const phase = runStatusMorphPhase(state!.shown, true, prefersReducedMotion());
       state!.shown = true;
-      const anchor = anchored();
       if (phase === "opening" && anchor) prepareRunStatusGrow(surface, state!, anchor);
       else stopRunStatusMorph(state!);
     });
@@ -656,7 +693,7 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       event.preventDefault();
       startRunStatusReverse(surface, state!, anchor);
     });
-    surface.addEventListener("wa-after-hide", () => settleRunStatusClose(state!));
+    surface.addEventListener("wa-after-hide", () => settleRunStatusClose(state!, anchored()));
     // Setting open before Web Awesome's first update skips its open-change handling; wait for it once.
     void surface.updateComplete.then(() => {
       state!.ready = true;
@@ -687,8 +724,8 @@ export function renderRunStatus(props: RunStatusProps) {
     const popover = document.getElementById(`${panelId}-surface`) as RunStatusPopover | null;
     const state = popover ? popoverStates.get(popover) : undefined;
     if (popover && state) {
-      // The X is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus comes back
-      // to the trigger once the box has drawn back into it.
+      // The chevron is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus comes
+      // back to the trigger once the box has drawn back into it and the pill has painted again.
       state.panel = runStatusPanelChosen(state.panel, false);
       state.expect = undefined;
       void popover.hide();
@@ -716,17 +753,16 @@ export function renderRunStatus(props: RunStatusProps) {
       class="chat-run-status__popover"
       for=${triggerId}
       placement="bottom-end"
-      distance="6"
       without-arrow
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
         <header class="chat-run-status__head">
-          <span class="chat-run-status__state" data-tone=${model.tone} aria-hidden="true">
-            <span class="chat-run-status__state-mark">${renderRunStatusMark(model.tone)}</span>
+          <span class="chat-run-status__state" data-tone=${model.tone}>
+            <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
             <span class="chat-run-status__label">${model.label}</span>
             ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
           </span>
-          <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__close" aria-label="Close run status" @click=${closePanel}>${icons.close}</button>
+          <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__collapse" aria-label="Close run status" @click=${closePanel}>${icons.chevronDown}</button>
         </header>
         <div class="chat-run-status__body">
           ${renderGoal(props, model, panelId)}

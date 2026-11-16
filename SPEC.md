@@ -1912,19 +1912,22 @@ helpers' or watchers' count) beside it. Its accessible name names the goal, plan
 and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
-Clicking the trigger opens one popover anchored to its right edge, and clicking
-it again closes it. The pill morphs into the panel and back as one painted box,
-so one control visibly becomes the other: the panel's own width, height and
-corner grow out of the pill's box — the trigger's top-right corner, the pill's
-round at the pill's height — while only the panel is painted, its head keeping
-the pill's copy at the box's right edge and the rows inside it fading in near
-the end of the growth; a close draws the same box back into the pill before it
-hides, so the state never leaves the screen mid-morph. Its head reads what the
-pill reads — the mark, the state word and the count — and a Close run status X
-arrives in the pill's chevron slot once the box has grown, closing the panel and
-returning focus to the trigger; while the panel is open the trigger keeps its
-box, its mark and its chevron, and only its copy steps aside, so the state is
-read once on screen and once again in the trigger's accessible name. A window
+Clicking the trigger opens one popover whose settled top-right corner is
+the trigger's; while it is out the pill is not drawn at all — the panel's header
+is the converted pill, its mark, word and count in the pill's slot and its
+chevron, now pointing up, the close — so the two boxes never show together. The
+pill morphs into the panel and back as one painted box: the panel's own width and
+height grow out of the pill's box — the trigger's top-right corner, the pill's
+round at the pill's height — and that corner stays put, so the box only grows
+left and down while only the panel is painted, its head keeping the pill's copy
+at the box's right edge and the rows inside it fading in near the end of the
+growth; a close draws the same box back into the pill before it hides, and the
+pill returns only once that close has landed, so the state never leaves the
+screen mid-morph. Its head reads what the pill reads — the mark, the state word
+and the count — and the chevron it turns into closes the panel and returns focus
+to the trigger; the trigger stays in place as the popover's anchor, unpainted,
+and gives its accessible name and aria-expanded back when the pill paints again.
+Escape or an outside click closes it too. A window
 that asks for reduced motion gets no morph and opens and closes at once, and
 only a real open or close animates: a streamed frame that changes the plan or
 the helpers never restarts it. On a wide window it opens by itself while a run
@@ -1943,7 +1946,8 @@ and each child's row) and **Watchers** (each watcher's purpose, latest output,
 state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
 its rows behind Watcher details while the section header keeps the running
 count). Empty sections are absent. The popover scrolls inside itself, closes on
-Escape or an outside click, and never resizes the conversation. None of those
+its chevron (Close run status), Escape or an outside click, and never resizes
+the conversation. None of those
 surfaces draws above the composer or in the transcript; a helper or watcher that
 settles still writes its own transcript event.
 
@@ -1960,11 +1964,11 @@ its own cannot shut the panel they are reading, and an explicit close answers th
 run it was made in and is cleared by the next one. Neither choice is stored, past
 that run or a reload: a stored one would hide a run's panel or reopen one the
 operator already shut, so an arrival re-reads the window and the run instead of a
-preference. The trigger stays the one
-toggle and the X is the operator's close with focus returning to the trigger.
-Because the pill becomes the panel, the head repeats the state word and count the
-trigger shows; the trigger's own copy is hidden while the panel is open, so the
-word is still read once on screen.
+preference. One control opens and closes it: a closed panel's pill opens it, and
+the chevron in the open panel's head closes it, with focus returning to the
+trigger. Because the pill becomes the panel, the head carries the state word and
+count the pill showed, and the pill itself is not drawn while the panel is out —
+whichever way it opened — so the state is read once on screen.
 
 ## Goals
 

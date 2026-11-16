@@ -19,7 +19,9 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await message.fill("/goal E2E_REPLAY get CI green on PR 1");
   await send.tap();
   await expect(transcript.getByText("E2E_REPLAY get CI green on PR 1")).toBeVisible();
-  await expect(trigger).toBeVisible();
+  // A wide window opens the popover while this turn streams, so the header draws its panel rather than the pill; the
+  // control is there either way, and its accessible name reads what the pill would.
+  await expect(trigger).toBeAttached();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, goal pursuing/u);
   await openPanel();
   await expect(popover.getByText("Pursuing goal", { exact: true }).first()).toBeVisible();
