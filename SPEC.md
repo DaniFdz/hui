@@ -1945,7 +1945,11 @@ steps and summary), **Helpers** (the latest batch, its counts, one dot per child
 and each child's row) and **Watchers** (each watcher's purpose, latest output,
 state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
 its rows behind Watcher details while the section header keeps the running
-count). Empty sections are absent. The popover scrolls inside itself, closes on
+count). Empty sections are absent. A state word is written once per box: a
+goal's own word is the head's whenever the head reads it, so the Goal section
+head then prints its title alone, and the section carries the goal's status
+only while the head says another state — Working, Waiting for your answer, or a
+failed helper or watcher. The popover scrolls inside itself, closes on
 its chevron (Close run status), Escape or an outside click, and never resizes
 the conversation. None of those
 surfaces draws above the composer or in the transcript; a helper or watcher that
@@ -1980,8 +1984,9 @@ request's system prompt.
 `/goal <objective>` starts one and sends the objective as the goal's first turn,
 so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
 and `/goal clear` are the other operator controls; the Run status popover's Goal
-section offers the same three, with the status (Pursuing goal, Goal paused, Goal
-blocked, Goal achieved) and the objective.
+section offers the same three, with the objective and, while the panel's head
+names another state, the goal's own (Pursuing goal, Goal paused, Goal blocked,
+Goal achieved).
 
 The Goal section shows the whole objective wrapped and readable, the status
 note when it paused or blocked itself, when it was set, and how many automatic

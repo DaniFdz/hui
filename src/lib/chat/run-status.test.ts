@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
-import { runStatus, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted } from "./run-status.ts";
+import { goalSectionStatus, goalStatusLabel, runStatus, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted } from "./run-status.ts";
 
 const now = Date.parse("2026-11-14T12:00:00.000Z");
 const startedAt = new Date(now - 60_000).toISOString();
@@ -130,6 +130,41 @@ test("helpers alone count finished of total, and a whole successful batch reads 
   assert.equal(done.label, "Done");
   assert.equal(done.count, "2/2");
   assert.equal(done.helpers?.allSucceeded, true);
+});
+
+test("a goal names its state once: the head keeps the word, and the section repeats it only when the head says something else", () => {
+  // With the goal as the only thing to report, the head is the pill's own word: the Goal section prints its title alone,
+  // and the accessible name does not say the state a second time either.
+  for (const status of ["active", "paused", "blocked", "complete"] as const) {
+    const model = runStatus({ goal: goal(status), progress: undefined, subagents: [], streaming: false, waiting: false, now });
+    assert.equal(model.label, goalStatusLabel(status), `the head carries the ${status} goal's own word`);
+    assert.equal(goalSectionStatus(model, goal(status)), undefined, "the Goal section prints no second copy of that word");
+    assert.equal(model.summary, `Run status: ${goalStatusLabel(status)}`, "and the name says it once");
+  }
+
+  // A head that says something else leaves the goal's state to the section, and the name carries it once.
+  const paused = goal("paused");
+  const running = runStatus({ goal: paused, progress, subagents: [], streaming: true, waiting: false, now });
+  assert.equal(running.label, "Working");
+  assert.equal(goalSectionStatus(running, paused), "Goal paused");
+  assert.match(running.summary, /^Run status: Working, goal paused, 1 of 3 steps done$/u);
+
+  const waiting = runStatus({ goal: paused, progress: undefined, subagents: [], streaming: true, waiting: true, now });
+  assert.equal(waiting.label, "Waiting for your answer");
+  assert.equal(goalSectionStatus(waiting, paused), "Goal paused", "an open question keeps its own word in the head");
+  assert.equal(waiting.summary.match(/paused/gu)?.length, 1, "and the name names the goal's state once");
+
+  const failed = runStatus({ goal: paused, progress: undefined, subagents: [task("a", "failed", { error: "Provider refused" })], streaming: false, waiting: false, now });
+  assert.equal(failed.label, "Helper failed");
+  assert.equal(goalSectionStatus(failed, paused), "Goal paused");
+  assert.equal(failed.summary.match(/paused/gu)?.length, 1);
+
+  // The section's word follows the same decision when the head names another state of the same goal: a complete goal
+  // under a running turn still reads Goal achieved in its section, while an idle panel says it in the head instead.
+  const complete = goal("complete");
+  const completeWhileWorking = runStatus({ goal: complete, progress: undefined, subagents: [], streaming: true, waiting: false, now });
+  assert.equal(completeWhileWorking.label, "Working");
+  assert.equal(goalSectionStatus(completeWhileWorking, complete), goalStatusLabel("complete"));
 });
 
 test("a finished batch leaves the trigger once it has been gone for an hour", () => {

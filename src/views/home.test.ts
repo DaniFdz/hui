@@ -999,9 +999,11 @@ test("the goal sits in the Run status popover with its status, objective and con
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
   const active = await renderWorkerSession("idle", { session });
   assert.match(active, /class="chat-run-status__trigger" data-tone=idle/u);
-  assert.match(active, /aria-label=Run status: Pursuing goal, goal pursuing/u);
+  assert.match(active, /aria-label=Run status: Pursuing goal/u);
+  assert.doesNotMatch(active, /Run status: Pursuing goal, goal pursuing/u, "the name says the pursuing goal once");
   assert.match(active, /<span class="chat-run-status__label">Pursuing goal<\/span>/u);
-  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <span class="chat-run-status__meta" data-status=active>Pursuing goal<\/span>/u);
+  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <\/div>/u, "the Goal section head reads only its title");
+  assert.doesNotMatch(active, /chat-run-status__meta" data-status=/u, "and prints no state the head already says");
   assert.match(active, /<p class="chat-run-status__objective">get CI green on PR 1<\/p>/u);
   assert.match(active, />Pause</u);
   assert.match(active, /aria-label="Edit goal objective"/u);
@@ -1011,12 +1013,22 @@ test("the goal sits in the Run status popover with its status, objective and con
 
   const blocked = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "blocked", note: "waiting on review" } } });
   assert.match(blocked, /class="chat-run-status__trigger" data-tone=blocked/u);
-  assert.match(blocked, /aria-label=Run status: Goal blocked, goal blocked/u);
+  assert.match(blocked, /aria-label=Run status: Goal blocked/u);
+  assert.doesNotMatch(blocked, /Goal blocked, goal blocked/u, "the name says the blocked goal once");
   assert.match(blocked, /<p class="chat-run-status__note">waiting on review<\/p>/u);
   assert.match(blocked, />Resume</u);
 
+  // A head that says another state leaves the goal's own word to its section.
+  const working = await renderWorkerSession("running", { streaming: true, session: { ...session, status: "running", goal: { ...goal, status: "paused" } } });
+  assert.match(working, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
+  assert.match(working, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <span class="chat-run-status__meta" data-status=paused>Goal paused<\/span>/u);
+  assert.match(working, /aria-label=Run status: Working, goal paused/u);
+
   const complete = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "complete" } } });
   assert.match(complete, /class="chat-run-status__trigger" data-tone=done/u);
+  assert.match(complete, /aria-label=Run status: Goal achieved/u);
+  assert.doesNotMatch(complete, /Goal achieved, goal achieved/u, "the name says the achieved goal once");
+  assert.match(complete, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <\/div>/u, "the Goal section head reads only its title");
   assert.doesNotMatch(complete, />Resume<|>Pause</u);
   assert.match(complete, />Clear</u);
 

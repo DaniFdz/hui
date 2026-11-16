@@ -24,7 +24,10 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await expect(trigger).toBeAttached();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, goal pursuing/u);
   await openPanel();
-  await expect(popover.getByText("Pursuing goal", { exact: true }).first()).toBeVisible();
+  // The head says Working while the turn streams, so the Goal section is where the goal's own word is written, once.
+  const pursuing = popover.getByText("Pursuing goal", { exact: true });
+  await expect(pursuing).toHaveCount(1);
+  await expect(pursuing).toBeVisible();
   await expect(popover).toContainText("E2E_REPLAY get CI green on PR 1");
   await popover.getByRole("button", "Pause goal").tap();
   await hui.provider.release();
@@ -32,6 +35,12 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   // Pausing ended the run, so the panel it opened by itself closed with it; the operator opens it to read the pause.
   await openPanel();
   await expect(popover.getByRole("button", "Resume goal")).toBeVisible();
+  // One state word per box: a paused goal alone in the panel names its state in the head — the pill's own word,
+  // converted — so the Goal section is named by its title alone, prints no state, and the word appears exactly once.
+  const goalSection = popover.getByRole("region", "Goal");
+  await expect(goalSection).toBeVisible();
+  await expect(popover.getByText("Goal paused", { exact: true })).toHaveCount(1);
+  await expect(goalSection.getByText("Goal paused", { exact: true })).toHaveCount(0);
   // A paused goal is not pursued: no continuation turn is queued behind the paused run.
   await expect(transcript.getByText("Continue the goal", { exact: false })).toBeHidden();
 

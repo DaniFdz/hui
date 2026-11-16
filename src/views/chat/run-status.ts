@@ -18,7 +18,7 @@ import { ref } from "lit/directives/ref.js";
 import type { SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
 import {
-  goalStatusLabel,
+  goalSectionStatus,
   runStatus,
   runStatusMorphBoxes,
   runStatusMorphPhase,
@@ -260,10 +260,13 @@ function renderGoal(props: RunStatusProps, model: RunStatusModel, id: string) {
   const goal = model.goal;
   if (!goal) return nothing;
   const continuations = goal.continuations === 1 ? "1 automatic turn" : `${goal.continuations} automatic turns`;
+  // One state word per box: the head already names the goal's state whenever its word is that state, so the section head
+  // prints the title alone then and carries the state only when the head says something else.
+  const status = goalSectionStatus(model, goal);
   return html`<section class="chat-run-status__section" aria-labelledby=${`${id}-goal-title`}>
     <div class="chat-run-status__section-head">
       <span class="chat-run-status__section-title" id=${`${id}-goal-title`}>Goal</span>
-      <span class="chat-run-status__meta" data-status=${goal.status}>${goalStatusLabel(goal.status)}</span>
+      ${status ? html`<span class="chat-run-status__meta" data-status=${goal.status}>${status}</span>` : nothing}
     </div>
     <p class="chat-run-status__objective">${goal.objective}</p>
     ${goal.note ? html`<p class="chat-run-status__note">${goal.note}</p>` : nothing}

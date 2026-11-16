@@ -61,6 +61,17 @@ export function goalStatusLabel(status: SessionGoal["status"]): string {
 }
 
 /**
+ * The state word the Goal section prints beside its title, or nothing when the panel's head already says it: one state
+ * word per box. The head keeps the pill's word in every tone, because a collapsed pill is the only surface for it, so a
+ * goal alone in the panel names its state there and the section reads just "Goal"; the section carries the word only
+ * while the head says something else — Working, Waiting for your answer, Helper failed or Watcher failed.
+ */
+export function goalSectionStatus(model: Pick<RunStatusModel, "label">, goal: SessionGoal): string | undefined {
+  const status = goalStatusLabel(goal.status);
+  return status === model.label ? undefined : status;
+}
+
+/**
  * The Run status popover across renders. On a wide window it opens by itself while a run streams; the operator's own
  * open or close is a `choice` that belongs to them: an open holds until they close the panel, because a run the
  * conversation starts on its own (a watcher settling, a helper finishing) must not shut the panel they are reading,
@@ -286,7 +297,8 @@ export function runStatus(options: {
         : undefined;
 
   const parts = [label];
-  if (goal) parts.push(`goal ${goal.status === "active" ? "pursuing" : goal.status}`);
+  // The name says the goal's state once too: a head that already is the goal's state does not repeat it.
+  if (goal && goalSectionStatus({ label }, goal)) parts.push(`goal ${goal.status === "active" ? "pursuing" : goal.status}`);
   if (plan?.total) parts.push(`${plan.done} of ${plan.total} steps done`);
   if (helpers) {
     parts.push(helpers.allFinished
