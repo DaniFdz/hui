@@ -357,6 +357,51 @@ test("a report that arrives while an older one is still being written queues beh
   assert.deepEqual(relayed, reports, "oldest first, as they came in");
 });
 
+test("a report whose reading of the queue missed one renamed into it meanwhile waits behind that one", async (t) => {
+  let attached = false;
+  let publishing = 0;
+  let admitting = 0;
+  let releasePublishing!: () => void;
+  let releaseAdmitting!: () => void;
+  const heldPublishing = new Promise<void>((resolve) => { releasePublishing = resolve; });
+  const heldAdmitting = new Promise<void>((resolve) => { releaseAdmitting = resolve; });
+  const relayed: string[] = [];
+  const reports = ["older", "newer"].map((text) => JSON.stringify({ events: [{ id: text, summary: text }] }));
+  const { dir, url } = await endpoint(t, async (_token, body) => {
+    if (!attached) throw new HookRelayUnavailable("no gateway attached");
+    relayed.push(body);
+    return { status: 202, body: { status: "fired" } };
+  }, {
+    canRelay: () => attached,
+    pause: async (point) => {
+      // The older report is whole under its temporary name and not yet renamed into its place in line.
+      if (point === "publishing" && ++publishing === 1) await heldPublishing;
+      // The newer report has listed the queue and has not counted what is being written yet: the older one is renamed
+      // into the queue while it stands here, so it is in neither the listing nor the count.
+      if (point === "admitting" && ++admitting === 2) await heldAdmitting;
+    },
+  });
+  try {
+    const older = post(`${url}/__hui/hooks/${TOKEN}`, reports[0]!);
+    await waitFor("the older report to be written under its temporary name", () => publishing === 1 || undefined);
+    const newer = post(`${url}/__hui/hooks/${TOKEN}`, reports[1]!);
+    await waitFor("the newer report to have listed the queue", () => admitting === 2 || undefined);
+    assert.deepEqual((await names(dir)).filter((name) => !name.startsWith(".tmp-")), [], "the queue it listed holds no report yet");
+    releasePublishing();
+    assert.deepEqual((await older).body, { status: "queued" }, "the older report went into line with no gateway attached");
+    // A gateway attaches now: the newer report would reach it ahead of the one already in line if its admission only
+    // read the listing and the writes, since the rename happened after both.
+    attached = true;
+    releaseAdmitting();
+    assert.deepEqual((await newer).body, { status: "queued" }, "the newer report waits behind the one it did not list");
+    await waitFor("the queue to drain", async () => (await names(dir)).length === 0);
+    assert.deepEqual(relayed, reports, "the older report reached the gateway first");
+  } finally {
+    releasePublishing();
+    releaseAdmitting();
+  }
+});
+
 test("a drain asked for again while it runs gets another pass when it ends, even when the one it was asked for failed", async (t) => {
   let reachable = false;
   let failFirst: (() => void) | undefined;

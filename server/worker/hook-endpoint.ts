@@ -25,9 +25,10 @@
  * is attached, while one an older gateway refused waits for a gateway that can
  * take it. The queue holds `HOOK_QUEUE_LIMIT` reports, and a listener that
  * arrives past it is told to send its report again later (503) rather than
- * having it dropped. `close()` stops taking reports and waits for the relay in
- * flight only, leaving what still waits — and what a drain had read but not yet
- * offered — on disk.
+ * having it dropped. `close()` stops taking reports and waits for the requests
+ * already accepted, the queue writes they started and the relay in flight, then
+ * closes the port, leaving what still waits — and what a drain had read but not
+ * yet offered — on disk.
  *
  * Only loopback: the host binds `127.0.0.1`, never another address, so nothing
  * off this machine reaches the endpoint, and the gateway's tailnet rule never
@@ -92,9 +93,9 @@ export type WorkerHookEndpointOptions = {
   /** A report started or ended here: the host is at work, never idle. */
   onActivity?(): void;
   /** A test's standing point in the queue's own ordering, absent in production: `admitting`, with a report that has
-   * read the queue and not yet counted what is being written into it; `publishing`, with a report whole under its
-   * temporary name and not yet renamed into line; and `listed`, with the names a drain has just read and not yet acted
-   * on. */
+   * read the queue and not yet counted what is being written into it or renamed into it; `publishing`, with a report
+   * whole under its temporary name and not yet renamed into line; and `listed`, with the names a drain has just read
+   * and not yet acted on. */
   pause?(point: "admitting" | "publishing" | "listed", listing: readonly string[]): Promise<void> | void;
 };
 
@@ -108,7 +109,8 @@ export class WorkerHookEndpoint {
   readonly #pause: ((point: "admitting" | "publishing" | "listed", listing: readonly string[]) => Promise<void> | void) | undefined;
   #server: Server | undefined;
   #bound: number | undefined;
-  /** Requests being answered and drains running; the host is not idle while one is. */
+  /** Requests being answered and, in `#draining`, a drain running: the host is not idle while one of them is. Reports
+   * that merely wait on disk are counted by neither. */
   #handling = 0;
   #draining = false;
   /** `drain()` was asked for while one ran: it runs once more when that one ends. */
@@ -121,6 +123,10 @@ export class WorkerHookEndpoint {
   /** Reports being written into the queue now: one is in line from the moment its write starts, so a report that
    * arrives while it is still being written waits behind it instead of reaching the gateway first. */
   #publishing = 0;
+  /** Reports renamed into the queue so far. A report's admission lists the queue and then counts what is being written,
+   * so one whose rename lands between those two steps is in neither the listing nor the count: a number that changed
+   * during the listing says a report may have gone into line unlisted, and this report waits behind it. */
+  #published = 0;
   /** The newest place in line handed out, also read back from the queue so a restart keeps the order. */
   #sequence = 0;
   /** In-flight work, waited for by `close()`. */
@@ -152,7 +158,9 @@ export class WorkerHookEndpoint {
     return address && typeof address === "object" ? address.address : undefined;
   }
 
-  /** A report is being handled, or queued reports are being drained: the host never stops meanwhile. */
+  /** A report is being handled, or queued reports are being drained: the host does not stop in the middle of one.
+   * Reports waiting on disk are not counted here, so a host can be idle with a queue (a plain daemon stops and leaves
+   * it for the next one; `daemon --serve` is what stays up for it). */
   get busy(): boolean {
     return this.#handling > 0 || this.#draining;
   }
@@ -202,7 +210,8 @@ export class WorkerHookEndpoint {
     }));
   }
 
-  /** Stops accepting, waits for the relay in flight, and closes the port. What still waits stays on disk. */
+  /** Stops accepting and closes the port once the requests already accepted, the queue writes they started and the
+   * relay in flight are done. What still waits stays on disk. */
   async close(): Promise<void> {
     this.#closed = true;
     this.#clearRetry();
@@ -276,15 +285,18 @@ export class WorkerHookEndpoint {
     this.#answer(response, 202, { status: "queued" });
   }
 
-  /** Whether a report has to wait its turn: one is being written into the queue, or the queue holds one. A drain is not
-   * a reason by itself: the report it is sending stays on disk until its answer, so what keeps the order is the report
-   * in line, never the drain. */
+  /** Whether a report has to wait its turn: one is being written into the queue, one went into line while this report
+   * read the queue, or the queue holds one. A drain is not a reason by itself: the report it is sending stays on disk
+   * until its answer, so what keeps the order is the report in line, never the drain. */
   async #waiting(): Promise<boolean> {
+    // Read before the listing: a rename that lands while the listing runs is the one it cannot see.
+    const published = this.#published;
     const listing = await this.#queued();
     if (this.#pause) await this.#pause("admitting", listing);
-    // The listing first, then the count: a report whose write is still running when the queue is listed is invisible
-    // to that listing, and its write counts until the rename puts it in line — the place this report has to respect.
-    return listing.length > 0 || this.#publishing > 0;
+    // The listing first, then the counts: a report whose write is still running when the queue is listed is invisible
+    // to that listing, and its write counts until the rename puts it in line — the place this report has to respect. A
+    // report whose rename completed during the listing is in neither, and `#published` having moved is what catches it.
+    return listing.length > 0 || this.#publishing > 0 || this.#published !== published;
   }
 
   /** The reports in the queue, oldest first: their final names only, never one being written. */
@@ -316,6 +328,8 @@ export class WorkerHookEndpoint {
       await rm(temporary, { force: true }).catch(() => undefined);
       throw error;
     }
+    // In line from here: a report admitted while this rename went into the directory waits behind it.
+    this.#published += 1;
     return "queued";
   }
 

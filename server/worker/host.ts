@@ -138,8 +138,9 @@ export function serveRequested(argv: readonly string[], env: NodeJS.ProcessEnv =
   return value !== "" && value !== "0" && value !== "false";
 }
 
-/** Whether a host with nothing to do may stop. A host asked to keep serving, and one holding a report nothing took yet,
- * never idles: what it keeps is only worth keeping while it runs. */
+/** Whether a host with nothing to do may stop. A host asked to keep serving never idles, and neither does one
+ * handling a report or draining the queue (`hookBusy`). A report merely waiting on disk is not work: a plain daemon
+ * can stop with a queue behind it, which is what `daemon --serve` is for. */
 export function hostIdles(state: {
   persistent: boolean;
   hookBusy: boolean;
@@ -166,6 +167,9 @@ export class WorkerHost {
   /** Starts in progress, so concurrent opens share one runtime. */
   #starting = new Map<string, Promise<Hosted>>();
   #server: Server | undefined;
+  /** Whether this host bound the socket at `paths.socket`: only then does `close()` remove it, never one a failed bind
+   * found held by another host. */
+  #socketBound = false;
   #timer: NodeJS.Timeout | undefined;
   #lastActivity = Date.now();
   #pruned = 0;
@@ -310,11 +314,15 @@ export class WorkerHost {
         this.#server!.listen(this.paths.socket, () => { this.#server!.off("error", reject); resolveListen(); });
       });
     } catch (error) {
-      // No socket to serve: the endpoint goes with it instead of holding a port nothing can reach.
+      // No socket to serve: the endpoint goes with it instead of holding a port nothing can reach, and this host keeps
+      // no server to wait on in `close()` — it never listened.
+      this.#server = undefined;
       await this.#hook?.close().catch(() => undefined);
       this.#hook = undefined;
       throw error;
     }
+    // From here the socket at this path is this host's, and `close()` is what removes it.
+    this.#socketBound = true;
     await chmod(this.paths.socket, 0o600);
     await writeFile(join(this.paths.stateDir, "release"), this.#release);
     this.#timer = setInterval(() => this.#sweep(), 30_000);
@@ -337,7 +345,11 @@ export class WorkerHost {
     // Running Durable work is recorded, not lost: it resumes on the next start.
     await this.#durable.close().catch(() => undefined);
     await new Promise<void>((done) => this.#server ? this.#server.close(() => done()) : done());
-    await unlink(this.paths.socket).catch(() => undefined);
+    // Only a socket this host bound: a bind that failed because another one holds this path leaves that one's alone.
+    if (this.#socketBound) {
+      this.#socketBound = false;
+      await unlink(this.paths.socket).catch(() => undefined);
+    }
   }
 
   /** Another gateway still connected or a PI run that cannot resume blocks
@@ -808,6 +820,8 @@ export class WorkerHost {
     }, () => this.#touch());
   }
 
+  /** Whether this host may stop: `hostIdles`, whose `hookBusy` is a report being handled or the queue being drained,
+   * never a report waiting on disk — a plain daemon may exit with a queue and leave it for the next host. */
   #idle(): boolean {
     return hostIdles({
       persistent: this.#persistent,

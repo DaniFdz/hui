@@ -7,9 +7,9 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { connect, type Socket } from "node:net";
+import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll, test } from "vitest";
 
 const root = await mkdtemp(join(tmpdir(), "hui-worker-host-"));
@@ -693,8 +693,8 @@ test("Git operations run on the worker, and a new worktree lands in its own fold
   }
 });
 
-// A second WorkerHost re-registers the process-wide bridge and credential hooks, so this test and the one after it,
-// which both start their own host, are the end of this file: nothing after them may rely on the first host's hooks.
+// A second WorkerHost re-registers the process-wide bridge and credential hooks, so the three tests below, which each
+// start their own host, are the end of this file: nothing after them may rely on the first host's hooks.
 test("a host whose hook port is taken still serves its socket, and its hello leaves the endpoint out", async (t) => {
   const taken = createServer((_request, response) => response.end());
   taken.listen(0, "127.0.0.1");
@@ -765,4 +765,48 @@ test("a host's socket never answers hello before its hook endpoint is listening"
     socket.destroy();
     await listening;
   }
+});
+
+test("a host whose socket bind fails leaves the socket it found in place, and frees the hook port it had bound", async (t) => {
+  const env = {
+    ...process.env,
+    HOME: join(root, "unbound", "home"),
+    XDG_DATA_HOME: join(root, "unbound", "data"),
+    XDG_CONFIG_HOME: join(root, "unbound", "config"),
+  };
+  const paths = workerPaths(env);
+  // Another host already serves this path: this host's bind fails the way a second HUI on one machine does.
+  await mkdir(dirname(paths.socket), { recursive: true, mode: 0o700 });
+  const occupying = createNetServer((socket) => socket.destroy());
+  occupying.listen(paths.socket);
+  await once(occupying, "listening");
+  t.onTestFinished(async () => {
+    occupying.close();
+    await rm(paths.socket, { force: true });
+  });
+  // A port this test knows, so it can watch the endpoint the host bound before its socket refused give it back.
+  const probe = createNetServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const probeAddress = probe.address();
+  assert.ok(probeAddress && typeof probeAddress !== "string");
+  await new Promise<void>((done) => probe.close(() => done()));
+  const unbound = new WorkerHost(paths);
+  const configured = process.env["HUI_WORKER_HOOK_PORT"];
+  process.env["HUI_WORKER_HOOK_PORT"] = String(probeAddress.port);
+  try {
+    await assert.rejects(unbound.listen(), /EADDRINUSE/u, "the socket at this host's path is another host's");
+  } finally {
+    if (configured === undefined) delete process.env["HUI_WORKER_HOOK_PORT"];
+    else process.env["HUI_WORKER_HOOK_PORT"] = configured;
+  }
+  // The endpoint went with the socket instead of holding a port nothing can reach: the port answers again.
+  const freed = createNetServer();
+  await new Promise<void>((resolve, reject) => {
+    freed.once("error", reject);
+    freed.listen(probeAddress.port, "127.0.0.1", () => resolve());
+  });
+  await new Promise<void>((done) => freed.close(() => done()));
+  await unbound.close();
+  assert.equal(existsSync(paths.socket), true, "the socket belongs to the host that holds it, not to one that never bound it");
 });
