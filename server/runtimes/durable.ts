@@ -1657,7 +1657,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const data = {
       status: "live" as const, backend: "durable", version: DURABLE_VERSION, tools, prompt,
       promptPhase: this.#streaming ? "current-turn" as const : "initialized" as const,
-      promptSource: (await this.#loader()).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v4",
+      promptSource: (await this.#loader()).getSystemPromptSource() ? "SYSTEM.md override" : "hui-v5",
       diagnostics: [...(this.#extensionFailure ? [this.#extensionFailure] : []), ...(this.#extensions?.diagnostics ?? [])],
     };
     return { ...data, revision: createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16) };

@@ -501,6 +501,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Markdown pipe tables render semantic column headers and inline formatting,
   honor column alignment, and scroll horizontally inside a keyboard-focusable
   viewport on narrow screens. Fenced Markdown remains literal code.
+- `session:<id>` in a reply, a full session id or a unique prefix of at least
+  eight characters, becomes a chip carrying that session's title and runtime
+  status inside a link to `/sessions/<id>`; a click opens that chat in place and
+  modified clicks keep native link behavior. A reference no session has, a
+  prefix two sessions share and a list that has not loaded keep the text as
+  written; inline code and fenced code stay literal. A Markdown link to one of
+  HUI's own routes follows the same in-place rule.
 - Bare `http(s)`, `www` and email references render as safe links without
   consuming sentence punctuation or adjacent CJK text. GFM task-list items use
   read-only checkbox controls; inline code and fenced code remain literal. The

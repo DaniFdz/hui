@@ -1060,6 +1060,15 @@ test("a presented file from the working directory offers to open in Files", asyn
   assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
 });
 
+test("a session reference in a reply is a chip, and an inline code span stays code", async () => {
+  const html = await renderWorkerSession("idle", {
+    transcript: [{ kind: "message", role: "assistant", text: "Open session:195c3659 and `session:195c3659`." }],
+  });
+  assert.match(html, /<hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref>/u, "the reference becomes the chip its parser emitted");
+  assert.match(html, /<code>session:195c3659<\/code>/u, "the code span is never a chip");
+  assert.equal(html.match(/<hui-session-ref /gu)?.length ?? 0, 1, "only the prose reference is drawn");
+});
+
 test("a message's action row offers the phone's Share sheet only where a shell answers", async () => {
   const transcript = [
     { kind: "message", id: "u", role: "user", text: "Ship the release" },
