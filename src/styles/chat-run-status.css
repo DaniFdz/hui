@@ -150,7 +150,8 @@
      The popover's own shift keeps its box 8px inside the viewport, and on a phone the pill sits 14px from the
      viewport's right edge: a box only 16px narrower than the viewport has its left edge inside that padding and is
      nudged right of the pill, so the settled panel's right edge would not be the trigger's. The 24px leaves both the
-     header's inset and that padding outside the box. */
+     header's inset and that padding outside the box. On the phone layout the session-list control leads the same row, so
+     the box also stays clear of that column (the phone rule below). */
   width: min(420px, calc(100vw - 24px));
   /* Keep the popover above the composer on a short phone or in landscape. */
   max-height: min(72dvh, 640px, calc(100dvh - 160px));
@@ -164,6 +165,18 @@
   background: var(--card);
   box-shadow: var(--wa-shadow-l);
   color: var(--text);
+}
+
+/* The phone layout leads the same header row with the session-list control, and the panel is pinned to that row's right
+   end: a box as wide as the viewport sits over the control and takes the tap meant for the drawer. The box's right edge
+   sits 14px inside the viewport, where the header's own frame and padding put the pill, and the control ends 44px from
+   the viewport's left edge: 14 + 44 + 14 of air = 72px, the whole leading column and its air kept off the box's left
+   edge. Only the width changes, so the right edge stays the pill's, the corner the morph pins. A wider phone, or a phone
+   in landscape, takes the 420px cap instead, because 100vw then leaves that column its room anyway. */
+@media (max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .chat-run-status__panel {
+    width: min(420px, calc(100vw - 72px));
+  }
 }
 
 /* The head is the pill's copy, so it hugs the box's right edge: the pill is the right-hand end of the box while the box

@@ -10,7 +10,8 @@
  * pill, its chevron now the close. The copy inside it fades in behind the box,
  * and a close draws the same box back into the pill before Web Awesome hides the
  * dialog; the pill returns once that close has landed. Escape and an outside
- * click close it too.
+ * click close it too, and so does the phone header's session-list control, whose
+ * tap the panel would otherwise take.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -302,6 +303,8 @@ type RunStatusPopoverState = {
   painted: RunStatusMorph | undefined;
   /** The trigger a close took the focus from, until the panel is gone and can give it back. */
   returnFocus: HTMLElement | undefined;
+  /** A close the phone header's session-list control made: that control keeps the focus, not the pill. */
+  keepFocus: boolean;
 };
 
 /** One morph in flight: the panel's own box, the trigger it grew from, and the animations drawing it. */
@@ -637,7 +640,7 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
   const surface = popover as RunStatusPopover;
   let state = popoverStates.get(surface);
   if (!state) {
-    state = { panel: runStatusPanel(undefined, { running: input.running }), wide: input.wide, expect: undefined, focus: undefined, ready: false, shown: undefined, morph: undefined, grow: undefined, painted: undefined, returnFocus: undefined };
+    state = { panel: runStatusPanel(undefined, { running: input.running }), wide: input.wide, expect: undefined, focus: undefined, ready: false, shown: undefined, morph: undefined, grow: undefined, painted: undefined, returnFocus: undefined, keepFocus: false };
     popoverStates.set(surface, state);
     // The anchor is looked up per event: the trigger's element survives HUI's renders, but the attribute is the truth.
     const anchored = () => {
@@ -680,8 +683,11 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       const anchor = anchored();
       const active = document.activeElement;
       // A close that already drew gives the focus back where it began; the hide that ends it must not reset that, because
-      // the trigger is hidden by then and the focus has already fallen to the page.
-      if (!state!.painted) state!.returnFocus = anchor && (popover.contains(active) || active === anchor) ? anchor : undefined;
+      // the trigger is hidden by then and the focus has already fallen to the page. A close from the header's session-list
+      // control keeps the focus on that control, which is where the tap put it.
+      const keepsFocus = state!.keepFocus;
+      state!.keepFocus = false;
+      if (!state!.painted) state!.returnFocus = anchor && !keepsFocus && (popover.contains(active) || active === anchor) ? anchor : undefined;
       if (!closing || !anchor) {
         stopRunStatusMorph(state!);
         return;
@@ -706,6 +712,30 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
   applyRunStatusPanel(trigger, surface, panelId, state);
 }
 
+/**
+ * Closes the panel through the chevron's path: the operator's own close, recorded so this run's next frame never reopens
+ * it, and the popover hidden so the box draws itself back into the pill. `keepFocus` leaves the focus where a tap on
+ * another control of the header put it; the chevron wants it back on the trigger.
+ */
+function closeRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverState, options: { keepFocus: boolean }): void {
+  state.panel = runStatusPanelChosen(state.panel, false);
+  state.expect = undefined;
+  state.keepFocus = options.keepFocus;
+  void popover.hide();
+}
+
+/**
+ * Closes the Run status popover a chat pane's control owns, when it is open. A phone's panel is pinned over the header row
+ * the session-list control leads, so a tap there has to open the drawer and dismiss the panel in the same press: the
+ * close is the operator's (the next run must not reopen it), and the control keeps the focus the tap gave it.
+ */
+export function dismissRunStatusPanel(controlId: string): void {
+  const popover = document.getElementById(`${controlId}-panel-surface`) as RunStatusPopover | null;
+  const state = popover ? popoverStates.get(popover) : undefined;
+  if (!popover || !state || !popover.open) return;
+  closeRunStatusPanel(popover, state, { keepFocus: true });
+}
+
 /** The Run status trigger and its popover, or nothing when this conversation has no goal, plan or recent batch. */
 export function renderRunStatus(props: RunStatusProps) {
   if (props.loading) return nothing;
@@ -726,9 +756,7 @@ export function renderRunStatus(props: RunStatusProps) {
     if (popover && state) {
       // The chevron is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus comes
       // back to the trigger once the box has drawn back into it and the pill has painted again.
-      state.panel = runStatusPanelChosen(state.panel, false);
-      state.expect = undefined;
-      void popover.hide();
+      closeRunStatusPanel(popover, state, { keepFocus: false });
     }
   };
   return html`
