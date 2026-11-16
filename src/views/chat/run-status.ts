@@ -520,6 +520,9 @@ function stopRunStatusMorph(state: RunStatusPopoverState): void {
   for (const animation of morph.animations) animation.cancel();
   morph.arrival?.cancel();
   returnRunStatusPanel(morph.panel);
+  // A fold cut short by a reopen leaves the dialog open while the hide that started it already reported the control
+  // closed; the state the control reports follows what is on screen, so a reopen it can still take the panel back to.
+  if (morph.phase === "closing") morph.trigger.setAttribute("aria-expanded", String(morph.popover.open));
 }
 
 /** Gives a panel that has closed its flow back, once Web Awesome is done with it. */
@@ -719,7 +722,9 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       // Web Awesome asked to hide while the panel is still painted, so its own hide is held (the event is cancelable) and
       // the box draws itself back into the pill. Web Awesome puts itself back into its open state once the dispatch
       // returns, without a new show, so the panel keeps the position the popup gave it; the reverse ends by closing the
-      // popover for real.
+      // popover for real. The control keeps reporting the panel open for the fold: it is still on screen, and a control
+      // that said otherwise would disagree with the screen until the fold landed, which is the disagreement the shared
+      // settle gate waits out.
       event.preventDefault();
       startRunStatusReverse(surface, state!, anchor);
     });
