@@ -3,7 +3,7 @@
  * `subagent-restart.e2e.ts`, which proves the run its own runtime carries on (AGENT-027). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openHelpers } from "./run-status.ts";
+import { openHelpers, openSettledHelpers } from "./run-status.ts";
 
 const calls = (...list: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(list)).toString("base64url")}`;
@@ -64,7 +64,9 @@ test("helpers wait in one Helpers section that counts them and lists them, witho
 
   // A helper the parent's own limit times out says so in its row.
   await hui.prompt(session, calls(call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Timed out helper", collect: true, runTimeoutSeconds: 1 })));
-  await expect(openedHelpers.getByText("0 completed · 1 failed or stopped")).toBeVisible({ timeout: 90_000 });
-  const timedOut = openedHelpers.getByRole("button", { name: /^Open subagent Timed out helper(, .+)?$/u });
+  // This turn's run closed the panel it opened by itself; the timed-out row is read through the operator's own open.
+  const timedOutHelpers = await openSettledHelpers(screen, "Timed out helper");
+  await expect(timedOutHelpers.getByText("0 completed · 1 failed or stopped")).toBeVisible({ timeout: 90_000 });
+  const timedOut = timedOutHelpers.getByRole("button", { name: /^Open subagent Timed out helper(, .+)?$/u });
   await expect(timedOut).toContainText("The subagent exceeded 1 seconds.");
 });

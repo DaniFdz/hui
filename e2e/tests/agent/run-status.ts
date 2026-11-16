@@ -32,3 +32,42 @@ export async function openWatchers(screen: Screen): Promise<Locator> {
   await expect(watchers).toBeVisible();
   return watchers;
 }
+
+/**
+ * Opens Run status once the run a prompt just started has settled, and returns the popover. A wide window opens it by
+ * itself while a run streams and closes it with that run, so a read after the turn must open it again. `expected` is what
+ * the turn leaves in the popover — the rows it starts and the states the gateway's poll records for them — and waiting for
+ * it first proves the run began, because `Session status: Idle` also holds in the moment before a prompt's run starts, and
+ * an open made then is the choice that run clears. The panel has to read closed as well, so a run still taking it away is
+ * waited out rather than opened against.
+ */
+export async function openSettledRunStatus(screen: Screen, ...expected: readonly string[]): Promise<Locator> {
+  const popover = screen.getByLabel("Run status");
+  // A closed panel still holds its text, so this reads before the operator's open; a conversation with nothing to
+  // report yet draws no panel at all, which counts as no text.
+  const text = async () => (await popover.count()) === 0 ? "" : (await popover.textContent()) ?? "";
+  await expect.poll(async () => {
+    const shown = await text();
+    return expected.every((part) => shown.includes(part));
+  }, { timeout: 90_000 }).toBe(true);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await expect(popover).toBeHidden();
+  return openRunStatus(screen);
+}
+
+/** Opens Run status after that run settled and returns its Helpers region; a successful batch stays folded inside it. */
+export async function openSettledHelpers(screen: Screen, ...expected: readonly string[]): Promise<Locator> {
+  const popover = await openSettledRunStatus(screen, ...expected);
+  const helpers = popover.getByRole("region", { name: "Helpers" });
+  await expect(helpers).toBeVisible();
+  return helpers;
+}
+
+/** Opens Run status after that run settled and returns its Background watchers section; more than four rows sit behind
+ * Watcher details. */
+export async function openSettledWatchers(screen: Screen, ...expected: readonly string[]): Promise<Locator> {
+  const popover = await openSettledRunStatus(screen, ...expected);
+  const watchers = popover.getByLabel("Background watchers");
+  await expect(watchers).toBeVisible();
+  return watchers;
+}
