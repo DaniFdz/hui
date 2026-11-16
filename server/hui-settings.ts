@@ -15,9 +15,9 @@ import { join } from "node:path";
 import { CONFIG_DIR } from "./paths.ts";
 import { isToolIconName } from "./tool-icons.ts";
 import { THINKING_LEVELS } from "./sessions/thinking.ts";
-import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings } from "./api/settings.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings, PushSettings } from "./api/settings.ts";
 import { normalizeOriginPatterns } from "./browser/origins.ts";
-export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings } from "./api/settings.ts";
+export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings, PushSettings } from "./api/settings.ts";
 
 const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
 
@@ -58,6 +58,8 @@ export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executa
 /** The public ntfy service: a phone subscribes to a topic there, and a gateway that runs its own sets its address. */
 export const DEFAULT_NTFY_SERVER = "https://ntfy.sh";
 export const DEFAULT_NTFY_SETTINGS: NtfySettings = { server: DEFAULT_NTFY_SERVER, topic: "", link: "web" };
+/** Web Push is off until a device subscribes and the operator turns it on; no subject means no VAPID `sub` claim. */
+export const DEFAULT_PUSH_SETTINGS: PushSettings = { enabled: false, subject: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -73,7 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   questions: { timeoutMinutes: 0 },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
-  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true, ntfy: DEFAULT_NTFY_SETTINGS },
+  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true, ntfy: DEFAULT_NTFY_SETTINGS, push: DEFAULT_PUSH_SETTINGS },
   models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
@@ -149,6 +151,7 @@ function normalizeNotifications(value: unknown): Settings["notifications"] {
     runFailed: source["runFailed"] !== false,
     needsInput: source["needsInput"] !== false,
     ntfy: normalizeNtfySettings(source["ntfy"]),
+    push: normalizePushSettings(source["push"]),
   };
 }
 
@@ -182,6 +185,41 @@ function normalizeNtfyServer(server: string): string {
   } catch {
     return DEFAULT_NTFY_SERVER;
   }
+}
+
+/** A VAPID `sub` claim's `mailto:` branch: one address, with nothing a push service would have to guess. */
+const MAILTO_SUBJECT = /^mailto:[^@\s]+@[^@\s]+$/u;
+
+/**
+ * Whether a `sub` claim is an address a push service may use: a `mailto:` address, or an `https:` URL with a host and
+ * no credentials, space or control character in it. `https://` on its own names nobody, and neither does one that
+ * carries a user and a password in front of the host.
+ */
+function isPushSubject(subject: string): boolean {
+  if (!subject || subject.length > 512 || /[\p{Cc}\s]/u.test(subject)) return false;
+  if (subject.startsWith("mailto:")) return MAILTO_SUBJECT.test(subject);
+  if (!subject.startsWith("https://")) return false;
+  try {
+    const url = new URL(subject);
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Web Push to a browser or a phone that subscribed through this gateway. Off unless the operator switched it on for a
+ * device, so no old settings file starts pushing. `subject` is the VAPID `sub` claim: a `mailto:` or `https:` contact
+ * address a push service may use to reach this gateway's owner, at most 512 characters. A malformed one becomes empty,
+ * and an empty subject omits the claim altogether, which every push service accepts.
+ */
+export function normalizePushSettings(value: unknown): PushSettings {
+  const source = isRecord(value) ? value : {};
+  const subject = typeof source["subject"] === "string" ? source["subject"].trim() : "";
+  return {
+    enabled: source["enabled"] === true,
+    subject: isPushSubject(subject) ? subject : "",
+  };
 }
 
 function normalizeModelRef(value: unknown): string {

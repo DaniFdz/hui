@@ -130,6 +130,17 @@ test("the ntfy relay keeps a capability topic, repairs a malformed server and a 
   assert.deepEqual(normalize(normalize({ server: "https://ntfy.example.com/", topic: "phone", link: "phone" })), { server: "https://ntfy.example.com", topic: "phone", link: "phone" }, "round-trips");
 });
 
+test("a push subject must name an address a push service can use", () => {
+  const push = (subject: unknown) => normalizeSettings({ notifications: { push: { subject } } }).notifications.push.subject;
+  assert.equal(push("mailto:ops@example.com"), "mailto:ops@example.com");
+  assert.equal(push("https://example.com/push"), "https://example.com/push");
+  // An https: claim needs a host and no credentials: `https://` alone names nobody, and one that carries a user and a
+  // password in front of the host is not an address a push service may use either.
+  for (const subject of ["https://", "https://user:pass@example.com", "mailto:no-at-sign", "ftp://example.com", "https://exa mple.com", "not a url", 42]) {
+    assert.equal(push(subject), "", JSON.stringify(subject));
+  }
+});
+
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./hui-settings.fixture.json", import.meta.url), "utf8"));
 
 test("hui-settings preserves the shared runtime fixtures", () => {

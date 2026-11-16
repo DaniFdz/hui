@@ -6,11 +6,16 @@
  * worker answers valid SPA navigations network-first (and only falls back to
  * the cached shell on connection failure or a temporary gateway status), serves
  * inventory files cache-first, and never touches API, non-GET or cross-origin
- * traffic.
+ * traffic. It also shows HUI's own push notifications and, on a tap, opens the
+ * in-app path the message named in a window of this origin; neither handler
+ * reads or writes the cache.
  */
 "use strict";
 
 const CACHE_PREFIX = "hui-offline-";
+const PUSH_ICON = "/icon-192.png";
+/** A push message without a usable title still has to show something. */
+const PUSH_TITLE = "HUI";
 const INVENTORY_URL = "/offline-inventory.json";
 const INDEX_URL = "/index.html";
 const META_URL = new URL("/__hui/offline-meta", self.location.origin).href;
@@ -134,6 +139,71 @@ self.addEventListener("activate", (event) => {
       .map((name) => caches.delete(name)));
     await self.clients.claim();
   })());
+});
+
+/** Whether an address belongs to this origin: a push message never decides another one. */
+function sameOrigin(value) {
+  try {
+    return new URL(value, self.location.origin).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The in-app path a message or a tap names: a relative same-origin path, or `/` for anything else. */
+function inAppPath(value) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return "/";
+  try {
+    const url = new URL(value, self.location.origin);
+    return url.origin === self.location.origin ? url.pathname + url.search : "/";
+  } catch {
+    return "/";
+  }
+}
+
+/** The message a push event carries: its JSON object, or nothing for a body that is not one. */
+function pushMessage(data) {
+  if (!data) return {};
+  let parsed;
+  try {
+    parsed = data.json();
+  } catch {
+    return {};
+  }
+  return parsed !== null && typeof parsed === "object" ? parsed : {};
+}
+
+/** One banner per message. Only the title, body, tag and in-app path survive into it. */
+function showPush(event) {
+  const message = pushMessage(event.data);
+  const title = typeof message.title === "string" && message.title.trim() ? message.title : PUSH_TITLE;
+  const options = { icon: PUSH_ICON, badge: PUSH_ICON, data: { path: inAppPath(message.path) } };
+  if (typeof message.body === "string" && message.body) options.body = message.body;
+  if (typeof message.tag === "string" && message.tag) options.tag = message.tag;
+  return self.registration.showNotification(title, options);
+}
+
+/** A tap reuses the window this origin already has, and opens one only when there is none. */
+async function openPush(event) {
+  event.notification?.close();
+  const url = new URL(inAppPath(event.notification?.data?.path), self.location.origin).href;
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const existing = windows.find((client) => sameOrigin(client.url));
+  if (!existing) {
+    await self.clients.openWindow(url);
+    return;
+  }
+  // A focus or navigate the browser refuses leaves the window it already had: never a second one.
+  await Promise.resolve(existing.focus()).catch(() => undefined);
+  await Promise.resolve(existing.navigate(url)).catch(() => undefined);
+}
+
+self.addEventListener("push", (event) => {
+  event.waitUntil(showPush(event));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.waitUntil(openPush(event));
 });
 
 self.addEventListener("fetch", (event) => {
