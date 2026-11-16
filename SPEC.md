@@ -36,12 +36,15 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
   view of the chat in place of that conversation. Compact now stays below it, beside the spend: a Durable session's
   Session total, what every model call of that conversation cost, its compaction summaries and tool-side calls included,
-  with when it was read; a runtime that reports no total shows the latest run's tokens and cost there instead. The split
+  read as each model call commits during the run, after the run settles and after each compaction ends, with when it was
+  read; while the ledger holds no call it says "No calls recorded yet"; a runtime that reports no total shows the latest
+  run's tokens and cost there instead. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
   bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
   summaries), or where it is kept when the bot runs on a worker. A Durable session's meter also carries Session total:
-  what every model call of that conversation cost, the compaction summaries and tool-side calls included, with when it
-  was read, since the per-run figure leaves them out.
+  what every model call of that conversation cost, the compaction summaries and tool-side calls included, read when a
+  model call commits during the run, after the run settles and after each compaction ends, with when it was read, since
+  the per-run figure leaves them out; it says "No calls recorded yet" while the ledger holds none.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.

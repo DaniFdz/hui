@@ -136,8 +136,10 @@ const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
 /** pi-ai model calls whose third argument is the request options. */
 const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
 type ProviderResponse = { status: number; headers: Record<string, string> };
+/** The buckets of one conversation's `pi.usage` ledger. */
+type UsageBuckets = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>> };
 /** One conversation's `pi.usage` ledger, as `conversationUsage` copies it out. */
-type ConversationSpend = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>>; lastEntryId: EntryId | null };
+type ConversationSpend = UsageBuckets & { lastEntryId: EntryId | null };
 type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
@@ -833,23 +835,30 @@ export class DurableHost implements ExtensionHost {
     }, durableContext);
   }
 
-  /** What every model call of one conversation cost, summed from that ledger: compaction summaries and tool-side calls
-   * included, which no entry holds. `usd` is null when no call carried a price. */
-  async conversationSpend(conversationId: ConversationId): Promise<{ tokens: number; usd: number | null } | undefined> {
-    const ledger = await this.conversationUsage(conversationId);
-    if (!ledger) return undefined;
-    let tokens = 0;
-    let usd = 0;
-    let priced = false;
-    for (const bucket of [ledger.models, ledger.tools]) {
-      for (const spend of Object.values(bucket ?? {})) {
-        if (typeof spend["totalTokens"] === "number" && Number.isFinite(spend["totalTokens"])) tokens += spend["totalTokens"];
-        const cost = spend["cost"];
-        const total = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>)["total"] : cost;
-        if (typeof total === "number" && Number.isFinite(total) && total >= 0) { usd += total; priced = true; }
+  /** What every model call of one conversation cost, summed from its ledger alone: compaction summaries and tool-side
+   * calls included, which no entry holds. `usd` is null when no call carried a price, and `reported` is false while the
+   * ledger holds no call. */
+  async conversationSpend(conversationId: ConversationId): Promise<{ tokens: number; usd: number | null; reported: boolean } | undefined> {
+    const harness = this.#harness;
+    if (!harness) return undefined;
+    return harness.commit(async (tx) => {
+      const ledger = await tx.doc(UsageDoc, conversationId) as UsageBuckets;
+      let tokens = 0;
+      let usd = 0;
+      let priced = false;
+      let reported = false;
+      for (const bucket of [ledger.models, ledger.tools]) {
+        for (const spend of Object.values(bucket ?? {})) {
+          reported = true;
+          const counted: unknown = spend["totalTokens"];
+          if (typeof counted === "number" && Number.isFinite(counted)) tokens += counted;
+          const cost: unknown = spend["cost"];
+          const total = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>)["total"] : cost;
+          if (typeof total === "number" && Number.isFinite(total) && total >= 0) { usd += total; priced = true; }
+        }
       }
-    }
-    return { tokens, usd: priced ? usd : null };
+      return { tokens, usd: priced ? usd : null, reported };
+    }, durableContext);
   }
 
   /** Closing records no outcome: running work resumes when the store reopens.

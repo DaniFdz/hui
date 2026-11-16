@@ -290,7 +290,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #shown: unknown[] | undefined;
   /** The cached size of the whole context, and where it goes. */
   #measurement: Measurement | undefined;
-  /** What every model call of this conversation cost, read after each run and compaction; undefined until read. */
+  /** What every model call of this conversation cost, read when a model call commits during the run, after each run
+   * and after each compaction; undefined until read. */
   #total: RuntimeUsage["sessionTotal"];
   #totalRead: Promise<void> | undefined;
   #totalStale = false;
@@ -753,7 +754,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return { tokens, parts: contextParts(collected.reverse(), this.#systemUpdates(), this.#optchat, tokens) };
   }
 
-  /** Reads the conversation's ledger for what it has cost, once, and reports it to the open view. */
+  /** Reads the conversation's ledger for what it has cost, once, and reports it to the open view when it changed. */
   #refreshTotal(): void {
     this.#totalStale = true;
     if (this.#totalRead) return;
@@ -765,6 +766,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         try {
           const spend = await this.#host.conversationSpend(this.#conversation.id);
           if (!spend) return;
+          // Only a total that changed redraws: a repeated read finds the one the view already shows.
+          if (this.#total && this.#total.tokens === spend.tokens && this.#total.usd === spend.usd && this.#total.reported === spend.reported) continue;
           this.#total = { ...spend, asOf: Date.now() };
           this.#emit({ type: "usage" });
         } catch {
@@ -844,6 +847,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           if (metric) this.#emit({ type: "model_metric", metric });
         }
         this.#add(event.entry);
+        // A response commits its usage to the ledger with it: the session's total holds that call before the run ends.
+        if (event.type === "message_end" && event.entry.model?.some((message) => message.role === "assistant" && message.usage)) this.#refreshTotal();
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && !this.#streaming) {
           if (CallEntry.is(event.entry)) this.#emit({ type: "history" });

@@ -10547,6 +10547,7 @@
       "required": [
         "tokens",
         "usd",
+        "reported",
         "asOf"
       ],
       "properties": {
@@ -10562,6 +10563,9 @@
               "type": "null"
             }
           ]
+        },
+        "reported": {
+          "type": "boolean"
         },
         "asOf": {
           "type": "number"

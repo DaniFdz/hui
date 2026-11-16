@@ -935,12 +935,24 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   assert(part("summary").tokens > 0, "the summary compaction left is its own part");
 });
 
+test("a fresh conversation's meter says no call is recorded yet, not a zero total", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-empty-total" }, f.host());
+  const total = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  const { asOf, ...spend } = total;
+  assert.deepEqual(spend, { tokens: 0, usd: null, reported: false }, "an empty ledger reports no call, not a zero total");
+  assert.equal(typeof asOf, "number", "and still says when it was read");
+});
+
 test("the meter reports what every model call cost, the compaction's own call included", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, { ...KEPT_WINDOW, settings: { ...KEPT_WINDOW.settings, retry: { enabled: false } } });
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cost" }, host);
   await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn"]);
-  const before = await waitFor("the ledger after the runs", () => session.currentUsage()?.sessionTotal);
+  const before = await waitFor("the ledger after the runs", () => {
+    const total = session.currentUsage()?.sessionTotal;
+    return total && total.tokens > 0 ? total : undefined;
+  });
   assert(before.tokens > 0, "the runs are in it");
   assert.equal(before.usd, 0, "the fixture prices every call at zero, which is a price, not a missing one");
   await compacted(session);
@@ -949,6 +961,45 @@ test("the meter reports what every model call cost, the compaction's own call in
     return total && total.asOf >= before.asOf && total.tokens > before.tokens ? total : undefined;
   });
   assert(after.tokens > before.tokens, "a summary is a model call of its own, and no entry holds it");
+});
+
+test("a model call's spend shows while its run streams, before the run settles", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  let release!: (value: unknown) => void;
+  const held = new Promise<unknown>((resolve) => { release = resolve; });
+  let started!: () => void;
+  const invoked = new Promise<void>((resolve) => { started = resolve; });
+  const host = f.host({
+    invokeTool: async (invocation) => {
+      if (invocation.action !== "suggest_task") return { ok: true };
+      started();
+      return held;
+    },
+  });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-live-total" }, host);
+  let messageEndedAt = 0;
+  let usageAt = 0;
+  session.subscribe((event) => {
+    // The model metric is emitted in the same step as the assistant message's end, before its entry is added.
+    if (event.type === "model_metric" && messageEndedAt === 0) messageEndedAt = Date.now();
+    // The attach-time read reports the same total: only the event that carries the call's spend measures the refresh.
+    else if (event.type === "usage" && messageEndedAt !== 0 && usageAt === 0 && session.currentUsage()?.sessionTotal?.reported) usageAt = Date.now();
+  });
+  const toolStarted = nextEvent(session, (event) => event.type === "tool_start" && event.name === "suggest_task");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  const call = (name: string, input: Record<string, unknown>) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
+  await session.prompt(call("suggest_task", { title: "x", problem: "y" }));
+  await toolStarted;
+  await invoked;
+  const total = await waitFor("the total the model call committed", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.reported && current.tokens > 0 ? current : undefined;
+  });
+  assert.equal(session.isStreaming, true, "the run is still streaming while its tool is held");
+  assert.equal(total.usd, 0, "a recorded zero price stays a price, not an unpriced call");
+  assert(messageEndedAt > 0 && usageAt >= messageEndedAt, `the refreshed total followed the model call (${messageEndedAt} → ${usageAt})`);
+  release({ ok: true });
+  await settled;
 });
 
 test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {
