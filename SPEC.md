@@ -1944,8 +1944,9 @@ that asks for reduced motion gets no morph and opens and closes at once, and
 only a real open or close animates: a streamed frame that changes the plan or
 the helpers never restarts it. The panel opens only when the operator opens it,
 on wide windows and phones alike: a run — including one a send starts — leaves it
-closed and draws the pill for the whole run, an operator's open holds across runs
-until they close it, and their close holds until they open it again, so no run
+closed and never opens it, and while the control is present its pill stays the only
+surface for the whole run; an operator's open holds across runs until they close
+it, and their close holds until they open it again, so no run
 the conversation starts on its own — a watcher settling, a helper finishing —
 opens or shuts the panel. A reload starts closed.
 The popover holds **Goal** (the objective, its status note, when it was set, its
@@ -1967,8 +1968,10 @@ settles still writes its own transcript event.
 ### Run status opens only when the operator opens it (2026-11-17)
 
 The panel never opens by itself: a run, including the one a message send
-starts, leaves it closed and draws the pill for the whole run, on a wide window
-and on a phone alike. The operator's words were "Posting a message opens the
+starts, leaves it closed and never opens it, on a wide window and on a phone
+alike; while the control is present — the conversation has a goal, a plan, a
+helper batch or a watcher — its pill stays the only surface for the whole run.
+The operator's words were "Posting a message opens the
 working popover automatically, I don't want that", and a popover that arrives
 with a send takes the screen and the focus the operator did not ask it to. So the
 open state is one boolean the operator writes: Web Awesome's own show and hide

@@ -97,7 +97,7 @@ export function runStatusTriggerPainted(open: boolean): boolean {
 }
 
 /** Records the operator's own open or close: the state's only writer. */
-export function runStatusPanelChosen(_state: RunStatusPanelState, open: boolean): RunStatusPanelState {
+export function runStatusPanelChosen(open: boolean): RunStatusPanelState {
   return { open };
 }
 

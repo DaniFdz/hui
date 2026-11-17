@@ -14,9 +14,12 @@ export async function openRunStatus(screen: Screen): Promise<Locator> {
   // popover's anchor and its aria-expanded, but it is not painted. Attachment, not paint, is what this read needs until
   // the pill itself has to be pressed.
   await expect(trigger).toBeAttached();
-  // The panel opens only on the operator's own press — no run and no window width opens or closes it — so a trigger that
-  // does not report the panel open is the one state the press is made in.
-  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+  const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
+  // The panel opens only on the operator's own press — no run and no window opens it — and Web Awesome's dialog stays on
+  // screen through its show and hide animations while the pill paints only once the fold has landed. So the trigger is
+  // pressed only once its aria-expanded and the screen agree, in the settled closed state and never mid-animation.
+  await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
+  if (!(await expanded())) {
     // A closed panel paints the pill, and the pill is the control the operator presses to open it.
     await expect(trigger).toBeVisible();
     await trigger.tap();

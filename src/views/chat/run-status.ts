@@ -327,14 +327,18 @@ type RunStatusGrow = {
 
 const popoverStates = new WeakMap<Element, RunStatusPopoverState>();
 
-/** Records the open or close Web Awesome performed, which is always the operator's own: nothing else opens or closes the
- * panel. */
+/**
+ * Records the show or hide Web Awesome performed as the panel's open state, whether the operator pressed the trigger or
+ * dismissed the panel they were reading: Escape, an outside click, the chevron, or another popover opening — Web Awesome's
+ * popover is a singleton, so opening another pane's closes this one with a `wa-hide` the operator did not aim at this
+ * panel. Nothing else opens it, and a close recorded this way still holds until the operator opens the panel again.
+ */
 function settleRunStatusPanel(popover: RunStatusPopover, open: boolean): void {
   const trigger = document.getElementById(popover.getAttribute("for") ?? "");
   if (trigger && trigger.getAttribute("aria-expanded") !== String(open)) trigger.setAttribute("aria-expanded", String(open));
   const state = popoverStates.get(popover);
   if (!state) return;
-  state.panel = runStatusPanelChosen(state.panel, open);
+  state.panel = runStatusPanelChosen(open);
 }
 
 /** Syncs the trigger's own accessibility state with the operator's: the panel this trigger anchors, and whether that
@@ -694,7 +698,7 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, retr
  * of the header put it; the chevron wants it back on the trigger.
  */
 function closeRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverState, options: { keepFocus: boolean }): void {
-  state.panel = runStatusPanelChosen(state.panel, false);
+  state.panel = runStatusPanelChosen(false);
   state.keepFocus = options.keepFocus;
   void popover.hide();
 }

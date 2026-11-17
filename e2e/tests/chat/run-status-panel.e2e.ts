@@ -115,6 +115,14 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
 
+  // A press elsewhere in the app is the operator's outside-click close.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
+  await message.tap();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeVisible();
+  await expect(trigger).not.toBeExpanded();
+
   // An operator's open is theirs too: no run opens or shuts it, so it outlives the run it was made in and stays out
   // through the next one as well.
   await trigger.tap();

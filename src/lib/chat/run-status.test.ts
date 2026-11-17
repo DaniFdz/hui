@@ -192,7 +192,7 @@ test("a run leaves the Run status popover closed and the operator's open holds u
   assert.equal(runStatusPanelOpen.length, 1, "the open state is read from the operator's state alone");
   assert.equal(runStatusPanelOpen({ open: false }), false, "a run leaves the panel closed");
 
-  const opened = runStatusPanelChosen({ open: false }, true);
+  const opened = runStatusPanelChosen(true);
   assert.deepEqual(opened, { open: true }, "the operator's open is the whole state");
   assert.equal(runStatusPanelOpen(opened), true);
   // Nothing else writes it, so an open outlives every frame that follows: a streamed render, the end of the run it was
@@ -200,12 +200,12 @@ test("a run leaves the Run status popover closed and the operator's open holds u
   assert.equal(runStatusPanelOpen(opened), true, "a later render still reads the operator's open");
   assert.equal(runStatusPanelOpen(opened), true, "and the run boundary after it writes nothing");
 
-  const closed = runStatusPanelChosen(opened, false);
+  const closed = runStatusPanelChosen(false);
   assert.deepEqual(closed, { open: false }, "the operator's close is the whole state");
   assert.equal(runStatusPanelOpen(closed), false, "and it holds past that run's end and the next run too");
 
   // An open after a close works again: the panel is theirs to take back whenever they want it, mid-run or idle.
-  const reopened = runStatusPanelChosen(closed, true);
+  const reopened = runStatusPanelChosen(true);
   assert.deepEqual(reopened, { open: true });
   assert.equal(runStatusPanelOpen(reopened), true, "an open after a close puts the panel back");
   assert.equal(runStatusTriggerPainted(runStatusPanelOpen(reopened)), false, "and the panel is the only box drawn");
