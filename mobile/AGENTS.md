@@ -404,8 +404,9 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
 - **Deep links.** `SceneDelegate` handles `hui://open?path=/…` the way Android's `DeepLink` does: a plain path on the
   gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
 - **Share to HUI is a Share Extension.** The `ShareExtension` target ships inside the app
-  (`PlugIns/ShareExtension.appex`, bundle id `dev.hui.app.ShareExtension`) and offers itself for text and one web
-  address, never for an image or a file, because New Session starts with words. It builds `hui://share?url=<value>`;
+  (`PlugIns/ShareExtension.appex`, bundle id `dev.hui.app.ShareExtension`) and declares text and one web address in its
+  activation rule, with no image, movie or file activation keys, because New Session starts with words; a `public.url`
+  that turns out to be a file is refused when it arrives (the `http(s)` check). It builds `hui://share?url=<value>`;
   `SceneDelegate` checks the value alone (`DeepLink.share`: 8 000 characters, a query under 12 KiB, `\r\n` and `\r`
   folded to `\n` with `\n` and `\t` kept, and every other control character refused) and opens
   `<gateway>/new-session?share=…` on the gateway the app remembers, ignoring a share with no gateway as the deep link is
@@ -423,26 +424,25 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   `extensionContext.open` first and, when that answers `false`, hands the same link to the first responder in its own
   chain that answers `openURL:` — always behind `responds(to:)`, so the selector is only performed on a responder that
   really implements it and `UIApplication` is never named, which keeps the appex compilable with
-  `APPLICATION_EXTENSION_API_ONLY = YES`. The
-  method's `BOOL` answer is read through its signature (three arguments, a one-byte `BOOL` return), not discarded: a
-  `true` answer completes the sheet, and a `false` answer leaves the share on screen with its Copy action. `openURL:` is
-  public but marked unavailable in app extensions, not a private selector, and the chain never names it: App Review's
-  private-API rule is not the runtime barrier, and the unsigned IPA is signed by SideStore with the operator's own Apple
-  ID, so App Review never sees it. One `requested` flag is set before the first attempt, so a provider callback that
-  answers twice, or lands late, cannot ask iOS to open HUI twice, and the `finished` guard still drops every callback
-  after Done or completion. **An App Group is rejected:** SideStore's free-account signing cannot use App Groups, so
-  adding the entitlement would break installs. A share that leaves neither way shows the share with a Copy action
-  instead of losing it. **A share that held only a file says so:** a share with a file and nothing New Session can open
-  reads "HUI can't open this file. Share the post's link instead." — that flag is sticky, so a later candidate that
-  hands back nothing cannot turn the file into an empty share — and the activation rule stays as it is, because a
-  predicate narrow enough to exclude a file would also hide a share that carries a link and a file together, and there
-  is no device here to try one. **What is proven:** the parser's JVM tests, the web intake's tests, the appex's embedding
-  checked by `ios.yml` and `release.yml`, and the app half on a simulator: the PR-triggered `ios.yml` run terminates HUI,
-  launches it in Debug with `-HUIURL` and the remembered gateway, and OCRs the seed's lead; that run checks the app half
-  and `openDeepLink`, not the system's delivery. **Not proven:** the system's own delivery of the link, cold start
-  included (iOS's "Open in HUI?" confirmation covers the app when `simctl openurl` delivers one, and this oracle cannot
-  dismiss it, so the Debug launch argument stands in for the system rather than being it), the extension's own tap,
-  `NSExtensionContext.open`'s answer and the responder-chain handshake, all device-only.
+  `APPLICATION_EXTENSION_API_ONLY = YES`. The method's `BOOL` answer is read through the runtime method's type encoding,
+  not discarded: a `true` answer completes the sheet, and a `false` answer leaves the share on screen with its Copy
+  action. `openURL:` is public but marked unavailable in app extensions, not a private selector, and the chain never
+  names `UIApplication`: App Review's private-API rule is not the runtime barrier, and the unsigned IPA is signed by
+  SideStore with the operator's own Apple ID, so App Review never sees it. One `requested` flag is set before the first
+  attempt, so a provider callback that answers twice, or lands late, cannot ask iOS to open HUI twice, and the `finished`
+  guard still drops every callback after Done or completion. **An App Group is rejected:** SideStore's free-account
+  signing cannot use App Groups, so adding the entitlement would break installs. A share that leaves neither way shows
+  the share with a Copy action instead of losing it. **A share that held only a file says so:** a share with a file and
+  nothing New Session can open reads "HUI can't open this file. Share the post's link instead." — that flag is sticky, so
+  a later candidate that hands back nothing cannot turn the file into an empty share — and the activation rule stays as
+  it is, because a predicate narrow enough to exclude a file would also hide a share that carries a link and a file
+  together, and there is no device here to try one. **What is proven:** the parser's JVM tests, the web intake's tests,
+  the appex's embedding checked by `ios.yml` and `release.yml`, and the app half on a simulator: the PR-triggered
+  `ios.yml` run terminates HUI, launches it in Debug with `-HUIURL` and the remembered gateway, and OCRs the seed's lead;
+  that run checks the app half and `openDeepLink`, not the system's delivery. **Not proven:** the system's own delivery
+  of the link, cold start included (iOS's "Open in HUI?" confirmation covers the app when `simctl openurl` delivers one,
+  and this oracle cannot dismiss it, so the Debug launch argument stands in for the system rather than being it), the
+  extension's own tap, `NSExtensionContext.open`'s answer and the responder-chain handshake, all device-only.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
 - **The pickers need their usage strings.** The composer's "Take photo" is an image input with `capture`, and WebKit's
