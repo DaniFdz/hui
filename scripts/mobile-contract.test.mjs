@@ -236,6 +236,21 @@ test("the iOS app opens a share on the gateway it remembers, as the Android one 
   assert.match(swiftDeepLink, /maxShareQueryBytes = 12 \* 1024/u, "the same 12 KiB query bound as the Android half");
 });
 
+test("the extension's link opens the scheme the app registers, under the host and query the app reads", async () => {
+  // The link crosses two processes with no compiler between them: the extension builds a string the app parses, and a
+  // rename on either side would still pass every unit test. The app's own registration is the third half — an unregistered
+  // scheme leaves the system with nothing to open, and neither half shows it in a log.
+  const plist = await read("mobile/ios/App/App/Info.plist");
+  const extension = await read("mobile/ios/App/ShareExtension/ShareViewController.swift");
+  const scene = await read("mobile/ios/App/App/SceneDelegate.swift");
+  const schemes = /<key>CFBundleURLSchemes<\/key>\s*<array>([\s\S]*?)<\/array>/u.exec(plist)?.[1] ?? "";
+  assert.match(schemes, /<string>hui<\/string>/u, "the app registers the scheme the extension opens");
+  assert.match(extension, /URLComponents\(string: "hui:\/\/share"\)/u, "the extension builds the share link");
+  assert.match(extension, /URLQueryItem\(name: "url", value:/u, "under the query name it has to agree on");
+  assert.match(scene, /case "share":/u, "and the app answers that host");
+  assert.match(scene, /query\("url"\)/u, "reading the same query");
+});
+
 test("both workflows refuse a build whose Share Extension is missing from the app", async () => {
   const ios = await read(".github/workflows/ios.yml");
   assert.match(ios, /Check the Share Extension is embedded/u, "ios-smoke reads the built bundle, not only the project file");

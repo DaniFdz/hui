@@ -1,11 +1,19 @@
 import UIKit
 
 /**
- The Share Extension's only screen: what the system shared becomes `hui://share?url=…`, and iOS opens HUI with it, which
+ The Share Extension's only screen: what the system shared becomes `hui://share?url=…`, and HUI opens with it, which
  turns the value into `<gateway>/new-session?share=…`. The extension has no gateway of its own — the app resolves the one
- it remembers and ignores the link without one — and iOS may refuse an extension's `open` too, so a share that does not
- leave is shown here with a Copy action instead of failing silently. There is no Capacitor and no storyboard: `loadView`
- builds every view it has.
+ it remembers and ignores the link without one.
+
+ Opening the app takes two steps. Apple documents `NSExtensionContext.open(_:)` — how an extension asks iOS to open its
+ app — for the Today and iMessage extension points only, so a share extension calling it is unsupported, and it is
+ reported to answer `false` on iOS 18 and later, a cold start especially. The responder chain is the standard workaround:
+ `open` is tried first and a `false` answer is handed to the first responder that answers `openURL:` (see
+ `openFromResponderChain`). iOS's own restriction on private selectors is App Review's, which this app never goes
+ through: HUI ships as an unsigned IPA that SideStore signs with the operator's own Apple ID.
+
+ A share that leaves neither way is shown here with a Copy action instead of failing silently. There is no Capacitor and
+ no storyboard: `loadView` builds every view it has.
  */
 final class ShareViewController: UIViewController {
     private let titleLabel = UILabel()
@@ -20,6 +28,14 @@ final class ShareViewController: UIViewController {
     /// The sheet is done: the operator tapped Done, or the request completed. A provider callback that lands afterwards
     /// must not open HUI from under them, so every callback and every open checks this first.
     private var finished = false
+
+    /// HUI has been asked to open. Set before the first attempt, so a provider callback that answers twice, or lands
+    /// before `finished` is set, cannot ask iOS to open HUI a second time.
+    private var requested = false
+
+    /// A `public.url` candidate was a file address, which New Session cannot open. `public.file-url` conforms to
+    /// `public.url`, so a file-only share would otherwise be refused as an empty one.
+    private var rejectedFile = false
 
     override func loadView() {
         let root = UIView()
@@ -88,19 +104,24 @@ final class ShareViewController: UIViewController {
     /// address (`webAddress`), and the plain-text candidate beside it is what a file URL falls back to.
     private func load(_ candidates: [(String, NSItemProvider)], at index: Int) {
         guard index < candidates.count else {
-            fail("Nothing to send to HUI.")
+            fail(rejectedFile ? "HUI can't open this file. Share the post's link instead." : "Nothing to send to HUI.")
             return
         }
         let (type, provider) = candidates[index]
         provider.loadItem(forTypeIdentifier: type, options: nil) { [weak self] item, _ in
-            let value = ShareViewController.text(from: item)
+            let shared = ShareViewController.text(from: item)
+            let value = shared
                 .flatMap { type == "public.url" ? ShareViewController.webAddress(from: $0) : $0 }
                 .flatMap(ShareViewController.payload(from:))
+            // `public.file-url` conforms to `public.url`, so a file arrives as one: remembering that is what lets the
+            // exhausted walk say the share held a file instead of calling it empty.
+            let isFile = type == "public.url" && (shared.map { URL(string: $0)?.isFileURL == true } ?? false)
             DispatchQueue.main.async {
                 guard let self, !self.finished else { return }
                 if let value {
                     self.send(value)
                 } else {
+                    if isFile { self.rejectedFile = true }
                     self.load(candidates, at: index + 1)
                 }
             }
@@ -149,9 +170,12 @@ final class ShareViewController: UIViewController {
         open(url)
     }
 
-    /// iOS refuses an extension's `open` when it will not launch the app from here, and answers `false` rather than
-    /// throwing; the operator still gets the words, with Copy. An answer that arrives after the sheet is done is dropped.
+    /// The one handoff attempt. iOS answers `extensionContext.open` with `false` when it will not launch the app from
+    /// here, and a share extension is the extension point it is unsupported for, so that answer is the responder chain's
+    /// (`openFromResponderChain`). A second ask, and an answer that arrives after the sheet is done, are dropped.
     private func open(_ url: URL) {
+        guard !requested else { return }
+        requested = true
         guard let context = extensionContext else {
             fail("HUI couldn't be opened.")
             return
@@ -160,13 +184,42 @@ final class ShareViewController: UIViewController {
             DispatchQueue.main.async {
                 guard let self, !self.finished else { return }
                 if opened {
-                    self.finished = true
-                    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                    self.complete()
                 } else {
-                    self.fail("HUI couldn't be opened.")
+                    self.openFromResponderChain(url)
                 }
             }
         }
+    }
+
+    /**
+     The fallback `open` needs: the first responder that answers `openURL:` is the one that can hand the link to the
+     system, which is how a share extension starts its app. `responds(to:)` guards the selector, so it is only performed
+     on a responder that really implements it and nothing is sent blindly; this runs on the main queue, because the
+     provider callback that got here already dispatched there. `UIApplication` is never named: the chain is walked as
+     responders, and the extension target stays API-extension-only.
+
+     The call's `BOOL` answer is deliberately not read. `perform(_:with:)` returns `Unmanaged<AnyObject>`, and a `BOOL` is
+     not a boxed object, so taking its value would be undefined; a responder that answers is the one handoff attempt.
+     */
+    private func openFromResponderChain(_ url: URL) {
+        let selector = NSSelectorFromString("openURL:")
+        var responder: UIResponder? = self
+        while let candidate = responder {
+            responder = candidate.next
+            guard candidate.responds(to: selector) else { continue }
+            _ = candidate.perform(selector, with: url)
+            complete()
+            return
+        }
+        fail("HUI couldn't be opened.")
+    }
+
+    /// The handoff was made: the request is answered, which dismisses the sheet.
+    private func complete() {
+        finished = true
+        spinner.stopAnimating()
+        extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
     }
 
     private func fail(_ message: String) {

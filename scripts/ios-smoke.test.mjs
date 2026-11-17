@@ -123,3 +123,28 @@ test("the simulator build targets the device it captures on, so one architecture
   assert.ok(workflow.includes('-derivedDataPath "$HOME/iosbuild"'));
   assert.ok(workflow.indexOf("actions/cache@") < workflow.indexOf("-derivedDataPath"));
 });
+
+test("iOS opens hui://share on a stopped app and OCRs the share's own sentence", () => {
+  const gateway = '"$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway';
+  const terminate = 'xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true';
+  const openURL = "xcrun simctl openurl \"$HUI_IOS_UDID\" 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'";
+  const share = '"$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" share';
+  assert.equal(workflow.split(share).length - 1, 1, "the share phase runs exactly once");
+  // The workflow stops the app twice: once between the Connect and gateway launches, once for the cold-start share below.
+  // Only the second one is this phase's, so the order is read after the gateway screen.
+  const tail = workflow.slice(workflow.indexOf(gateway));
+  assert.notEqual(tail.indexOf(terminate), -1, "the app is stopped after the gateway screen it proved");
+  assert.ok(tail.indexOf(terminate) < tail.indexOf(openURL), "a share to a HUI that is not running is the cold-start shape proved here");
+  assert.ok(tail.indexOf(openURL) < tail.indexOf(share), "the link is opened before its screen is read");
+  // The extension builds `hui://share?url=<value>`: the link has to carry the shared post, percent-encoded once.
+  const encoded = "https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F";
+  assert.ok(openURL.includes(`'hui://share?url=${encoded}'`), "the openurl carries the percent-encoded Instagram post");
+  assert.equal(decodeURIComponent(encoded), "https://www.instagram.com/reel/987654321/", "which decodes to the post, once");
+  assert.match(oracle, /"share": \["Look this post in Instagram"\]/u, "the oracle requires the share sentence's lead");
+  const selfTest = oracle.slice(oracle.indexOf("func selfTest()"), oracle.indexOf("// This owns the single whole-phase"));
+  assert.ok(selfTest.includes('rendered("Look this post in YouTube https://www.youtube.com/watch?v=1")'),
+    "the one-phrase share phase rejects another site's seed in the self-test");
+  assert.ok(selfTest.includes('!isReady(otherSiteShare, for: "share")'), "and asserts that negative");
+  assert.ok(oracle.includes('for phase in ["connect", "gateway", "share"]'), "the self-test exercises the new phase");
+  assert.ok(oracle.includes("<connect|gateway|share>"), "and the usage string names it");
+});

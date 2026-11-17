@@ -138,6 +138,11 @@ jobs:
           # The same single 90 s whole-phase infrastructure ceiling applies, not a UI render-latency SLA.
           # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
+          # The app-side half of a share: the extension's hui://share?url= reaches the app's SceneDelegate.
+          # Terminate first: a share to a HUI that is not running is the reported iOS 18 cold-start shape.
+          xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
+          xcrun simctl openurl "$HUI_IOS_UDID" 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'
+          "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" share
           ls -la "$RUNNER_TEMP/shots"
       - if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

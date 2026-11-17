@@ -194,10 +194,9 @@ the site it came from, `Look this post in X https://x.com/…` (Reddit, YouTube 
 Instagram too, and any other site by its own host), while a text with no link
 arrives as you wrote it. Nothing starts until you press **Start session**, a
 draft you had already typed in New Session stays below the shared text, and a
-share longer than 8 000 characters is cut there. On iOS a share can fail to
-reach a HUI that is not running, because the system does not let a share
-extension start it that way; the extension then offers Copy instead of losing
-the text.
+share longer than 8 000 characters is cut there. On iOS the share asks the
+system to open HUI, and when the system refuses it uses the extension's own way
+of opening the app; if neither opens HUI, Copy keeps the text.
 
 ### Android
 

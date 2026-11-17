@@ -416,13 +416,25 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   beside text would otherwise seed `file:///…`) with the plain-text candidate used instead, text beside an image prefills
   the text, and an image on its own is refused — the extension does not even offer itself for it. A provider callback
   that lands after the operator tapped Done, or after the request completed, is ignored, so it cannot open HUI from under
-  them. **The transport is best-effort:** Apple documents `NSExtensionContext.open(_:)`, how an extension asks iOS to
-  open its app, for the Today and iMessage extension points only; a share extension calling it is unsupported, and it is
-  reported to fail on iOS 18 and later cold starts. The extension then shows the share with a Copy action instead of
-  losing it, and an App Group the extension writes into — read by the app on its next start — is the known upgrade path,
-  touching the two native targets and their entitlement, not the web intake or this contract. **What is proven:** the
-  parser's JVM tests, the web intake's tests, and the appex's embedding checked by `ios.yml` and `release.yml`. **Not
-  proven:** no device's share sheet, no emulator run and no Xcode build were available in this change.
+  them. **The transport is two steps.** Apple documents `NSExtensionContext.open(_:)`, how an extension asks iOS to
+  open its app, for the Today and iMessage extension points only: a share extension calling it is unsupported, and it is
+  reported to answer `false` on iOS 18 and later, a cold start especially. The extension therefore calls
+  `extensionContext.open` first and, when that answers `false`, hands the same link to the first responder in its own
+  chain that answers `openURL:` — always behind `responds(to:)`, so the selector is only performed on a responder that
+  really implements it and `UIApplication` is never named, which keeps the appex `APPLICATION_EXTENSION_API_ONLY`. iOS's
+  restriction on private selectors is App Review's and does not reach this app: HUI ships as an unsigned IPA that
+  SideStore signs with the operator's own Apple ID. One `requested` flag is set before the first attempt, so a provider
+  callback that answers twice, or lands late, cannot ask iOS to open HUI twice, and the `finished` guard still drops
+  every callback after Done or completion. **An App Group is rejected:** SideStore's free-account signing cannot use App
+  Groups, so adding the entitlement would break installs. A share that leaves neither way shows the share with a Copy
+  action instead of losing it. **A share that held only
+  a file says so:** when every candidate was a file address the sheet reads "HUI can't open this file. Share the post's
+  link instead." — and the activation rule stays as it is, because a predicate narrow enough to exclude a file would
+  also hide a share that carries a link and a file together, and there is no device here to try one. **What is proven:**
+  the parser's JVM tests, the web intake's tests, the appex's embedding checked by `ios.yml` and `release.yml`, and
+  `ios.yml` terminating the app, opening `hui://share?url=…` and OCRing the seeded New Session, which proves the app half
+  on a simulator. **Not proven:** the extension's own tap, its `NSExtensionContext.open` answer and the responder-chain
+  handshake, which all need an iPhone; no device's share sheet and no local Xcode build were available in this change.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
 - **The pickers need their usage strings.** The composer's "Take photo" is an image input with `capture`, and WebKit's
