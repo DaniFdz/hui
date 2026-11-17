@@ -4,14 +4,19 @@
  * next step; the scan itself costs no turn in a bot's chat and cannot send a generic "continue". A session a Chief of
  * Staff started stops for its chief only: `supervise` gives that chief the watch (`chiefToWatch`) and a scan runs at
  * once, saying the session is autonomous, so the chief reads its blocker or its report. The operator who switches it
- * back to Supervised takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and that
- * scan never report one change twice. Also removes the Heartbeat routines a previous build provisioned in bot chats.
+ * back to Supervised takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and the
+ * run-end scan never report one change twice; a report also goes out only when the facts it depends on change (status,
+ * stage, goal status and objective, the Autonomous flag and the last reply). Those fingerprints live in memory, so a
+ * restart reports a live watched session once more. Also removes the Heartbeat routines a previous build provisioned in
+ * bot chats.
  */
+import { createHash } from "node:crypto";
 import type { AutomationService, AutomationTask } from "./automation.ts";
-import type { SessionGoalStatus, SessionStatus } from "./api/sessions.ts";
+import type { SessionGoalStatus, SessionStage, SessionStatus } from "./api/sessions.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
 import { chiefToWatch } from "./bots/chief-title.ts";
+import { DEFAULT_SESSION_STAGE } from "./sessions/session-stages.ts";
 
 export const HEARTBEAT_INTERVAL_MS = 15 * 60_000;
 
@@ -36,7 +41,6 @@ export type HeartbeatDeps = {
   watch(watcherId: string, id: string, on: boolean): Promise<void>;
   /** How many sessions one session may watch. */
   watchLimit: number;
-  now?(): number;
 };
 
 export type HeartbeatOutcome = { notified: string[] };
@@ -57,6 +61,25 @@ export function looksLikeDecision(text: string | undefined): boolean {
 const asks = (text: string | undefined) => /\?\s*$/u.test(lastParagraph(text));
 
 type HeartbeatState = "decision" | "waiting" | "error";
+
+/** The facts a report states, and nothing else: a title, a progress line or a goal's note changes no report. */
+type ReportFacts = {
+  status: SessionStatus;
+  stage: SessionStage;
+  goal: { status: SessionGoalStatus; objective: string } | null;
+  autonomous: boolean;
+  last: string;
+};
+
+/** One watcher and the target it was told about: the key `reported` remembers the report by. */
+const watchedPair = (watcherId: string, id: string) => `${watcherId}\u0000${id}`;
+
+/** A report's facts, hashed: the version keeps a later change of these facts from colliding with a report already
+ * sent. */
+function fingerprint(facts: ReportFacts): string {
+  const { status, stage, goal, autonomous, last } = facts;
+  return createHash("sha256").update(JSON.stringify({ v: 1, status, stage, goal, autonomous, last })).digest("hex");
+}
 
 const WORKING = new Set(["queued", "starting", "running"]);
 
@@ -107,11 +130,12 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
 }
 
 /** A watched session is due when it is live, not archived, its goal is not paused/complete (an Autonomous session's
- * goal never holds it back), and its status is idle, waiting or error. Each state change is sent once; an idle session
- * is a request for the chief's judgment, never a command to continue, and one whose watcher or subagents still work is
- * not due until they wake it, unless it asks something. */
+ * goal never holds it back), and its status is idle, waiting or error. Each change of a report's facts is sent once,
+ * per watcher; an idle session is a request for the chief's judgment, never a command to continue, and one whose
+ * watcher or subagents still work is not due until they wake it, unless it asks something. */
 export function createHeartbeat(deps: HeartbeatDeps) {
-  const notifiedAt = new Map<string, number>();
+  // What each watcher was last told, in memory only: a restart reports a live watched session once more.
+  const reported = new Map<string, string>();
   let previousScan: Promise<unknown> = Promise.resolve();
 
   function scan(): Promise<HeartbeatOutcome> {
@@ -128,12 +152,18 @@ export function createHeartbeat(deps: HeartbeatDeps) {
       if (watcher.archived) continue;
       for (const id of watcher.watches ?? []) watchedBy.set(id, [...(watchedBy.get(id) ?? []), watcher.id]);
     }
+    // A watch a scan saw removed and then put back reports once again; one whose target is archived or missing stays
+    // remembered.
+    const watchedPairs = new Set<string>();
+    for (const [id, watcherIds] of watchedBy) {
+      for (const watcherId of watcherIds) watchedPairs.add(watchedPair(watcherId, id));
+    }
+    for (const key of reported.keys()) if (!watchedPairs.has(key)) reported.delete(key);
     const notified: string[] = [];
     for (const [id, watcherIds] of watchedBy) {
       const target = byId.get(id);
       if (!target || target.archived || target.bot || !deps.isLive(id)) continue;
       const status = deps.status(id);
-      const at = deps.now?.() ?? Date.now();
       if (status !== "idle" && status !== "waiting" && status !== "error") continue;
       const autonomous = target.autonomous === true;
       if (target.stage !== "done" && !autonomous) {
@@ -144,8 +174,6 @@ export function createHeartbeat(deps: HeartbeatDeps) {
       if (status === "idle" && target.stage !== "done" && !asks(last) && (
         deps.watchers(id).some((watcher) => watcher.state === "running") || deps.subagents(id).some((child) => WORKING.has(child.status))
       )) continue;
-      const previous = notifiedAt.get(id);
-      if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
       const message = target.stage === "done"
         ? idleMessage(target.title, id, last, true, autonomous)
         : status === "waiting" || status === "error"
@@ -153,19 +181,26 @@ export function createHeartbeat(deps: HeartbeatDeps) {
           : looksLikeDecision(last)
             ? blockedMessage(target.title, id, "decision", last, autonomous)
             : idleMessage(target.title, id, last, false, autonomous);
+      const facts = fingerprint({
+        status,
+        stage: target.stage ?? DEFAULT_SESSION_STAGE,
+        goal: target.goal ? { status: target.goal.status, objective: target.goal.objective } : null,
+        autonomous,
+        last: last?.trim() ?? "",
+      });
       let sent = false;
       for (const watcherId of watcherIds) {
+        const key = watchedPair(watcherId, id);
+        if (reported.get(key) === facts) continue;
         try {
           await deps.notify(watcherId, message);
+          reported.set(key, facts);
           sent = true;
         } catch {
-          // A busy watcher is retried on the next scan.
+          // A busy watcher stays unsent here and is retried on the next scan.
         }
       }
-      if (sent) {
-        notifiedAt.set(id, at);
-        notified.push(id);
-      }
+      if (sent) notified.push(id);
     }
     return { notified };
   }
