@@ -1770,12 +1770,13 @@ HUI never edits or deletes PI's transcript. Browser and gateway share the same
 limits: eight attachments, 12 MB per item, 16 MB decoded total, and safe bounded
 display names (including ordinary spaces and Unicode, but never paths or control
 characters). A refusal in the composer names the limit it broke and points a size
-refusal at the Files pane, which takes up to 2 GB per file, while a ninth
-attachment is refused with the count and the advice to send the rest in another
-message. PI's RPC image shape has no filename field, so HUI sends a validated,
-versioned attachment manifest inside the user message. PI remains the durable
-writer; on replay HUI removes that transport marker and restores the original
-image/file display names and order.
+refusal at the Files pane, which takes up to 2 GB per file, while a conversation
+on a remote worker, whose Files pane is not available, gets that limit sentence
+alone; a ninth attachment is refused with the count and the advice to send the
+rest in another message. PI's RPC image shape has no filename field, so HUI sends
+a validated, versioned attachment manifest inside the user message. PI remains
+the durable writer; on replay HUI removes that transport marker and restores the
+original image/file display names and order.
 
 Image attachments on transcript messages render as bounded thumbnails (about
 240 px) that open in the media viewer, whose Open in new tab shows them full

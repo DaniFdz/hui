@@ -472,6 +472,33 @@ test("an oversize pick stays out of the composer, is never read and says where t
   assert.deepEqual(fake.prompts, [], "nothing is posted");
 });
 
+test("a remote conversation is told the limit alone, since its Files pane would refuse it", async () => {
+  // The harness reads the session the composer shows, so a worker on it is the whole "remote" this test needs.
+  const selected = { current: { id: "s1", status: "idle", worker: { id: "w1", name: "build box" } } as SessionView };
+  const { controller, notes } = composer(selected);
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB."], "the limit alone: that conversation has no Files pane");
+  assert.equal(controller.attachments.length, 0, "the refused file never enters the composer");
+
+  // The same conversation's send refuses a restored set with the limit alone too.
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.attachments = restored;
+  controller.send("send these", restored);
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes.at(-1), "error:Attachments must be 16 MB or less in total.");
+  assert.ok(!notes.some((note) => note.includes("Files pane")), "no refusal points at a pane that is not there");
+
+  // A new session is on this gateway's disk, so its composer keeps the way out.
+  const fresh = composer({ current: undefined });
+  fresh.controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  await settle();
+  assert.deepEqual(fresh.notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+});
+
 test("a pick while a send or a session start is in flight says so instead of vanishing", async () => {
   const sending = composer({ current: { id: "s1", status: "idle" } as SessionView });
   sending.controller.sending = true;

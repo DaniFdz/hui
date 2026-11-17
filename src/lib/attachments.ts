@@ -5,6 +5,8 @@
  * `images` field want. Images are also kept as data URLs so the composer can
  * show a thumbnail without a second read. Every refusal is worded here once: the
  * fact, then what the operator can do instead, so a pick and a send say the same.
+ * A conversation on a remote worker has no way out to name, so it is told the
+ * fact alone rather than sent to a pane that answers 409.
  */
 import type { Attachment } from "../api/sessions.ts";
 
@@ -42,13 +44,25 @@ export function isImageType(mimeType: string): boolean {
   return IMAGE_TYPES.has(mimeType);
 }
 
-/** The way out of a size refusal: the Files pane takes the file the chat will not carry. */
-function filesPaneInstead(): string {
-  return `Larger files can go in the Files pane, which takes up to ${MAX_FILES_PANE_BYTES / (1024 * 1024 * 1024)} GB each.`;
+/** What a refusal may end with. The Files pane is the way out of a size refusal, but a conversation on a remote
+ * worker has none: its files live on that machine and the pane answers 409, so naming it there would point at a way
+ * out that does not exist. Defaults to offering it, which is every conversation the gateway's disk serves. */
+export type AttachmentRefusalOptions = { filesPane?: boolean };
+
+/** The way out of a size refusal, or nothing when this conversation has no Files pane to offer. */
+function filesPaneInstead(options: AttachmentRefusalOptions): readonly string[] {
+  return options.filesPane === false
+    ? []
+    : [`Larger files can go in the Files pane, which takes up to ${MAX_FILES_PANE_BYTES / (1024 * 1024 * 1024)} GB each.`];
 }
 
-export function attachmentTooLargeMessage(name: string): string {
-  return `${name} is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB. ${filesPaneInstead()}`;
+/** The fact, then the way out when there is one: one space between sentences and none after the last. */
+function sentences(...parts: readonly string[]): string {
+  return parts.join(" ");
+}
+
+export function attachmentTooLargeMessage(name: string, options: AttachmentRefusalOptions = {}): string {
+  return sentences(`${name} is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB.`, ...filesPaneInstead(options));
 }
 
 /** Too many files is not a size problem, so the Files pane is no answer: the rest go in another message. */
@@ -56,8 +70,8 @@ export function attachmentCountMessage(): string {
   return `At most ${MAX_ATTACHMENT_COUNT} attachments may be sent at once. Send the rest in another message.`;
 }
 
-export function attachmentTotalMessage(): string {
-  return `Attachments must be ${MAX_PROMPT_ATTACHMENT_BYTES / (1024 * 1024)} MB or less in total. ${filesPaneInstead()}`;
+export function attachmentTotalMessage(options: AttachmentRefusalOptions = {}): string {
+  return sentences(`Attachments must be ${MAX_PROMPT_ATTACHMENT_BYTES / (1024 * 1024)} MB or less in total.`, ...filesPaneInstead(options));
 }
 
 function toBase64(buffer: ArrayBuffer): string {
@@ -72,12 +86,12 @@ function toBase64(buffer: ArrayBuffer): string {
 }
 
 /** Throws a message worth showing when a file is too big or unreadable. */
-export async function readAttachment(file: File): Promise<Attachment> {
+export async function readAttachment(file: File, options: AttachmentRefusalOptions = {}): Promise<Attachment> {
   if (!isSafeAttachmentName(file.name)) {
     throw new Error(UNSAFE_NAME_MESSAGE);
   }
   if (file.size > MAX_ATTACHMENT_BYTES) {
-    throw new Error(attachmentTooLargeMessage(file.name));
+    throw new Error(attachmentTooLargeMessage(file.name, options));
   }
   const mimeType = file.type || "application/octet-stream";
   return {
@@ -95,19 +109,19 @@ export function attachmentBytes(attachment: Attachment): number {
 
 /** The refusal to show for a set of attachments, if any. Not thrown, because a send refuses into a note rather than
  * through a catch, and both read the one wording above. */
-export function attachmentRefusal(attachments: readonly Attachment[]): string | undefined {
+export function attachmentRefusal(attachments: readonly Attachment[], options: AttachmentRefusalOptions = {}): string | undefined {
   if (attachments.length > MAX_ATTACHMENT_COUNT) return attachmentCountMessage();
   for (const item of attachments) {
     if (!isSafeAttachmentName(item.name)) return UNSAFE_NAME_MESSAGE;
-    if (attachmentBytes(item) > MAX_ATTACHMENT_BYTES) return attachmentTooLargeMessage(item.name);
+    if (attachmentBytes(item) > MAX_ATTACHMENT_BYTES) return attachmentTooLargeMessage(item.name, options);
   }
   const total = attachments.reduce((sum, item) => sum + attachmentBytes(item), 0);
-  return total > MAX_PROMPT_ATTACHMENT_BYTES ? attachmentTotalMessage() : undefined;
+  return total > MAX_PROMPT_ATTACHMENT_BYTES ? attachmentTotalMessage(options) : undefined;
 }
 
-export function validateAttachmentTotal(attachments: readonly Attachment[]): void {
-  const refusal = attachmentRefusal(attachments);
-  if (refusal) throw new Error(refusal);
+export function validateAttachmentTotal(attachments: readonly Attachment[], options: AttachmentRefusalOptions = {}): void {
+  const refused = attachmentRefusal(attachments, options);
+  if (refused) throw new Error(refused);
 }
 
 /** A data URL for an attachment already in memory, for thumbnails. */

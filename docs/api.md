@@ -3916,11 +3916,12 @@ PNG, JPEG, GIF or WebP. Display names may contain Unicode and spaces, but must
 be 1–128 characters, cannot be `.` or `..`, and cannot contain `/`, `\\` or
 control characters. The browser enforces the same count, byte, type and name
 limits before upload, and its refusal names the limit it broke: a size refusal
-points at the Files pane, which takes up to 2 GB per file, while a ninth
-attachment says to send the rest in another message. File uploads receive
-immutable UUID-backed paths, so a later upload with the same display name cannot
-replace bytes PI is still reading. If prompt or queue acceptance fails, only
-files created for that rejected request are removed.
+points at the Files pane, which takes up to 2 GB per file, except in a
+conversation on a remote worker, which has no Files pane and gets the same
+sentence alone, while a ninth attachment says to send the rest in another
+message. File uploads receive immutable UUID-backed paths, so a later upload with
+the same display name cannot replace bytes PI is still reading. If prompt or
+queue acceptance fails, only files created for that rejected request are removed.
 
 Because PI's image content does not carry filenames, HUI appends a versioned,
 base64url attachment manifest to the message sent through PI RPC. PI persists

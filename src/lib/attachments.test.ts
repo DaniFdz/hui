@@ -26,6 +26,33 @@ test("a size refusal keeps its first sentence and points at the Files pane", () 
   assert.equal(attachmentCountMessage(), "At most 8 attachments may be sent at once. Send the rest in another message.");
 });
 
+test("a conversation with no Files pane is told the limit alone", async () => {
+  const remote = { filesPane: false } as const;
+  assert.equal(attachmentTooLargeMessage("clip.mov", remote), "clip.mov is larger than 12 MB.");
+  assert.equal(attachmentTotalMessage(remote), "Attachments must be 16 MB or less in total.");
+
+  const overTwelveMegabytes = attachment("A".repeat(Math.ceil(((12 * 1024 * 1024 + 1) * 4) / 3 / 4) * 4));
+  const eightMegabytes = attachment("A".repeat(Math.ceil((8 * 1024 * 1024 * 4) / 3 / 4) * 4));
+  assert.equal(attachmentRefusal([overTwelveMegabytes], remote), "a is larger than 12 MB.");
+  assert.equal(attachmentRefusal([eightMegabytes, eightMegabytes, attachment("YQ==")], remote), "Attachments must be 16 MB or less in total.");
+
+  // A pick refuses before its bytes are read, and says what the send would.
+  const oversize = { name: "clip.mov", size: MAX_ATTACHMENT_BYTES + 1 } as unknown as globalThis.File;
+  await assert.rejects(readAttachment(oversize, remote), { message: "clip.mov is larger than 12 MB." });
+
+  for (const note of [
+    attachmentTooLargeMessage("clip.mov", remote),
+    attachmentTotalMessage(remote),
+    attachmentRefusal([overTwelveMegabytes], remote),
+    attachmentRefusal([eightMegabytes, eightMegabytes, attachment("YQ==")], remote),
+  ]) assert.ok(!note?.includes("Files pane"), `no way out is named where there is none: ${note}`);
+
+  // The default is every conversation the gateway's disk serves, which still gets the way out.
+  assert.equal(attachmentTooLargeMessage("clip.mov", {}), attachmentTooLargeMessage("clip.mov"));
+  assert.equal(attachmentTotalMessage({}), attachmentTotalMessage());
+  assert.ok(attachmentRefusal([overTwelveMegabytes])?.endsWith("Larger files can go in the Files pane, which takes up to 2 GB each."));
+});
+
 test("rejects an aggregate larger than the safe request budget", () => {
   const eightMegabytes = attachment("A".repeat(Math.ceil((8 * 1024 * 1024 * 4) / 3 / 4) * 4));
   assert.throws(

@@ -13,7 +13,7 @@ import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion,
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
-import { attachmentPreview, attachmentRefusal, readAttachment, validateAttachmentTotal } from "../lib/attachments.ts";
+import { attachmentPreview, attachmentRefusal, readAttachment, validateAttachmentTotal, type AttachmentRefusalOptions } from "../lib/attachments.ts";
 import type { BotView } from "../lib/bots/bots.ts";
 import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft, type ComposerDraft } from "../lib/composer/drafts.ts";
 import { SendRequests } from "../lib/composer/send-requests.ts";
@@ -431,6 +431,13 @@ export class ComposerController {
     }
   };
 
+  /** What a refusal may offer: the Files pane takes a file the chat will not carry, but a conversation on a remote
+   * worker has none, because its files live on that machine and the pane answers 409. Naming it there would point at a
+   * way out that does not exist, so that conversation is told the limit alone. */
+  #refusalOptions(): AttachmentRefusalOptions {
+    return { filesPane: !this.#conversation.selected?.worker };
+  }
+
   #addAttachments = (files: readonly File[]) => {
     const key = this.draftKey;
     if (this.sending || this.#deps.launching()) {
@@ -443,17 +450,20 @@ export class ComposerController {
       );
       return;
     }
-    void Promise.all(files.map((file) => readAttachment(file)))
+    // The refusal is about the pick, so its way out is settled with the conversation the operator picked in: a switch
+    // that lands while the file is read must not change what this pick is told.
+    const refusalOptions = this.#refusalOptions();
+    void Promise.all(files.map((file) => readAttachment(file, refusalOptions)))
       .then(async (added) => {
         if (key !== this.draftKey) {
           const stored = await readComposerDraft(key);
           const attachments = [...stored.attachments, ...added];
-          validateAttachmentTotal(attachments);
+          validateAttachmentTotal(attachments, refusalOptions);
           await this.persistDraft(key, stored.text, attachments);
           return;
         }
         const next = [...this.attachments, ...added];
-        validateAttachmentTotal(next);
+        validateAttachmentTotal(next, refusalOptions);
         this.draftEdit += 1;
         this.attachments = next;
         this.#host.requestUpdate();
@@ -578,7 +588,7 @@ export class ComposerController {
     }
     // The picker refuses before a file enters the composer, so only state restored elsewhere is refused here (a draft
     // stored before the limits, or a launch prompt): one action never shows the same refusal twice.
-    const refusal = attachmentRefusal(attachments);
+    const refusal = attachmentRefusal(attachments, { filesPane: !session.worker });
     if (refusal) {
       this.#deps.showNote(refusal, "error");
       if (!this.#holdsAttachments(attachments)) void this.#restoreSentDraft(session.id, text, attachments);
