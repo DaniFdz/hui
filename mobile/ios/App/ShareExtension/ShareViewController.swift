@@ -221,9 +221,10 @@ final class ShareViewController: UIViewController {
                   let method = class_getInstanceMethod(cls, selector),
                   let encoding = method_getTypeEncoding(method) else { continue }
             let types = String(cString: encoding)
-            // - (BOOL)openURL:(NSURL *): one-byte BOOL return, object receiver, selector and object argument.
+            // - (BOOL)openURL:(NSURL *): one-byte BOOL return, object receiver, selector and object argument, and the
+            // encoding must end at that one object argument, so a two-argument `openURL:` cannot be called with this ABI.
             guard types.hasPrefix("B") || types.hasPrefix("c"),
-                  types.contains("@0:8@16") else { continue }
+                  types.hasSuffix("@0:8@16") else { continue }
             let implementation = unsafeBitCast(candidate.method(for: selector), to: OpenURL.self)
             if implementation(candidate, selector, url as NSURL) {
                 complete()

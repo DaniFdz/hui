@@ -421,7 +421,8 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   reported to answer `false` on iOS 18 and later, a cold start especially. The extension therefore calls
   `extensionContext.open` first and, when that answers `false`, hands the same link to the first responder in its own
   chain that answers `openURL:` — always behind `responds(to:)`, so the selector is only performed on a responder that
-  really implements it and `UIApplication` is never named, which keeps the appex `APPLICATION_EXTENSION_API_ONLY`. The
+  really implements it and `UIApplication` is never named, which keeps the appex compilable with
+  `APPLICATION_EXTENSION_API_ONLY = YES`. The
   method's `BOOL` answer is read through its signature (three arguments, a one-byte `BOOL` return), not discarded: a
   `true` answer completes the sheet, and a `false` answer leaves the share on screen with its Copy action. `openURL:` is
   public but marked unavailable in app extensions, not a private selector, and the chain never names it: App Review's
