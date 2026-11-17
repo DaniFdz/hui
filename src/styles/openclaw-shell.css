@@ -1795,4 +1795,9 @@
   /* Only the shell's own notices start at the page's top edge: the chat's sleep notice has
      `.chat-main__conversation-column` as its parent, so a direct child of `.hui-application` is never that one. */
   .hui-application > .hui-update-notice { padding-top: var(--safe-area-top, 0px); }
+  /* That notice already consumed the inset above the shell, so the shell below must not pad it a second time. */
+  .hui-application:has(> .hui-update-notice) > .hui-workspace > .app-shell,
+  .hui-application:has(> .hui-update-notice) > .hui-workspace > .settings-shell {
+    padding-top: 0;
+  }
 }

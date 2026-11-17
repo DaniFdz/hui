@@ -17,19 +17,15 @@ test("the lid-closed notice is drawn in the open conversation under its header, 
   const start = screen.getByRole("button", "Start session");
   const box = async (target: Locator) => (await target.boundingBox())!;
 
-  // The power read is a page load's own request, so its route is in place before the load that asks, and this load's
-  // own answer is what the checks below read: Home draws no notice even though the state says the lid is held awake.
+  // This host is not the Mac the notice is about, so every read of the lid switch answers the Mac held awake. The answer
+  // stands before the first load, so that load's own read, every poll three seconds later and every reload take it: a
+  // stub registered after a load leaves the poll that load starts to the real gateway. The state it serves is also the
+  // point of the check below, which reads no notice on Home even though the lid switch is on and held awake.
   await hui.clearOffline();
+  await hui.answerAll("GET", /\/__hui\/power$/u, status(true, "active"));
   await hui.open("/");
   await expect(start).toBeVisible();
-  const loaded = await hui.intercept("GET", /\/__hui\/power$/u);
-  await hui.reload();
-  await loaded.arrived();
-  await loaded.answer(status(true, "active"));
-  await expect(start).toBeVisible();
   await expect(notice).toHaveCount(0);
-  // Every poll and later load answers the same state: a one-shot answer would be undone by the read three seconds later.
-  await hui.answerAll("GET", /\/__hui\/power$/u, status(true, "active"));
 
   // Settings reads it too — the switch reflects the gateway's lid state — and draws no notice either.
   await hui.open("/settings/connection");
@@ -70,9 +66,10 @@ test("the lid-closed notice is drawn in the open conversation under its header, 
   const sent = switched.request();
   expect({ method: sent.method, path: new URL(sent.url).pathname }).toEqual({ method: "PUT", path: "/__hui/power" });
   expect(JSON.parse(sent.body)).toEqual({ lidAwake: false });
-  // Later polls read what the gateway holds once the switch is off, so they cannot bring the notice back.
-  await hui.answerAll("GET", /\/__hui\/power$/u, status(false, "off"));
+  // Answering a request removes every route on its pattern, this test's standing answer included, so the state the
+  // gateway holds once the switch is off goes back in after it and later polls cannot bring the notice back.
   await switched.answer(status(false, "off"));
+  await hui.answerAll("GET", /\/__hui\/power$/u, status(false, "off"));
   await expect(notice).toBeHidden();
   await expect(message).toBeFocused();
 });

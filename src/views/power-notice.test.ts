@@ -1,12 +1,12 @@
 /**
- * The "This Mac won't sleep with the lid closed" notice: it draws only while the lid switch is on and the Mac is
- * actually held awake, and it offers turning that switch off and dismissing it. Where the chat places it is
- * `home.test.ts`'s.
+ * The "This Mac won't sleep with the lid closed" notice's two buttons and what it shows. Whether the lid switch is
+ * actually holding the Mac awake is `settings-gateway.test.ts`'s predicate, asserted beside the Power section it drives;
+ * where the chat places the notice is `home.test.ts`'s.
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { PowerStatus } from "../api/schema/power.ts";
-import { lidAwakeNoticeShown, renderPowerNotice } from "./power-notice.ts";
+import { renderPowerNotice } from "./power-notice.ts";
 
 /** A Lit template's markup, with bound values written out. */
 function markup(value: unknown): string {
@@ -46,12 +46,4 @@ test("the sleep notice stays away while the lid switch is off or pending, before
   assert.equal(render({ power: null }), "", "a gateway that is not macOS reports no power state");
   assert.equal(render({ power: undefined }), "", "nothing is known before the gateway answers");
   assert.equal(render({ dismissed: true }), "", "the operator put it away");
-});
-
-test("the sleep notice's predicate is true only while the lid switch is on and the Mac is actually held awake", () => {
-  assert.equal(lidAwakeNoticeShown(held("active", true)), true);
-  assert.equal(lidAwakeNoticeShown(held("pending", true)), false);
-  assert.equal(lidAwakeNoticeShown(held("active", false)), false);
-  assert.equal(lidAwakeNoticeShown(null), false);
-  assert.equal(lidAwakeNoticeShown(undefined), false);
 });

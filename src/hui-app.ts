@@ -1524,10 +1524,11 @@ export class HuiApp extends HuiElement {
   private focusActiveComposer() {
     void this.updateComplete.then(() => {
       const app = this.activePaneApp();
-      // A chat this element renders itself, a bot's or the only one, has no pane app to reach into.
+      // A bot's chat, or the only chat, is rendered by this element itself. A split layout is not: its composers belong
+      // to pane apps, and this element's light DOM holds every pane's copy, so the fallback would focus the first one.
       const target = app?.querySelector<HTMLElement>("textarea")
         ?? app?.querySelector<HTMLElement>(".chat-pane__header")
-        ?? this.renderRoot.querySelector<HTMLElement>(".agent-chat__composer-combobox > textarea");
+        ?? (this.work.layout ? undefined : this.renderRoot.querySelector<HTMLElement>(".agent-chat__composer-combobox > textarea"));
       target?.focus({ preventScroll: true });
     });
   }

@@ -31,6 +31,10 @@ export type SessionPaneProps = {
   onOpenBot: (id: string) => void;
 };
 
+/** The notice this pane hands its chat: the active pane's current session only. A pane renders one copy per session it
+ * retains, so every cached session of the active pane would otherwise draw the same notice again. */
+const panePowerNotice = (props: SessionPaneProps) => props.state.active ? props.powerNotice : undefined;
+
 export const renderSessionPane = (props: SessionPaneProps) => html`
     <hui-app
       class="chat-split-view__pane hui-session-pane-app"
@@ -43,7 +47,7 @@ export const renderSessionPane = (props: SessionPaneProps) => html`
       .paneNarrow=${props.state.narrow}
       .paneMobileNav=${props.mobileNav}
       .panePanelPicker=${props.panelPicker}
-      .panePowerNotice=${props.powerNotice}
+      .panePowerNotice=${panePowerNotice(props)}
       .onPaneClose=${props.onClose}
       .onPaneBrowser=${props.onBrowser}
       .onPaneNavigate=${props.onNavigate}
