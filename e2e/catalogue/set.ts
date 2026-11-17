@@ -242,12 +242,12 @@ const cases: UseCase[] = [
   {
     id: "SET-021",
     title: "Turn off or dismiss the lid-closed notice",
-    behaviour: "While the Mac is held awake with the lid closed, a notice at the top of HUI, in Settings and on Home, says “This Mac won't sleep with the lid closed.” with “Turn off” and a dismiss button. “Turn off” restores normal sleep and removes the notice; dismissing hides it until it turns on again or the page reloads.",
+    behaviour: "While the Mac is held awake with the lid closed, an open session chat draws a notice in flow under its chat header, above the transcript, saying “This Mac won't sleep with the lid closed.” with “Turn off” and a dismiss button; Home, Settings and the launcher draw none. “Turn off” restores normal sleep and removes the notice; dismissing hides it, gives the composer focus, and lasts until the lid turns off and on again or the page reloads.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipower"],
     surfaces: ["route:PUT /__hui/power", "route:GET /__hui/power"],
     journeys: ["power-settings"],
-    web: "backlog",
-    phone: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SET-022",

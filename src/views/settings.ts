@@ -1491,7 +1491,8 @@ export function setSettingsDrawer(
   sidebar.dataset.open = String(reconciledOpen);
   const main = sidebar.parentElement?.querySelector<HTMLElement>(".settings-main");
   main?.toggleAttribute("inert", reconciledOpen);
-  sidebar.closest?.(".hui-application")?.querySelector(".hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
+  // Direct children only: the chat draws its own sleep notice with this class, and the drawer must not inert that one.
+  sidebar.closest?.(".hui-application")?.querySelector(":scope > .hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
   const trigger = sidebar.querySelector<HTMLButtonElement>(".settings-mobile-topbar");
   trigger?.setAttribute("aria-expanded", String(reconciledOpen));
   trigger?.setAttribute("aria-label", reconciledOpen ? "Close settings navigation" : "Open settings navigation");

@@ -102,9 +102,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   it on asks for a password; turning it off, stopping the gateway or a gateway
   crash restores normal sleep. After a reboot left it on, it starts on with a
   note until turned off, which asks to restore sleep. While the Mac is held awake
-  with the lid closed, a top notice says so and offers **Turn off**; dismissing
-  it lasts until it turns on again or the page reloads. Each switch shows what
-  the gateway actually holds (Off, Pending, Active, Failed with its reason).
+  with the lid closed, the open conversation draws a notice below its chat header
+  saying so, with **Turn off** and a dismissal; the shell, header and sidebar
+  never move and only the transcript area shrinks while it is up, and Home,
+  Settings and the launcher draw no notice. Dismissing it gives the composer
+  focus and lasts until the lid switch turns off and on again or the page
+  reloads. Each switch shows what the gateway actually holds (Off, Pending,
+  Active, Failed with its reason).
 - Groups are flat: one label per group.
 - Groups collapse; the choice is remembered in the browser.
 - The group menu's **New session defaults** stores directory, runtime and optional

@@ -1126,8 +1126,8 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   `{ power: { keepAwake, lidAwake, lidOn } }`. `keepAwake` and `lidAwake` are
   `{ state: "off" | "pending" | "active" | "error", detail }`, what the gateway
   actually holds; `lidOn` is the lid switch. The UI polls it every three seconds
-  while visible and shows a top notice while `lidOn` is true and `lidAwake` is
-  active.
+  while visible and draws a notice in the open conversation, below its chat
+  header, while `lidOn` is true and `lidAwake` is active.
 - `PUT /__hui/power` with `{ "lidAwake": boolean }` sets the switch and returns
   the status at once; the outcome of a password prompt appears in later reads.
   JSON without a boolean `lidAwake` is 400, and off macOS it is 404.
