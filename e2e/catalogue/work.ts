@@ -528,7 +528,7 @@ const cases: UseCase[] = [
   {
     id: "WORK-054",
     title: "Upload files",
-    behaviour: "Upload files, or dropping files on a folder row, writes them into the selected file's folder (or that folder) and reports \"Uploaded … to <folder>\". A file that already exists is replaced only after \"Replace the existing file?\" lists it and Replace is chosen.",
+    behaviour: "Upload files, or dropping files on a folder row, writes them into the selected file's folder (or that folder) and reports \"Uploaded … to <folder>\". A file that already exists is replaced only after \"Replace the existing file?\" lists it and Replace is chosen. A transfer that stops making progress fails on its own deadline instead of hanging, with a status line that says how far it got and whether anything was saved: while bytes are still going out, \"“<file>” stopped uploading at 42% (7.0 MB of 16.6 MB sent). Nothing was saved and the folder is unchanged. Check the connection and try again.\" The same deadline then runs on into the answer phase, once every byte is out and no answer has come, where it cannot promise a rollback — the gateway may already have renamed the file into place — and says \"“<file>” sent all of 16.6 MB, but HUI did not answer. The upload may have finished; check the folder.\" The deadline measures progress, not total time: an upload that keeps sending is never cut off.",
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/upload"],
     journeys: ["files-view"],

@@ -2371,7 +2371,7 @@ Query `id=&n=`.
 
 ### `POST /__hui/heartbeat`
 
-200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. A session not open in this gateway is skipped, so a restart does not report the sessions on this machine again (a worker's sessions open when the worker reconnects and are reported once more); an idle session whose watchers or subagents still work is not reported until they wake it, unless its last reply ends on a question; a session waiting on a question card is reported with a line saying only the operator can answer it there; and a session a Chief of Staff started, running Autonomous, is reported as `Autonomous session "<title>"`, whatever its
+200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per report's facts: its status, stage, goal status and objective, Autonomous flag and last reply. A session not open in this gateway is skipped; the facts are remembered in memory only, so a restart reports a live watched session once more, and a worker's sessions are reported once when they open after that restart; an idle session whose watchers or subagents still work is not reported until they wake it, unless its last reply ends on a question; a session waiting on a question card is reported with a line saying only the operator can answer it there; and a session a Chief of Staff started, running Autonomous, is reported as `Autonomous session "<title>"`, whatever its
 goal's status. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep and waits behind a running turn. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
@@ -3915,10 +3915,13 @@ and the decoded total to 16 MB. Base64 must be canonical; image MIME types are
 PNG, JPEG, GIF or WebP. Display names may contain Unicode and spaces, but must
 be 1–128 characters, cannot be `.` or `..`, and cannot contain `/`, `\\` or
 control characters. The browser enforces the same count, byte, type and name
-limits before upload. File uploads receive immutable UUID-backed paths, so a
-later upload with the same display name cannot replace bytes PI is still
-reading. If prompt or queue acceptance fails, only files created for that
-rejected request are removed.
+limits before upload, and its refusal names the limit it broke: a size refusal
+points at the Files pane, which takes up to 2 GB per file, except in a
+conversation on a remote worker, which has no Files pane and gets the same
+sentence alone, while a ninth attachment says to send the rest in another
+message. File uploads receive immutable UUID-backed paths, so a later upload with
+the same display name cannot replace bytes PI is still reading. If prompt or
+queue acceptance fails, only files created for that rejected request are removed.
 
 Because PI's image content does not carry filenames, HUI appends a versioned,
 base64url attachment manifest to the message sent through PI RPC. PI persists
