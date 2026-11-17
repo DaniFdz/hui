@@ -15,7 +15,10 @@ export const CLIENT_HEADERS = { "x-hui": "1" } as const;
 
 /** Long enough for a phone to wake its Tailscale connection, short enough to report a dead one. */
 export const RESPONSE_TIMEOUT_MS = 20_000;
-const BODY_STALL_MS = 40_000;
+
+/** How long a transfer may go without moving a byte before it is failed. It bounds progress, never the total time a
+ * large body takes: every byte that arrives pushes the deadline back. */
+export const BODY_STALL_MS = 40_000;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 

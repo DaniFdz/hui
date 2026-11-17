@@ -13,9 +13,9 @@ import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion,
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
-import { attachmentPreview, readAttachment, validateAttachmentTotal } from "../lib/attachments.ts";
+import { attachmentPreview, attachmentRefusal, readAttachment, validateAttachmentTotal, type AttachmentRefusalOptions } from "../lib/attachments.ts";
 import type { BotView } from "../lib/bots/bots.ts";
-import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft } from "../lib/composer/drafts.ts";
+import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft, type ComposerDraft } from "../lib/composer/drafts.ts";
 import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
@@ -431,31 +431,47 @@ export class ComposerController {
     }
   };
 
+  /** What a refusal may offer: the Files pane takes a file the chat will not carry, but a conversation on a remote
+   * worker has none, because its files live on that machine and the pane answers 409. Naming it there would point at a
+   * way out that does not exist, so that conversation is told the limit alone. */
+  #refusalOptions(): AttachmentRefusalOptions {
+    return { filesPane: !this.#conversation.selected?.worker };
+  }
+
   #addAttachments = (files: readonly File[]) => {
     const key = this.draftKey;
     if (this.sending || this.#deps.launching()) {
+      // The pick is dropped on purpose, but dropping it silently reads as a broken picker.
+      this.#deps.showNote(
+        this.sending
+          ? "Wait for this message to be sent before adding attachments."
+          : "Wait for the session to start before adding attachments.",
+        "error",
+      );
       return;
     }
-    void Promise.all(files.map((file) => readAttachment(file)))
+    // The refusal is about the pick, so its way out is settled with the conversation the operator picked in: a switch
+    // that lands while the file is read must not change what this pick is told.
+    const refusalOptions = this.#refusalOptions();
+    void Promise.all(files.map((file) => readAttachment(file, refusalOptions)))
       .then(async (added) => {
         if (key !== this.draftKey) {
           const stored = await readComposerDraft(key);
           const attachments = [...stored.attachments, ...added];
-          validateAttachmentTotal(attachments);
+          validateAttachmentTotal(attachments, refusalOptions);
           await this.persistDraft(key, stored.text, attachments);
           return;
         }
         const next = [...this.attachments, ...added];
-        validateAttachmentTotal(next);
+        validateAttachmentTotal(next, refusalOptions);
         this.draftEdit += 1;
         this.attachments = next;
         this.#host.requestUpdate();
         await this.persistDraft();
       })
       .catch((error: unknown) => {
-        if (key !== this.draftKey) {
-          return;
-        }
+        // The operator picked the file, so a failure is reported even once the composer moved to another draft: it
+        // stays a fact about that pick either way.
         this.#deps.showNote(error instanceof Error ? error.message : "Could not read that file.", "error");
       });
   };
@@ -568,6 +584,14 @@ export class ComposerController {
     const trimmed = text.trim();
     const hasImage = attachments.some((item) => item.kind === "image");
     if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
+      return;
+    }
+    // The picker refuses before a file enters the composer, so only state restored elsewhere is refused here (a draft
+    // stored before the limits, or a launch prompt): one action never shows the same refusal twice.
+    const refusal = attachmentRefusal(attachments, { filesPane: !session.worker });
+    if (refusal) {
+      this.#deps.showNote(refusal, "error");
+      if (!this.#holdsAttachments(attachments)) void this.#restoreSentDraft(session.id, text, attachments);
       return;
     }
     const action = composerSendAction(trimmed, {
@@ -691,18 +715,13 @@ export class ComposerController {
       })
       .catch(async (error: unknown) => {
         this.#sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
-        const stillSelected = isSelectedSession(session.id, this.#conversation.selected?.id);
-        if (stillSelected && mode === "prompt") this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
+        if (isSelectedSession(session.id, this.#conversation.selected?.id) && mode === "prompt") {
+          this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
+        }
         this.#host.requestUpdate();
-        const stored = stillSelected
-          ? { text: this.draft, attachments: this.attachments }
-          : await readComposerDraft(sessionDraftKey(session.id));
-        const restored = mergeComposerDraft(stored, { text, attachments });
-        await this.persistDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
-        if (!stillSelected) return;
-        this.draftEdit += 1;
-        this.setDraft(restored.text);
-        this.attachments = restored.attachments;
+        // A failed send is a refused one, so it goes back the same way: into this session's composer while it is shown,
+        // and into that session's own draft key once the operator moved on.
+        if (!await this.#restoreSentDraft(session.id, text, attachments)) return;
         this.#conversation.streaming = streamingAfterSubmission(
           this.#conversation.streaming,
           mode,
@@ -869,20 +888,43 @@ export class ComposerController {
     });
   }
 
-  /** Puts a refused command back into the composer, merged with anything typed
-   * since. True while that session is still selected. */
+  /** Whether the composer still shows exactly these attachments: putting that draft back would duplicate them. */
+  #holdsAttachments(attachments: readonly Attachment[]): boolean {
+    return attachments.length === this.attachments.length && attachments.every((item, at) => item === this.attachments[at]);
+  }
+
+  /** Puts a refused command back into the composer, merged with anything typed since. True while that session is
+   * still selected.
+   *
+   * The composer is shown before the draft is written, and never after a wait, so a keystroke or a switch to another
+   * session landing meanwhile can never be overwritten by a merge read from older state. Moving on does not drop the
+   * refusal either: it is written to the refused session's own key, where reopening that session shows it again. */
   async #restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
-    const stillSelected = isSelectedSession(sessionId, this.#conversation.selected?.id);
-    const stored = stillSelected
-      ? { text: this.draft, attachments: this.attachments }
-      : await readComposerDraft(sessionDraftKey(sessionId));
-    const restored = mergeComposerDraft(stored, { text, attachments });
-    await this.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
-    if (!stillSelected) return false;
+    const refused = { text, attachments };
+    /** What the composer holds now, refused text ahead of anything typed after it. */
+    const live = () => mergeComposerDraft({ text: this.draft, attachments: this.attachments }, refused);
+    if (isSelectedSession(sessionId, this.#conversation.selected?.id)) {
+      await this.#restoreIntoComposer(sessionId, live());
+      return true;
+    }
+    const stored = mergeComposerDraft(await readComposerDraft(sessionDraftKey(sessionId)), refused);
+    // Reading the stored draft waits, and the operator may have come back while it did: the composer is then newer
+    // than what was read, so that is what the refusal merges into rather than the stale read.
+    if (isSelectedSession(sessionId, this.#conversation.selected?.id)) {
+      await this.#restoreIntoComposer(sessionId, live());
+      return true;
+    }
+    await this.persistDraft(sessionDraftKey(sessionId), stored.text, stored.attachments);
+    return false;
+  }
+
+  /** Shows a recovered draft at once and stores it after: a keystroke that lands meanwhile queues its own write behind
+   * this one, so the composer never waits on storage for what it displays and never loses what was typed over it. */
+  async #restoreIntoComposer(sessionId: string, restored: ComposerDraft): Promise<void> {
     this.draftEdit += 1;
     this.setDraft(restored.text);
     this.attachments = restored.attachments;
-    return true;
+    await this.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
   }
 
   #rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
