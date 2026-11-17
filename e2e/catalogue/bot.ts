@@ -760,7 +760,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-078",
