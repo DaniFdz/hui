@@ -63,10 +63,11 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(trigger).not.toBeExpanded();
 
   // The next turn holds the provider, and the run streams with the pill drawn for all of it: still shut, and the send
-  // opened nothing. The composer's own focus cannot say that — HUI disables it while a send posts, so the page is left
-  // with none whether a panel exists or not — which is why the panel's own state is what is read here, and the composer
-  // only that it took the prompt and is usable again.
+  // opened nothing. Sent from the keyboard, so the textarea is where the caret comes back once the post lands — HUI
+  // disables the composer while a send posts, and nothing else would give it back — while the panel's own state, hidden
+  // and collapsed, is what says nothing was pushed over the composer.
   await hold();
+  await expect(message).toBeFocused();
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveText("Working 1/2");
   await expect(trigger).not.toBeExpanded();
@@ -105,11 +106,12 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(screen.getByRole("button", "Stop")).toBeEnabled();
 
   // The operator's close holds past the run it was made in: the panel stays shut when that run is released, and when the
-  // run after it starts.
+  // run after it starts — which hands the composer its caret back again, since that send started in it too.
   await hui.provider.release();
   await expect(idle).toBeVisible();
   await expect(popover).toBeHidden();
   await hold();
+  await expect(message).toBeFocused();
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveText("Working 1/2");
   await expect(trigger).not.toBeExpanded();
