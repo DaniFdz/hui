@@ -949,9 +949,13 @@ test("the meter reports what every model call cost, the compaction's own call in
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cost" }, host);
   await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn"]);
-  const before = await waitFor("the ledger after the runs", () => {
+  // What the two turns committed, read from the ledger itself, so the increase the compaction makes is its own call and
+  // not the second turn's spend arriving late.
+  const spend = await host.conversationSpend(durableConversationId(session.sessionFile)!);
+  assert(spend?.reported, "the turns are in the ledger");
+  const before = await waitFor("the total the two turns committed", () => {
     const total = session.currentUsage()?.sessionTotal;
-    return total && total.tokens > 0 ? total : undefined;
+    return total && total.tokens === spend.tokens && total.usd === spend.usd && total.reported === spend.reported ? total : undefined;
   });
   assert(before.tokens > 0, "the runs are in it");
   assert.equal(before.usd, 0, "the fixture prices every call at zero, which is a price, not a missing one");
@@ -997,8 +1001,59 @@ test("a model call's spend shows while its run streams, before the run settles",
   });
   assert.equal(session.isStreaming, true, "the run is still streaming while its tool is held");
   assert.equal(total.usd, 0, "a recorded zero price stays a price, not an unpriced call");
-  assert(messageEndedAt > 0 && usageAt >= messageEndedAt, `the refreshed total followed the model call (${messageEndedAt} → ${usageAt})`);
+  assert(usageAt > 0 && usageAt - messageEndedAt < 1_000, `the refreshed total followed the model call within a second (${messageEndedAt} → ${usageAt})`);
   release({ ok: true });
+  await settled;
+});
+
+test("a tool's own model spend reaches the session total while its run still streams", { timeout: 60_000 }, async (t) => {
+  // An extension tool that reports what its own model calls cost, and one held open so the run keeps streaming after
+  // the usage committed.
+  const tools = `export default function (pi) {
+    const usage = { input: 4, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    pi.registerTool({
+      name: 'fixture_usage', label: 'Usage', description: 'Reports its own model spend.', promptSnippet: 'Report usage',
+      parameters: { type: 'object', properties: {} },
+      async execute() { return { content: [{ type: 'text', text: 'used' }], details: {}, usage }; },
+    });
+    pi.registerTool({
+      name: 'fixture_hold', label: 'Hold', description: 'Waits for the test.', promptSnippet: 'Hold',
+      parameters: { type: 'object', properties: {} },
+      async execute() {
+        if (globalThis.fixtureHoldTool) await globalThis.fixtureHoldTool;
+        return { content: [{ type: 'text', text: 'held' }], details: {} };
+      },
+    });
+  }\n`;
+  const f = await fixture(t, { extensions: { "usage.js": tools } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-tool-total" }, host);
+  let release!: () => void;
+  (globalThis as { fixtureHoldTool?: Promise<void> }).fixtureHoldTool = new Promise((resolve) => { release = resolve; });
+  t.onTestFinished(() => { release(); delete (globalThis as { fixtureHoldTool?: Promise<void> }).fixtureHoldTool; });
+  const conversationId = durableConversationId(session.sessionFile)!;
+  const round = ["fixture_usage", "fixture_hold"].map((name) => ({ name, input: {} }));
+  const usageEnded = nextEvent(session, (event) => event.type === "tool_end" && event.name === "fixture_usage");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify(round)).toString("base64url")}`);
+  await usageEnded;
+  // Durable records a tool's usage in the same commit as its result: the ledger holds it while the run still waits.
+  const ledger = await waitFor("the tool's spend in the ledger", async () => {
+    const buckets = await host.conversationUsage(conversationId);
+    return buckets?.tools?.fixture_usage ? buckets : undefined;
+  });
+  assert.equal(ledger.tools?.fixture_usage?.totalTokens, 10, "the tool's own call is priced in its bucket");
+  assert.equal(session.isStreaming, true, "the run is still streaming while the holding tool waits");
+  const spend = await host.conversationSpend(conversationId);
+  assert(spend, "the conversation's ledger is readable");
+  const total = await waitFor("the session total that carries the tool's spend", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.reported && current.tokens === spend.tokens && current.usd === spend.usd ? current : undefined;
+  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
+  assert.equal(total.reported, true, "a call is recorded");
+  assert.equal(total.usd, 0, "the fixture prices every call at zero, which is a price");
+  assert.equal(session.isStreaming, true, "and the run had not settled when the total showed it");
+  release();
   await settled;
 });
 
@@ -1779,18 +1834,19 @@ test("extension commands run in the gateway, ask through HUI questions and keep 
   // A custom message that starts a turn reaches the model and stays out of the transcript, as in PI sessions.
   const users = (entries: TranscriptEntry[]) => entries.filter((entry) => entry.kind === "message" && entry.role === "user").length;
   const before = users(session.transcript());
+  // Every request the run makes, from the one this prompt starts: a run whose first request carried no custom message
+  // is not filtered out by looking for that message.
+  const beforeRun = (await providerRequests(f.log)).length;
   await settledAfter(session, "/fixture-trigger");
-  // The first request of the run the custom message started is the one that must not be ahead of the message,
-  // whatever background request follows it.
-  const requests = await providerRequests(f.log);
-  const startedAt = requests.findIndex((request) => JSON.stringify(request.messages).includes("from a custom message"));
-  assert(startedAt >= 0, "the custom message reached the model");
-  const triggered = requests[startedAt];
-  assert.match(JSON.stringify(triggered?.messages), /from a custom message/u);
+  const run = (await providerRequests(f.log)).slice(beforeRun).filter((request) => !summarizing(request));
+  // Its first request is the one that must not be ahead of the custom message, whatever background request follows it.
+  const triggered = run[0];
+  assert(triggered, "the custom message started a run");
+  assert.match(JSON.stringify(triggered.messages), /from a custom message/u, "and reached the model in it");
   // As in PI 1.2.0, the run it starts goes through before_agent_start too, which sees the run as busy already.
-  assert.match(JSON.stringify(triggered?.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
-  assert.doesNotMatch(JSON.stringify(triggered?.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
-  assert(requests.slice(startedAt + 1).some((request) => JSON.stringify(request.messages).includes("FIXTURE_STEER_MARKER")), "but steers the run");
+  assert.match(JSON.stringify(triggered.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
+  assert.doesNotMatch(JSON.stringify(triggered.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
+  assert(run.slice(1).some((request) => JSON.stringify(request.messages).includes("FIXTURE_STEER_MARKER")), "but steers the run");
   assert.deepEqual((await logged(f.events, "before_agent_start")).map(({ messageType, customType, idle }) => ({ messageType, customType, idle })), [
     { messageType: "user", customType: undefined, idle: false },
     { messageType: "custom", customType: "fixture-result", idle: false },

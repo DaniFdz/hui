@@ -850,8 +850,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           if (metric) this.#emit({ type: "model_metric", metric });
         }
         this.#add(event.entry);
-        // A response commits its usage to the ledger with it: the session's total holds that call before the run ends.
-        if (event.type === "message_end" && event.entry.model?.some((message) => message.role === "assistant" && message.usage)) this.#refreshTotal();
+        // Usage commits with its message, and a tool's own model calls with its result: the total holds that call before
+        // the run ends.
+        if (event.type === "message_end" && event.entry.model?.some((message) => "usage" in message && message.usage)) this.#refreshTotal();
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && !this.#streaming) {
           if (CallEntry.is(event.entry)) this.#emit({ type: "history" });
