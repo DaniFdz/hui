@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
 import * as sessionsApi from "./api/sessions.ts";
 import type { RuntimeCompaction, RuntimeQuestion, SessionGroup, SessionView } from "./api/sessions.ts";
+import type { PowerStatus } from "./api/schema/power.ts";
 import type { ComposerController } from "./controllers/composer-controller.ts";
 import type { ConversationController } from "./controllers/conversation-controller.ts";
 import type { SessionsController } from "./controllers/sessions-controller.ts";
+import type { SettingsController } from "./controllers/settings-controller.ts";
 import type { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import type { PanePresentation } from "./components/session-multiplexer.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "./lib/composer/drafts.ts";
@@ -12,11 +14,13 @@ import { HUI_PAGES } from "./lib/pages.ts";
 import type { NavigationTarget } from "./lib/navigation.ts";
 import { sessionPanes, singleSessionLayout, splitSessionPane, type SessionPane } from "./lib/session/multiplexer.ts";
 import type { HomeProps } from "./views/home.ts";
+import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { closeDrawerOnEscape } from "./views/shell.ts";
 import { HuiApp } from "./hui-app.ts";
 
 const api = vi.hoisted(() => ({ calls: [] as unknown[][] }));
 const textarea = vi.hoisted(() => ({ calls: [] as string[] }));
+const powerApi = vi.hoisted(() => ({ lidAwake: [] as boolean[] }));
 
 vi.mock("./api/sessions.ts", async (importOriginal) => ({
   ...await importOriginal<typeof import("./api/sessions.ts")>(),
@@ -37,10 +41,19 @@ vi.mock("./lib/composer/textarea.ts", async (importOriginal) => ({
   scheduleTextareaHeightAdjustment: (element: { id: string }) => textarea.calls.push(`measure ${element.id}`),
 }));
 
+vi.mock("./api/control-surfaces.ts", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./api/control-surfaces.ts")>(),
+  setLidAwake: async (lidAwake: boolean) => {
+    powerApi.lidAwake.push(lidAwake);
+    return null;
+  },
+}));
+
 type Shell = {
   embeddedPane: boolean;
   paneVisible: boolean;
   paneSession: SessionView | undefined;
+  panePowerNotice: PowerNoticeProps | undefined;
   paneMobileNav: boolean;
   paneActive: boolean;
   onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
@@ -53,6 +66,7 @@ type Shell = {
   groupAction: unknown;
   composer: ComposerController;
   conversation: ConversationController;
+  control: SettingsController;
   sessions: SessionsController;
   work: WorkLayoutController;
   connectedCallback: () => void;
@@ -69,6 +83,7 @@ type Shell = {
   openPendingSession: () => void;
   activateSession: (session: SessionView) => void;
   activePaneApp: () => { handleGlobalEscape: (event: KeyboardEvent) => void } | undefined;
+  focusActiveComposer: () => void;
   onGlobalKeyDown: (event: KeyboardEvent) => void;
   handleGlobalEscape: (event: KeyboardEvent) => void;
   handleSystemBack: () => boolean;
@@ -114,6 +129,7 @@ function escape() {
 beforeEach(() => {
   api.calls = [];
   textarea.calls = [];
+  powerApi.lidAwake = [];
   vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [] });
   vi.stubGlobal("HTMLDialogElement", class {});
 });
@@ -140,6 +156,66 @@ test("the shell marks a split pane's reported draft on its own sidebar", () => {
   const app = shell();
   (bindings(app.renderSessionPane(pane, presented)).get(".onPaneDraftChange") as (sessionId: string, hasDraft: boolean) => void)("s1", true);
   assert.deepEqual([...app.composer.draftSessionIds], ["s1"]);
+});
+
+const power: PowerStatus = { keepAwake: { state: "active", detail: "" }, lidAwake: { state: "active", detail: "" }, lidOn: true };
+
+test("only the active pane's current chat is handed the sleep notice", () => {
+  // `session-multiplexer.ts` renders a pane once per session it retains, all with the same pane, so the notice follows
+  // the pane's presentation: a session the active pane keeps cached would draw a second copy beside the shown one.
+  const app = shell();
+  app.work.layout = singleSessionLayout("s1");
+  app.control.power = power;
+  app.control.powerNoticeDismissed = true;
+  const [active] = sessionPanes(app.work.layout);
+  const handed = bindings(app.renderSessionPane(active!, presented)).get(".panePowerNotice") as PowerNoticeProps;
+  assert.deepEqual({ power: handed.power, dismissed: handed.dismissed }, { power, dismissed: true }, "the current state, not a default one");
+  assert.equal(bindings(app.renderSessionPane(active!, { ...presented, active: false })).get(".panePowerNotice"), undefined);
+  assert.equal(bindings(app.renderSessionPane({ id: "p2", sessionId: "s2" }, { ...presented, active: false })).get(".panePowerNotice"), undefined);
+});
+
+test("a failed pane lookup never focuses another pane's composer", async () => {
+  // The panes' chats are children of this element's light DOM, so a fallback query reaches every pane's copy of the
+  // composer and focuses the first one, not the active pane's.
+  const queried: string[] = [];
+  const app = shell();
+  app.activePaneApp = () => undefined;
+  app.renderRoot = { querySelector: (selector: string) => { queried.push(selector); return null; } } as unknown as Shell["renderRoot"];
+  Object.defineProperty(app, "updateComplete", { get: () => Promise.resolve(true) });
+  app.work.layout = singleSessionLayout("s1");
+  app.focusActiveComposer();
+  await Promise.resolve();
+  assert.deepEqual(queried, [], "the split layout's composers belong to its pane apps");
+  app.work.layout = undefined;
+  app.focusActiveComposer();
+  await Promise.resolve();
+  assert.deepEqual(queried, [".agent-chat__composer-combobox > textarea"], "a chat this element renders itself is still focused");
+});
+
+test("a chat with no selected conversation is handed no sleep notice", () => {
+  const app = shell();
+  app.control.power = power;
+  assert.equal("powerNotice" in app.homeProps(), false, "the launcher has no chat to draw it in");
+  app.conversation.select(session("s1"));
+  assert.equal(app.homeProps().powerNotice?.power, power);
+});
+
+test("a pane's sleep notice dismisses and turns the lid switch off through the app that owns them", async () => {
+  const host = shell();
+  host.work.layout = singleSessionLayout("s1");
+  host.control.power = power;
+  const [active] = sessionPanes(host.work.layout);
+  const handed = bindings(host.renderSessionPane(active!, presented)).get(".panePowerNotice") as PowerNoticeProps;
+  const pane = shell();
+  pane.embeddedPane = true;
+  pane.panePowerNotice = handed;
+  pane.conversation.select(session("s1"));
+  const drawn = pane.homeProps().powerNotice!;
+  drawn.onDismiss();
+  assert.equal(host.control.powerNoticeDismissed, true, "the pane never keeps the dismissal itself");
+  drawn.onTurnOff();
+  assert.deepEqual(powerApi.lidAwake, [false], "the shell's control asks the gateway to stop holding the Mac awake");
+  await vi.waitFor(() => assert.equal(host.control.power, null));
 });
 
 test("only an embedded pane reports its drafts to the shell that owns the sidebar", async () => {

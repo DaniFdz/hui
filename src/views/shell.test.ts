@@ -879,16 +879,19 @@ test("settings drawer closes and releases its media listener when the layout bec
 test("both mobile drawers make the global update notice inert until closed", () => {
   for (const setDrawer of [setNavigationDrawer, setSettingsDrawer]) {
     const states: boolean[] = [];
+    const queried: string[] = [];
     const notice = { toggleAttribute: (_name: string, value: boolean) => states.push(value) };
     const sidebar = {
       dataset: {},
-      closest: (selector: string) => selector === ".hui-application" ? { querySelector: () => notice } : null,
+      closest: (selector: string) => selector === ".hui-application" ? { querySelector: (query: string) => { queried.push(query); return notice; } } : null,
       querySelector: () => null,
     } as unknown as HTMLElement;
     const narrow = controlledMedia();
     setDrawer(sidebar, true, false, narrow.media);
     setDrawer(sidebar, false, false);
     assert.deepEqual(states, [true, false]);
+    // The shell's own notices are direct children; the chat draws its sleep notice deeper, so the drawer leaves that one alone.
+    assert.deepEqual(queried, [":scope > .hui-update-notice", ":scope > .hui-update-notice"]);
   }
 });
 

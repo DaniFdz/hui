@@ -102,9 +102,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   it on asks for a password; turning it off, stopping the gateway or a gateway
   crash restores normal sleep. After a reboot left it on, it starts on with a
   note until turned off, which asks to restore sleep. While the Mac is held awake
-  with the lid closed, a top notice says so and offers **Turn off**; dismissing
-  it lasts until it turns on again or the page reloads. Each switch shows what
-  the gateway actually holds (Off, Pending, Active, Failed with its reason).
+  with the lid closed, the open conversation draws a notice below its chat header
+  saying so, with **Turn off** and a dismissal; the shell, header and sidebar
+  never move and only the transcript area shrinks while it is up, and Home,
+  Settings and the launcher draw no notice. Dismissing it gives the composer
+  focus and lasts until the lid switch turns off and on again or the page
+  reloads. Each switch shows what the gateway actually holds (Off, Pending,
+  Active, Failed with its reason).
 - Groups are flat: one label per group.
 - Groups collapse; the choice is remembered in the browser.
 - The group menu's **New session defaults** stores directory, runtime and optional
@@ -3292,11 +3296,16 @@ a link by hand. The web owns the intake; a phone's share only has to open that a
   hand the composer an unbounded draft.
 - **Both phones, and the web.** The same address opens New Session prefilled in any browser, and `SESS-080` proves
   the intake in the shared suite, which runs on the web and inside the Android app.
-- **The iOS transport is best-effort.** Apple documents `NSExtensionContext.open(_:)` — how a share extension asks
-  iOS to open its app — as unsupported, and it is reported to fail on iOS 18 and later cold starts. When the link
-  does not open, the extension shows the share with a Copy action instead of failing silently. The known upgrade path
-  is an App Group the extension writes the share into, which the app reads on its next start; it touches the two
-  native targets and their entitlement, not this contract nor the web intake.
+- **The iOS transport is best-effort, in two steps.** Apple documents `NSExtensionContext.open(_:)` — how an
+  extension asks iOS to open its app — for the Today and iMessage extension points only; for a share extension it
+  is unsupported and reported to answer `false` on iOS 18 and later, a cold start especially. The extension calls
+  it first and, when it answers `false`, hands the same `hui://share?url=<value>` link to the first responder in
+  its own chain that answers `openURL:` — always behind `responds(to:)`, the method's `BOOL` answer read through
+  the runtime method's type encoding. A `true` answer completes the sheet; a `false` answer leaves the share on
+  screen with its Copy action. No App Group is added: SideStore signs the IPA with the operator's free Apple ID,
+  and free-account signing cannot use App Groups, so a share that opens neither way ends in Copy; an App Group the
+  extension writes into stays the unused upgrade path, and it touches the two native targets and their entitlement,
+  not this contract nor the web intake.
 
 ### Android replaces the iOS app as HUI's native client (2026-11-09)
 

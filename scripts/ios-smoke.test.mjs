@@ -149,6 +149,7 @@ test("iOS delivers the share with a Debug launch-argument link after the gateway
   const scene = await readFile(new URL("../mobile/ios/App/App/SceneDelegate.swift", import.meta.url), "utf8");
   const argument = /#if DEBUG\n([\s\S]*?)#endif/u.exec(scene)?.[1].match(/string\(forKey: "(\w+)"\)/u)?.[1];
   assert.ok(argument, "the SceneDelegate reads the link from a Debug-only launch argument");
+  assert.match(scene, /connectionOptions\.urlContexts\.isEmpty/u, "the Debug launch argument only fills in when no real URL context arrived");
   assert.ok(delivery.indexOf(`-${argument} 'hui://share?url=${encoded}'`) > launched,
     "the launch carries the percent-encoded Instagram post in the argument the app reads");
   assert.doesNotMatch(workflow, /xcrun simctl openurl/u, "no step waits on a system URL delivery this oracle cannot get past");

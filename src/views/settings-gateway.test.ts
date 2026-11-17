@@ -94,7 +94,7 @@ test("macOS power shows each choice beside what the gateway holds", () => {
   assert.doesNotMatch(render({ health, power: undefined, settings }), /Keep Mac awake/);
 });
 
-test("the top notice shows only while the Mac is actually held awake with the lid closed", () => {
+test("the sleep prevention notice shows only while the Mac is actually held awake with the lid closed", () => {
   const lid = (state: PowerStatus["lidAwake"]["state"], lidOn: boolean) => ({ ...power, lidAwake: { state, detail: "" }, lidOn });
   assert.equal(lidAwakeNoticeShown(lid("active", true)), true);
   assert.equal(lidAwakeNoticeShown(lid("pending", true)), false);
