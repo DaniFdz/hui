@@ -260,6 +260,31 @@ test("Task progress lives in the Run status popover and never draws in the trans
   });
   assert.match(html, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
   assert.match(html, /aria-label=Run status: Working, 1 of 2 steps done/u);
+  // The pill and the panel's title line read one state: the word and the count are drawn twice in the markup, and while
+  // the panel is out the trigger itself is not painted — its box stays as the popover's anchor and its accessible name
+  // still carries the whole state. The morph is what makes that one control visible as both.
+  assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
+  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
+  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
+  // One box: the head's chevron — the pill's, turned up — is the close, and the head's copy is exposed inside the dialog,
+  // because the pill itself is not painted while the panel is out.
+  assert.match(html, /class="chat-run-status__head"[\s\S]*?chat-run-status__collapse" aria-label="Close run status"/u);
+  assert.match(html, /class="chat-run-status__state" data-tone=running>\s*<span class="chat-run-status__state-mark" aria-hidden="true">/u, "the head's word and count are readable while the pill is not drawn");
+  assert.doesNotMatch(html, /chat-run-status__close/u, "the X is gone: the chevron closes");
+  const panelStyles = readStyles("../styles/chat-run-status.css");
+  assert.match(panelStyles, /\.chat-run-status__trigger \{[^}]*height: 28px;/s, "the trigger's own height is the overlay the popover uses to pin the panel's top edge");
+  assert.match(panelStyles, /\.chat-run-status__trigger-chevron svg \{[^}]*width: 13px;[^}]*height: 13px;/s, "the chevron reads as the affordance it is");
+  assert.match(panelStyles, /\.chat-run-status__collapse > svg \{[^}]*width: 13px;[^}]*height: 13px;[^}]*transform: rotate\(180deg\);/s, "the head's chevron is the pill's, pointing up as the close");
+  // One painted card: Web Awesome's own shadow body is the box the morph moves, so it paints no surface of its own and
+  // the panel carries the border and shadow that travel with the box.
+  assert.match(
+    panelStyles,
+    /\.chat-run-status__popover::part\(body\) \{[^}]*background: transparent;[^}]*box-shadow: none;/s,
+    "the wrapper Web Awesome draws around the panel paints no second card",
+  );
+  assert.match(panelStyles, /\.chat-run-status__panel \{[^}]*border: var\(--wa-panel-border-width\) solid var\(--wa-color-surface-border\);[^}]*box-shadow: var\(--wa-shadow-l\);/s, "the panel is the card, and it is the box the morph moves");
+  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*justify-content: flex-start;/s, "the head is the panel's own title line, left-aligned rather than parked at the box's right edge");
+  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*padding: 0 28px 0 12px;/s, "its left padding is the section rows' 12px, and its right keeps the close chevron's slot");
   assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);
@@ -984,9 +1009,11 @@ test("the goal sits in the Run status popover with its status, objective and con
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
   const active = await renderWorkerSession("idle", { session });
   assert.match(active, /class="chat-run-status__trigger" data-tone=idle/u);
-  assert.match(active, /aria-label=Run status: Pursuing goal, goal pursuing/u);
+  assert.match(active, /aria-label=Run status: Pursuing goal/u);
+  assert.doesNotMatch(active, /Run status: Pursuing goal, goal pursuing/u, "the name says the pursuing goal once");
   assert.match(active, /<span class="chat-run-status__label">Pursuing goal<\/span>/u);
-  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <span class="chat-run-status__meta" data-status=active>Pursuing goal<\/span>/u);
+  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <\/div>/u, "the Goal section head reads only its title");
+  assert.doesNotMatch(active, /chat-run-status__meta" data-status=/u, "and prints no state the head already says");
   assert.match(active, /<p class="chat-run-status__objective">get CI green on PR 1<\/p>/u);
   assert.match(active, />Pause</u);
   assert.match(active, /aria-label="Edit goal objective"/u);
@@ -996,12 +1023,22 @@ test("the goal sits in the Run status popover with its status, objective and con
 
   const blocked = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "blocked", note: "waiting on review" } } });
   assert.match(blocked, /class="chat-run-status__trigger" data-tone=blocked/u);
-  assert.match(blocked, /aria-label=Run status: Goal blocked, goal blocked/u);
+  assert.match(blocked, /aria-label=Run status: Goal blocked/u);
+  assert.doesNotMatch(blocked, /Goal blocked, goal blocked/u, "the name says the blocked goal once");
   assert.match(blocked, /<p class="chat-run-status__note">waiting on review<\/p>/u);
   assert.match(blocked, />Resume</u);
 
+  // A head that says another state leaves the goal's own word to its section.
+  const working = await renderWorkerSession("running", { streaming: true, session: { ...session, status: "running", goal: { ...goal, status: "paused" } } });
+  assert.match(working, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
+  assert.match(working, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <span class="chat-run-status__meta" data-status=paused>Goal paused<\/span>/u);
+  assert.match(working, /aria-label=Run status: Working, goal paused/u);
+
   const complete = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "complete" } } });
   assert.match(complete, /class="chat-run-status__trigger" data-tone=done/u);
+  assert.match(complete, /aria-label=Run status: Goal achieved/u);
+  assert.doesNotMatch(complete, /Goal achieved, goal achieved/u, "the name says the achieved goal once");
+  assert.match(complete, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <\/div>/u, "the Goal section head reads only its title");
   assert.doesNotMatch(complete, />Resume<|>Pause</u);
   assert.match(complete, />Clear</u);
 

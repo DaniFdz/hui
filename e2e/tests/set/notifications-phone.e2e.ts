@@ -28,6 +28,8 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     const serverField = page.getByLabel("ntfy server", { exact: true });
     const topic = page.getByLabel("ntfy topic", { exact: true });
     const saved = async () => (await hui.api<{ notifications: { ntfy: unknown } }>("GET", "/__hui/settings")).notifications.ntfy;
+    // The page has one Save and one Send test per section; this test taps the ntfy form's own.
+    const ntfy = page.getByTestId("settings-ntfy");
 
     await hui.clipboard();
     await hui.open("/settings/notifications");
@@ -35,12 +37,12 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     await page.getByRole("button", "Generate", { exact: true }).tap();
     await expect.poll(() => topic.inputValue()).toMatch(/^hui-[a-z0-9]+$/u);
     await topic.fill("hui-e2e-topic");
-    await page.getByRole("button", "Save", { exact: true }).tap();
+    await ntfy.getByRole("button", "Save", { exact: true }).tap();
     await expect.poll(saved).toEqual({ server, topic: "hui-e2e-topic", link: "web" });
     await page.getByRole("button", "Copy address", { exact: true }).tap();
     await expect.poll(() => hui.copied()).toBe(`${server}/hui-e2e-topic`);
 
-    await page.getByRole("button", "Send test", { exact: true }).tap();
+    await ntfy.getByRole("button", "Send test", { exact: true }).tap();
     await expect.poll(() => received.length).toBe(1);
     expect(received[0]?.topic).toBe("hui-e2e-topic");
     expect(received[0]?.message?.title).toBe("HUI");
@@ -50,13 +52,13 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     // What a tap opens is part of the relay's settings: the HUI app on the phone, saved beside the topic it subscribes to.
     await page.getByRole("button", { name: "Notification link: Browser" }).tap();
     await screen.getByTestId("picker-list", { visible: true }).getByText("HUI on my phone", { exact: true }).tap();
-    await page.getByRole("button", "Save", { exact: true }).tap();
+    await ntfy.getByRole("button", "Save", { exact: true }).tap();
     await expect.poll(saved).toEqual({ server, topic: "hui-e2e-topic", link: "phone" });
     await expect(page.getByRole("button", { name: "Notification link: HUI on my phone" })).toBeVisible();
 
     // A blank topic publishes nothing and says so instead of claiming a delivery.
     await topic.fill("");
-    await page.getByRole("button", "Send test", { exact: true }).tap();
+    await ntfy.getByRole("button", "Send test", { exact: true }).tap();
     await expect.poll(saved).toEqual({ server, topic: "", link: "phone" });
     await expect(screen.getByText("Set an ntfy topic first.")).toBeVisible();
     expect(received.length).toBe(1);

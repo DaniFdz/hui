@@ -41,6 +41,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -104,6 +108,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -167,6 +175,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -230,6 +242,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -295,6 +311,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -366,6 +386,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -431,6 +455,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -496,6 +524,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -561,6 +593,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -626,6 +662,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -694,6 +734,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -764,6 +808,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -829,6 +877,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -896,6 +948,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -963,6 +1019,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1028,6 +1088,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1093,6 +1157,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1158,6 +1226,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1225,6 +1297,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1292,6 +1368,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1359,6 +1439,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1426,6 +1510,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1493,6 +1581,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1560,6 +1652,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1627,6 +1723,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1694,6 +1794,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1761,6 +1865,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1828,6 +1936,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1898,6 +2010,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -1968,6 +2084,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2036,6 +2156,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2104,6 +2228,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2174,6 +2302,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2241,6 +2373,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2308,6 +2444,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2375,6 +2515,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2442,6 +2586,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2509,6 +2657,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2576,6 +2728,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2643,6 +2799,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2713,6 +2873,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2780,6 +2944,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2848,6 +3016,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2921,6 +3093,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -2989,6 +3165,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3072,6 +3252,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3163,6 +3347,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3234,6 +3422,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3299,6 +3491,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3364,6 +3560,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3429,6 +3629,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3494,6 +3698,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3559,6 +3767,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3624,6 +3836,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3689,6 +3905,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3761,6 +3981,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3828,6 +4052,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3895,6 +4123,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -3962,6 +4194,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4029,6 +4265,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4096,6 +4336,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4163,6 +4407,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4230,6 +4478,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4297,6 +4549,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4364,6 +4620,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4431,6 +4691,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4498,6 +4762,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4565,6 +4833,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4632,6 +4904,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4701,6 +4977,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4728,7 +5008,11 @@
         "tool": true,
         "runFinished": true,
         "runFailed": false,
-        "needsInput": false
+        "needsInput": false,
+        "push": {
+          "enabled": false,
+          "subject": ""
+        }
       }
     },
     "expected": {
@@ -4771,6 +5055,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4798,7 +5086,11 @@
         "tool": "yes",
         "runFinished": 1,
         "runFailed": "no",
-        "needsInput": null
+        "needsInput": null,
+        "push": {
+          "enabled": false,
+          "subject": ""
+        }
       }
     },
     "expected": {
@@ -4841,6 +5133,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -4906,6 +5202,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5027,6 +5327,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5139,6 +5443,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5206,6 +5514,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5271,6 +5583,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5336,6 +5652,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5401,6 +5721,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5466,6 +5790,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5531,6 +5859,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5598,6 +5930,10 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
         }
       },
       "models": {
@@ -5663,6 +5999,449 @@
           "server": "https://ntfy.sh",
           "topic": "",
           "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": "on"
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": {
+          "enabled": true,
+          "subject": 42
+        }
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": true,
+          "subject": ""
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": {
+          "subject": "  mailto:ops@example.com  "
+        }
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": "mailto:ops@example.com"
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": {
+          "enabled": true,
+          "subject": "not a url"
+        }
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": true,
+          "subject": ""
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": {
+          "subject": "https://"
+        }
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": false,
+          "subject": ""
+        }
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "push": {
+          "enabled": true,
+          "subject": "https://user:pass@example.com"
+        }
+      }
+    },
+    "expected": {
+      "chat": {
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "name": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true,
+        "ntfy": {
+          "server": "https://ntfy.sh",
+          "topic": "",
+          "link": "web"
+        },
+        "push": {
+          "enabled": true,
+          "subject": ""
         }
       },
       "models": {

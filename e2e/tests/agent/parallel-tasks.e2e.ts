@@ -48,6 +48,8 @@ test("a batch whose helpers all succeed folds into one Helpers row that still op
 
   // The parent collects both results, which the Helpers section shows as one completed batch.
   await hui.prompt(session, calls(call("agents_wait", { ids: await children(hui, session.id), timeoutSeconds: 120 })));
+  // The panel opened by itself for that turn and closes when it ends; read the finished batch from the operator's own open.
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   const helpers = await openHelpers(screen);
 
   // Every helper succeeded, so the section folds into one row and its children stay behind the disclosure.

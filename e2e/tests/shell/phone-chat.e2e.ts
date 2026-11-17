@@ -50,8 +50,11 @@ test(
     await screen.getByLabel("Message").fill("E2E_PROGRESS");
     await screen.getByRole("button", "Send message").tap();
     const trigger = screen.getByTestId("run-status-trigger");
+    const popover = screen.getByLabel("Run status");
+    // A phone never opens the popover by itself, so it is closed here and the trigger is the only way in.
+    await expect(popover).toBeHidden();
     await trigger.tap();
-    await expect(screen.getByLabel("Run status")).toBeVisible();
+    await expect(popover).toBeVisible();
     await expect(screen.getByText("1 of 2", { visible: true })).toBeVisible();
     const steps = screen.getByLabel("Task progress steps");
     await expect(steps).toBeHidden();

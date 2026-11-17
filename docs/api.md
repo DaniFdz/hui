@@ -79,7 +79,10 @@ and ordering.
 Production builds emit `/offline-build.json` with `{ "build": "<build id>" }`,
 `/offline-inventory.json` with the complete static-file URLs and SHA-384
 integrities, and `/offline-worker.js`. These are static build files, not API
-routes, and are served with `Cache-Control: no-store`. The browser checks the
+routes, and are served with `Cache-Control: no-store`. So is the app's manifest,
+`/manifest.webmanifest`, which is served as `application/manifest+json`: a
+browser installs HUI to a Home Screen from that type instead of downloading the
+file, and Web Push asks for the installed copy on iOS. The browser checks the
 fresh build marker before mutations and connection tickets. A different or
 invalid build marker disables live actions and offers **Reload HUI**.
 
@@ -146,8 +149,8 @@ output.
 Clicking the banner opens its originating conversation, creating a window if
 needed. Delivery alone does not change focus. macOS settings may suppress the
 banner, and queued is not proof the operator read it. Notification calls are
-not replayed after a crash. The phone channel is the ntfy relay, not APNs or
-browser push.
+not replayed after a crash. The phone channels are the ntfy relay and Web Push to
+a device that subscribed, described below; HUI has no APNs.
 
 `Settings.notifications` also chooses HUI's own notifications, sent through the
 same delivery: `runFinished` (default `false`) and `runFailed`
@@ -156,7 +159,9 @@ same delivery: `runFinished` (default `false`) and `runFailed`
 the chat's name, their subtitle `Finished`, `Run failed` or `Needs your input`,
 and a waiting chat's body is its first question's title. Needs-your-input
 banners are `normal` priority and the others `low`. A channel that can't show a
-notification is skipped and recorded as a `notification_skipped` diagnostic.
+notification is skipped and recorded as a `notification_skipped` diagnostic; a
+Web Push that only some of its devices accepted is carried, and diagnostics
+records `notification_push_partial` with how many of how many were reached.
 
 #### The ntfy relay for phones
 
@@ -181,6 +186,52 @@ front, and a failure only when every configured channel failed. The desktop
 app's failure does not stop the relay, and vice versa. HUI's own events are
 skipped entirely when no channel exists; `notify_user` asks explicitly, so its
 caller gets the reason instead.
+
+#### Web Push to a device
+
+`Settings.notifications.push` (`{ enabled, subject }`) adds a third channel: the
+devices that subscribed through this gateway and the VAPID key it owns. `enabled`
+is `false` by default, so no existing gateway starts pushing; a device
+subscribing through Settings → Notifications → *This device* turns it on.
+`subject` is VAPID's `sub` claim, normalized to a `mailto:` address or an
+`https:` URL with a host and no credentials in it, of at most 512 characters and
+without a space or control character; anything malformed, including `https://`
+and an address carrying a user and a password, becomes empty. An empty
+`subject`, the default, omits the claim.
+
+The gateway generates one P-256 VAPID keypair into its config directory
+(`notifications/vapid.json`, mode 0600) and serves only the public half
+(`PushStatusResponse.publicKey`, the uncompressed 65-byte point as base64url).
+Its subscriptions live beside it in `notifications/push-subscriptions.json`
+(mode 0600, at most 20, the oldest dropped past that), and a screen names each
+one by `PushStatusResponse.devices[].id`, a digest of its endpoint. A
+subscription's endpoint is a capability URL and its `p256dh`/`auth` values are
+secrets, so no payload, error or diagnostic repeats either; the private key
+never leaves the config directory.
+
+A push message is one `aes128gcm` record (RFC 8291) sealed per subscription, so
+each push service carries a body only its own device can read, and posted with
+an `Authorization: vapid t=<ES256 JWT>,k=<public key>` header (RFC 8292) whose
+`sub` is `subject` when it is set and whose `aud` is the endpoint's origin. The
+plaintext is the notification's JSON: `title`, an optional `body` (the
+subtitle, then the message), the chat's relative in-app `path` (`/sessions/<id>`,
+or `/bots/<handle>` for a bot chat), an optional `tag` (`hui-<chat id>`, so a
+device replaces its own banner instead of stacking one) and an optional
+`priority` that becomes the request's `urgency`. `public/offline-worker.js`
+shows it and, on a tap, focuses a window of this origin or opens one and sends
+it to that path.
+
+A push service that answers 404 or 410 has forgotten its subscription: the
+gateway prunes it, and the page offers to enable the device again. A refusal no
+device's service took is a `notification_skipped` diagnostic; when some services
+took the notification and others refused it, the notification is carried and
+`notification_push_partial` names how many of how many devices it reached. iOS
+fires no reliable
+`pushsubscriptionchange`, so a rotated subscription is only ever pruned, never
+replaced. A loopback `http:` endpoint (`127.0.0.1` or `[::1]`) is the one
+endpoint that is not `https:`: it exists so HUI's own tests can stand a push
+service up on the gateway's machine, and every other `http:` endpoint is
+refused. ntfy stays the fallback for a browser that cannot subscribe.
 
 ## Gateway lifecycle boundary
 
@@ -4764,6 +4815,51 @@ Publishes one test message to `Settings.notifications.ntfy` and answers
 `NotificationTestResponse` (`{ "sent": true }`). A blank or malformed topic, an
 unreachable server, or a refusal answers 400 `{ "error": string }`; the message
 never names the topic. Any method but POST is 405.
+
+### `GET /__hui/notifications/push`
+
+Returns `PushStatusResponse`: `publicKey`, the gateway's VAPID public key as the
+uncompressed 65-byte P-256 point in base64url, and `devices`, each
+`{ id, createdAt, device? }` where `id` is a digest of that subscription's
+endpoint and `device` the label the browser gave itself. No endpoint, no
+subscription key and no private key is ever in the answer. Any method but GET
+answers 405 `PushError` (`{ "error": string }`).
+
+### `POST /__hui/notifications/push/subscribe`
+
+Accepts `PushSubscribeRequest` (`{ "endpoint": string, "keys": { "p256dh":
+string, "auth": string }, "device"?: string }`) and answers
+`PushSubscribeResponse` (`{ "subscribed": true, "id": string }`). The endpoint
+must be an `https:` URL with a host and no credentials in it, or the loopback
+`http:` one a push service on this machine has; any other address answers 400
+`{ "error": "A push subscription endpoint must be an https: URL." }`, and neither
+an endpoint nor a key is ever repeated in a refusal. The same endpoint again
+replaces its key set, which is what a browser's rotation is, and past 20
+devices the oldest is dropped. A body that is not JSON, or that lacks `p256dh`
+or `auth`, answers 400 with the shape it needs. Any method but POST is 405.
+
+### `POST /__hui/notifications/push/unsubscribe`
+
+Accepts `PushUnsubscribeRequest` (`{ "endpoint": string }`) and answers
+`PushUnsubscribeResponse` (`{ "removed": boolean }`), `false` for an endpoint
+that was not subscribed: forgetting an unknown device is not an error. A
+malformed body is 400. Any method but POST is 405.
+
+### `POST /__hui/notifications/push/test`
+
+Seals one test message per stored subscription, publishes it, prunes the
+subscriptions a push service answered 404 or 410 for, and answers
+`PushTestResponse` (`{ "sent": number, "devices": number }`): how many push
+services accepted of how many devices are subscribed. The route answers 200
+with those counts whenever Web Push is on and at least one device is
+subscribed, including when no push service accepted any of them; a refusal that
+only some services made, or all of them, is recorded in diagnostics and is not
+the route's answer. 400 `PushError` (`{ "error": string }`, naming no endpoint
+or key) is for exactly three cases: Web Push switched off (`Turn on Web Push in
+Settings → Notifications → This device, then send the test again.`), no
+subscribed device (`Subscribe this device in Settings → Notifications → This
+device, then send the test again.`), and a malformed request. Any method but
+POST is 405.
 
 ### `GET /__hui/ext`
 

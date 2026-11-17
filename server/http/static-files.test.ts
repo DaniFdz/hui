@@ -14,6 +14,7 @@ test("static production server serves deep links/assets but not private files, s
   await mkdir(join(root, "assets"), { recursive: true });
   await writeFile(join(root, "index.html"), "<hui-app></hui-app>");
   await writeFile(join(root, "assets", "app.js"), "export const app = true;");
+  await writeFile(join(root, "manifest.webmanifest"), JSON.stringify({ name: "HUI", start_url: "/" }));
   await writeFile(join(temporary, "secret.txt"), "not public");
   await symlink(join(temporary, "secret.txt"), join(root, "escape.txt"));
   const server = createServer((request, response) => { void serveStatic(root, request, response); });
@@ -25,6 +26,10 @@ test("static production server serves deep links/assets but not private files, s
     const response = await fetch(base + path); assert.equal(response.status, 200, path); assert.match(await response.text(), /hui-app/u);
   }
   const script = await fetch(base + "/assets/app.js"); assert.match(script.headers.get("content-type")!, /javascript/u);
+  const manifest = await fetch(base + "/manifest.webmanifest");
+  assert.equal(manifest.status, 200);
+  assert.equal(manifest.headers.get("content-type"), "application/manifest+json", "a browser installs the app only from this type");
+  assert.equal(JSON.parse(await manifest.text()).name, "HUI");
   assert.equal((await fetch(base + "/", { method: "HEAD" })).headers.get("x-content-type-options"), "nosniff");
   for (const path of [...routes.files, "/.env", "/escape.txt", "/bots/missing.js", "/%2e%2e/secret.txt", "/build/cli/main.js", "/%5csecret.txt"]) assert.equal((await fetch(base + path)).status, 404, path);
   assert.equal((await fetch(base + "/%zz")).status, 400);

@@ -33,6 +33,9 @@ test("a spawned child nests under its parent in the sidebar and runs on while th
   // Once it ends, the Helpers section folds into one completed row, which still opens it. A phone still holds the
   // drawer over the chat, so activating the parent's row is what returns to it.
   await hui.activateSidebarRow("Spawn parent");
+  // The child's completion starts the parent's own turn a moment later. Wait for that turn's own reply — the only proof
+  // it has run and settled — so the read below is made on a settled batch.
+  await expect(screen.getByTestId("transcript").getByText("Parent reviewed 1 subagent result(s) against the task and continued on its own.")).toBeVisible();
   const completedHelpers = await openHelpers(screen);
   await expect(completedHelpers.getByText("1 completed")).toBeVisible();
   await completedHelpers.getByText("1 completed").tap();
@@ -62,6 +65,8 @@ test("a child's card opens its own transcript, which names the parent session, a
   await screen.getByRole("button", { name: "Open parent" }).tap();
   await expectChatTitle(screen, "Subagent parent");
   await expect(transcript.getByText(/^tool answered: .*"label": "Slow verifier"/su)).toBeVisible();
+  // Same turn as above: wait for the parent's reply on the child's result before reading Run status.
+  await expect(transcript.getByText("Parent reviewed 1 subagent result(s) against the task and continued on its own.")).toBeVisible();
   const reopened = await openHelpers(screen);
   const completed = reopened.getByText("1 completed");
   await expect(completed).toBeVisible();

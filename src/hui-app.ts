@@ -977,6 +977,7 @@ export class HuiApp extends HuiElement {
       this.loadSettingsData();
       if (target.page === "connection") void this.gateways.checkKnown();
       if (target.page === "appearance") this.control.loadPreviews();
+      if (target.page === "notifications") this.control.loadPushStatus();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
       if (target.page === "automation") this.automation.startPolling();
