@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
-import { goalSectionStatus, goalStatusLabel, runStatus, runStatusHeadCopyTiming, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted } from "./run-status.ts";
+import { goalSectionStatus, goalStatusLabel, runStatus, runStatusHeadCopyTiming, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted, type RunStatusPanelState } from "./run-status.ts";
 
 const now = Date.parse("2026-11-14T12:00:00.000Z");
 const startedAt = new Date(now - 60_000).toISOString();
@@ -179,15 +179,36 @@ test("a finished batch leaves the trigger once it has been gone for an hour", ()
   assert.equal(expired.helpers, undefined);
 });
 
-test("the Run status popover opens by itself on a wide window while a run streams", () => {
-  const idle = runStatusPanel(undefined, { running: false });
-  assert.deepEqual(idle, { running: false, choice: undefined });
-  assert.equal(runStatusPanelOpen(idle, { running: false, wide: true }), false, "idle stays closed");
+test("a new conversation draws the pill with its panel closed", () => {
+  // A fresh conversation is drawn closed, a run in flight included: nothing opens the panel on its own.
+  const fresh: RunStatusPanelState = { open: false };
+  assert.equal(runStatusPanelOpen(fresh), false, "a new conversation starts with its panel closed");
+  assert.equal(runStatusTriggerPainted(runStatusPanelOpen(fresh)), true, "so the pill is the only box drawn");
+});
 
-  const started = runStatusPanel(idle, { running: true });
-  assert.deepEqual(started, { running: true, choice: undefined });
-  assert.equal(runStatusPanelOpen(started, { running: true, wide: true }), true);
-  assert.equal(runStatusPanelOpen(started, { running: true, wide: false }), false, "a phone stays closed mid-run");
+test("a run leaves the Run status popover closed and the operator's open holds until they close it", () => {
+  // The state is the one boolean the operator owns, and the getter reads nothing else: no run edge, no window width and no
+  // render can decide the answer behind their back.
+  assert.equal(runStatusPanelOpen.length, 1, "the open state is read from the operator's state alone");
+  assert.equal(runStatusPanelOpen({ open: false }), false, "a run leaves the panel closed");
+
+  const opened = runStatusPanelChosen({ open: false }, true);
+  assert.deepEqual(opened, { open: true }, "the operator's open is the whole state");
+  assert.equal(runStatusPanelOpen(opened), true);
+  // Nothing else writes it, so an open outlives every frame that follows: a streamed render, the end of the run it was
+  // opened in, and a run the conversation starts on its own (a watcher settling, a helper finishing) all leave it alone.
+  assert.equal(runStatusPanelOpen(opened), true, "a later render still reads the operator's open");
+  assert.equal(runStatusPanelOpen(opened), true, "and the run boundary after it writes nothing");
+
+  const closed = runStatusPanelChosen(opened, false);
+  assert.deepEqual(closed, { open: false }, "the operator's close is the whole state");
+  assert.equal(runStatusPanelOpen(closed), false, "and it holds past that run's end and the next run too");
+
+  // An open after a close works again: the panel is theirs to take back whenever they want it, mid-run or idle.
+  const reopened = runStatusPanelChosen(closed, true);
+  assert.deepEqual(reopened, { open: true });
+  assert.equal(runStatusPanelOpen(reopened), true, "an open after a close puts the panel back");
+  assert.equal(runStatusTriggerPainted(runStatusPanelOpen(reopened)), false, "and the panel is the only box drawn");
 });
 
 test("the pill is drawn exactly while the panel is not out", () => {
@@ -195,72 +216,9 @@ test("the pill is drawn exactly while the panel is not out", () => {
   // painted beside or above the panel. The pill returns only once a close has landed.
   assert.equal(runStatusTriggerPainted(true), false, "an open panel does not draw the pill");
   assert.equal(runStatusTriggerPainted(false), true, "the closed panel draws it again");
-  // A wide window's own open hides it too, while a collapsed phone keeps the pill.
-  const running = runStatusPanel(undefined, { running: true });
-  assert.equal(runStatusTriggerPainted(runStatusPanelOpen(running, { running: true, wide: true })), false);
-  assert.equal(runStatusTriggerPainted(runStatusPanelOpen(running, { running: true, wide: false })), true);
-});
-
-test("the operator's close lasts one run, and their open lasts until they close it", () => {
-  const running = runStatusPanel(undefined, { running: true });
-  const closed = runStatusPanelChosen(running, false);
-  assert.deepEqual(closed, { running: true, choice: false });
-  assert.equal(runStatusPanelOpen(closed, { running: true, wide: true }), false, "the operator's close wins over the default");
-
-  const ended = runStatusPanel(closed, { running: false });
-  assert.deepEqual(ended, { running: false, choice: false });
-  assert.equal(runStatusPanelOpen(ended, { running: false, wide: true }), false, "a finished run keeps the operator's close");
-
-  const next = runStatusPanel(ended, { running: true });
-  assert.deepEqual(next, { running: true, choice: undefined }, "a new run starts with the default after a close");
-  assert.equal(runStatusPanelOpen(next, { running: true, wide: true }), true);
-
-  // An open is the operator's own: a run the conversation starts on its own — a watcher settling, a helper finishing —
-  // must not shut the panel they are reading, so the open outlives that run and the next one until they close it.
-  const opened = runStatusPanelChosen(running, true);
-  const settled = runStatusPanel(opened, { running: false });
-  assert.deepEqual(settled, { running: false, choice: true }, "the open holds through its run's end");
-  assert.equal(runStatusPanelOpen(settled, { running: false, wide: true }), true);
-  const carried = runStatusPanel(settled, { running: true });
-  assert.deepEqual(carried, { running: true, choice: true }, "a later run leaves the operator's open alone");
-  assert.equal(runStatusPanelOpen(carried, { running: true, wide: false }), true, "on a phone too, until they close it");
-  assert.equal(runStatusPanelOpen(runStatusPanelChosen(carried, false), { running: true, wide: false }), false, "and their close still ends it");
-});
-
-test("an operator's open outlives the run it was made in, on a phone too", () => {
-  // A phone's operator opened the panel while the run streamed; a run the conversation starts on its own then ends.
-  const opened = runStatusPanelChosen(runStatusPanel(undefined, { running: true }), true);
-  assert.equal(runStatusPanelOpen(opened, { running: true, wide: false }), true, "an explicit open works on a phone");
-  const phoneEnded = runStatusPanel(opened, { running: false });
-  assert.equal(runStatusPanelOpen(phoneEnded, { running: false, wide: false }), true, "the open holds through its run's end");
-
-  // A later run, which the operator did not start, leaves it open: closing under them was the defect.
-  const phoneNext = runStatusPanel(phoneEnded, { running: true });
-  assert.equal(runStatusPanelOpen(phoneNext, { running: true, wide: false }), true, "a phone keeps the panel the operator opened");
-
-  // Only their own close ends it, and the run after that starts from the default again.
-  const phoneClosed = runStatusPanelChosen(phoneNext, false);
-  assert.equal(runStatusPanelOpen(phoneClosed, { running: true, wide: false }), false);
-  const afterClose = runStatusPanel(runStatusPanel(phoneClosed, { running: false }), { running: true });
-  assert.deepEqual(afterClose, { running: true, choice: undefined });
-  assert.equal(runStatusPanelOpen(afterClose, { running: true, wide: false }), false, "the next run after a close is collapsed on a phone");
-});
-
-test("an operator's open while idle survives and works on a phone", () => {
-  const opened = runStatusPanelChosen(runStatusPanel(undefined, { running: false }), true);
-  assert.equal(runStatusPanelOpen(opened, { running: false, wide: true }), true);
-  assert.equal(runStatusPanelOpen(opened, { running: false, wide: false }), true, "an explicit open works on a phone");
-  assert.deepEqual(runStatusPanel(opened, { running: false }), { running: false, choice: true }, "idle time keeps the choice");
-
-  const phone = runStatusPanelChosen(runStatusPanel(undefined, { running: true }), true);
-  assert.deepEqual(phone, { running: true, choice: true });
-  assert.equal(runStatusPanelOpen(phone, { running: true, wide: false }), true);
-});
-
-test("a first render mid-run opens on a wide window", () => {
-  const first = runStatusPanel(undefined, { running: true });
-  assert.deepEqual(first, { running: true, choice: undefined });
-  assert.equal(runStatusPanelOpen(first, { running: true, wide: true }), true);
+  // The trigger's paint and the panel's open are one decision, whichever way the operator left it.
+  assert.equal(runStatusTriggerPainted(runStatusPanelOpen({ open: true })), false);
+  assert.equal(runStatusTriggerPainted(runStatusPanelOpen({ open: false })), true);
 });
 
 test("background watchers keep the trigger alive and count as working", () => {  const watcher = (id: string, state: "running" | "done" | "failed" | "dead") => ({

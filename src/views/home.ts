@@ -2512,7 +2512,6 @@ function renderHeader(props: HomeProps, session: SessionView) {
             waiting: Boolean(props.question),
             sending: props.sending,
             connectionLive: props.connection === "live",
-            wide: !props.mobileNavLayout,
             goalPanel: props.goalPanel,
             collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
             onGoalChange: props.onGoalChange,
