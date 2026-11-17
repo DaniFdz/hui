@@ -99,6 +99,17 @@ test("The context ring opens Context usage with occupancy over the estimate of w
   await hui.provider.release();
   await expect(idle).toBeVisible();
 
+  // A live total is proved against the one before it, so the read of what the panel shows is told apart from the read
+  // of what this run committed: the same figure cannot stand for both.
+  const spent = async () => (await usage.textContent())?.match(/All model calls\s*(\S+ tokens · \$[\d.]+)/iu)?.[1];
+  await ring.tap();
+  await expect(usage).toBeVisible();
+  const before = await spent();
+  expect(before).toBeDefined();
+  expect(before).not.toBe("No calls recorded yet");
+  await ring.tap();
+  await expect(usage).toBeHidden();
+
   // The ledger's total shows what this run already committed while its tool is still running, not only once it settles.
   const held = await hui.holdTool(session, "fixture_echo", { text: "held for the meter" });
   await expect(screen.getByRole("button", "Stop")).toBeVisible();
@@ -108,8 +119,14 @@ test("The context ring opens Context usage with occupancy over the estimate of w
   await expect(usage).not.toContainText("No calls recorded yet");
   await expect(usage).not.toContainText("unpriced");
   await expect(compactNow).toBeDisabled();
+  // The held call's own ledger commit moved the total: reading the previous turn's figure again is not proof of that.
+  const live = await spent();
+  expect(live).toBeDefined();
+  expect(live).not.toBe(before);
   await held.release();
   await expect(idle).toBeVisible();
+  await expect(usage).toContainText(/All model calls \S+ tokens · \$0\.00/iu);
+  await expect(usage).not.toContainText("No calls recorded yet");
 
   const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Meter Bot", soul: "A test bot." });
   await hui.open(`/bots/${bot.id}`);
