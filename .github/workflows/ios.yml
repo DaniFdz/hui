@@ -138,10 +138,12 @@ jobs:
           # The same single 90 s whole-phase infrastructure ceiling applies, not a UI render-latency SLA.
           # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
-          # The app-side half of a share: the extension's hui://share?url= reaches the app's SceneDelegate. The app stays
-          # running on the gateway, because the OCR oracle cannot dismiss the system confirmation a stopped app's
-          # `simctl openurl` raises; the same SceneDelegate path runs warm, and cold-start delivery stays a device gap.
-          xcrun simctl openurl "$HUI_IOS_UDID" 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'
+          # The app-side half of a share: this cold Debug launch carries the link and runs the same SceneDelegate
+          # openDeepLink the system's URL context runs. `simctl openurl` raises iOS's "Open in HUI?" confirmation, which
+          # this screenshot oracle cannot dismiss, so the system's own delivery stays a device gap.
+          xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
+          xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500 \
+            -HUIURL 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" share
           ls -la "$RUNNER_TEMP/shots"
       - if: ${{ always() }}

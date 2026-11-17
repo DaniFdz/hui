@@ -267,6 +267,7 @@ request helper and the API guard paired with the target SDK, and rejects the dec
 | Android launch extra | `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (the app remembers it; honoured in debug builds only) |
 | Fallback marker | `huiGatewayFailed` marks the address that did not answer, so the restart shows the Connect page instead of an empty WebView. The app sets it itself; another app's intent only counts while it names the remembered gateway. |
 | iOS launch argument | `-HUIGatewayURL <url>` |
+| iOS share launch argument | `-HUIURL <hui://share?url=…>` (Debug only; stands in for the system's URL delivery in `ios.yml`) |
 | Deep link | `hui://open?path=<path>` on both (WP2 implemented; see "The deep link opens one screen") |
 | App ids | `dev.hui.app` (release, iOS), `dev.hui.app.debug` (Android debug, `applicationIdSuffix`) |
 | E2E target names | `web`, `android`, `webkit-phone`, `ios-smoke` |
@@ -436,9 +437,11 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   hands back nothing cannot turn the file into an empty share — and the activation rule stays as it is, because a
   predicate narrow enough to exclude a file would also hide a share that carries a link and a file together, and there
   is no device here to try one. **What is proven:** the parser's JVM tests, the web intake's tests, the appex's embedding
-  checked by `ios.yml` and `release.yml`, and the PR-triggered `ios.yml` run opening `hui://share?url=…` in the running
-  app on the gateway and OCRing the seed's lead, which is the warm app half on a simulator. **Not proven:** cold-start
-  delivery (the system's confirmation blocks a stopped app's `simctl openurl`), the extension's own tap,
+  checked by `ios.yml` and `release.yml`, and the app half on a simulator: the PR-triggered `ios.yml` run terminates HUI,
+  launches it in Debug with `-HUIURL` and the remembered gateway, and OCRs the seed's lead; that run checks the app half
+  and `openDeepLink`, not the system's delivery. **Not proven:** the system's own delivery of the link, cold start
+  included (iOS's "Open in HUI?" confirmation covers the app when `simctl openurl` delivers one, and this oracle cannot
+  dismiss it, so the Debug launch argument stands in for the system rather than being it), the extension's own tap,
   `NSExtensionContext.open`'s answer and the responder-chain handshake, all device-only.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).

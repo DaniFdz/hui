@@ -124,25 +124,35 @@ test("the simulator build targets the device it captures on, so one architecture
   assert.ok(workflow.indexOf("actions/cache@") < workflow.indexOf("-derivedDataPath"));
 });
 
-test("iOS opens hui://share in the running app after the gateway screen and OCRs the seed's lead", () => {
+test("iOS delivers the share with a Debug launch-argument link after the gateway screen and OCRs the seed's lead", async () => {
   const gateway = '"$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway';
-  const openURL = "xcrun simctl openurl \"$HUI_IOS_UDID\" 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'";
   const share = '"$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" share';
   const upload = "uses: actions/upload-artifact@";
-  assert.equal(workflow.split(share).length - 1, 1, "the share phase runs exactly once");
-  const gatewayWait = workflow.indexOf(gateway);
-  const opened = workflow.indexOf(openURL);
-  const proved = workflow.indexOf(share);
-  assert.notEqual(gatewayWait, -1, "the gateway screen is proved first");
-  assert.notEqual(opened, -1, "the share link is opened");
-  assert.ok(gatewayWait < opened, "the share is delivered to the app the gateway screen just proved");
-  assert.doesNotMatch(workflow.slice(gatewayWait, opened), /simctl terminate/u,
-    "the app stays running: a stopped app's openurl leaves the system confirmation the OCR oracle cannot dismiss");
-  assert.ok(opened < proved, "the link is opened before its screen is read");
-  assert.ok(proved < workflow.indexOf(upload), "the ready share frame is uploaded with the artifact");
+  const terminate = 'xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true';
+  const launch = 'xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500 \\';
   // The extension builds `hui://share?url=<value>`: the link has to carry the shared post, percent-encoded once.
   const encoded = "https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F";
-  assert.ok(openURL.includes(`'hui://share?url=${encoded}'`), "the openurl carries the percent-encoded Instagram post");
+  assert.equal(workflow.split(share).length - 1, 1, "the share phase runs exactly once");
+  const gatewayWait = workflow.indexOf(gateway);
+  const shareWait = workflow.indexOf(share);
+  assert.notEqual(gatewayWait, -1, "the gateway screen is proved first");
+  assert.ok(gatewayWait < shareWait, "the share screen is read after the gateway screen it follows");
+  // Delivery is a cold launch, not `simctl openurl`: a stopped app's openurl leaves iOS's "Open in HUI?" confirmation
+  // over the app, which this OCR oracle cannot dismiss, so the seed never renders and the phase only waits out its bound.
+  const delivery = workflow.slice(gatewayWait, shareWait);
+  const stopped = delivery.indexOf(terminate);
+  const launched = delivery.indexOf(launch);
+  assert.ok(stopped !== -1, "the app is terminated before the link is delivered");
+  assert.ok(launched > stopped, "the link rides a cold launch of the app the gateway screen just proved");
+  // The argument crosses two files with no compiler between them: the workflow passes `-HUIURL` and the SceneDelegate
+  // reads `HUIURL` from UserDefaults in Debug builds only, as it reads `-HUIGatewayURL`.
+  const scene = await readFile(new URL("../mobile/ios/App/App/SceneDelegate.swift", import.meta.url), "utf8");
+  const argument = /#if DEBUG\n([\s\S]*?)#endif/u.exec(scene)?.[1].match(/string\(forKey: "(\w+)"\)/u)?.[1];
+  assert.ok(argument, "the SceneDelegate reads the link from a Debug-only launch argument");
+  assert.ok(delivery.indexOf(`-${argument} 'hui://share?url=${encoded}'`) > launched,
+    "the launch carries the percent-encoded Instagram post in the argument the app reads");
+  assert.doesNotMatch(workflow, /xcrun simctl openurl/u, "no step waits on a system URL delivery this oracle cannot get past");
+  assert.ok(shareWait < workflow.indexOf(upload), "the ready share frame is uploaded with the artifact");
   assert.match(oracle, /"share": \["Look this post in Instagram"\]/u, "the oracle requires the share sentence's lead");
   const selfTest = oracle.slice(oracle.indexOf("func selfTest()"), oracle.indexOf("// This owns the single whole-phase"));
   assert.ok(selfTest.includes('rendered("Look this post in YouTube https://www.youtube.com/watch?v=1")'),

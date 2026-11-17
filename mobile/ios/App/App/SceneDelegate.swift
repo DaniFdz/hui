@@ -13,6 +13,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
         if let url = connectionOptions.urlContexts.first?.url { _ = openDeepLink(url) }
+        #if DEBUG
+        // `simctl openurl` leaves iOS's "Open in HUI?" confirmation on screen, which the screenshot oracle cannot
+        // dismiss, so CI launches with the link the system would deliver. Debug-only, like `-HUIGatewayURL`.
+        if connectionOptions.urlContexts.isEmpty,
+           let raw = UserDefaults.standard.string(forKey: "HUIURL"),
+           let url = URL(string: raw) {
+            _ = openDeepLink(url)
+        }
+        #endif
     }
 
     /// `hui://open?path=/sessions/…` loads that path on the gateway the app is on, as the Android shell's deep link does.
