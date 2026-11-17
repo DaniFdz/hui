@@ -338,6 +338,10 @@ test("the meter adds what every model call cost, compaction summaries included",
   const unpriced = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null, reported: true, asOf: Date.now() } } });
   assert.match(unpriced, /12\.0k tokens · unpriced/u, "a call nobody priced is said, not counted as free");
   assert.match(unpriced, /<dt>Checked<\/dt>/u);
+  // Version skew: a worker from before `reported` sends its total without the field, and still spent what it says.
+  const legacy = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null } } });
+  assert.match(legacy, /12\.0k tokens · unpriced/u, "an older payload's total still reads");
+  assert.doesNotMatch(legacy, /No calls recorded yet/u, "not as an empty ledger");
   const empty = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 0, usd: null, reported: false, asOf: Date.now() } } });
   assert.match(empty, /<dt>All model calls<\/dt><dd>No calls recorded yet<\/dd>/u, "an empty ledger says no call was recorded");
   assert.doesNotMatch(empty, /<dd>0 tokens/u, "rather than reading as a zero total");

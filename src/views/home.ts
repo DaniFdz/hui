@@ -2055,9 +2055,10 @@ function renderModelMetric(metric: ModelMetric | undefined) {
   </details></div>`;
 }
 
-/** What a session's ledger total reads: no recorded call is said, not counted as a zero. */
+/** What a session's ledger total reads: no recorded call is said, not counted as a zero. A worker older than the
+ * `reported` field sends a total without it; that total still carries what its calls spent. */
 function sessionTotalText(total: NonNullable<RuntimeUsage["sessionTotal"]>): string {
-  if (!total.reported) return "No calls recorded yet";
+  if (total.reported === false) return "No calls recorded yet";
   return `${compactTokens(total.tokens)} tokens · ${total.usd === null ? "unpriced" : `$${total.usd.toFixed(2)}`}`;
 }
 

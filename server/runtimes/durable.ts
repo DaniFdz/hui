@@ -754,7 +754,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return { tokens, parts: contextParts(collected.reverse(), this.#systemUpdates(), this.#optchat, tokens) };
   }
 
-  /** Reads the conversation's ledger for what it has cost, once, and reports it to the open view when it changed. */
+  /** Reads the conversation's ledger for what it has cost, once, and reports it to the open view. */
   #refreshTotal(): void {
     this.#totalStale = true;
     if (this.#totalRead) return;
@@ -766,15 +766,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         try {
           const spend = await this.#host.conversationSpend(this.#conversation.id);
           if (!spend) return;
-          // Only a total that changed redraws: a repeated read finds the one the view already shows.
-          if (this.#total && this.#total.tokens === spend.tokens && this.#total.usd === spend.usd && this.#total.reported === spend.reported) continue;
+          // `asOf` is when the view last read the ledger, so every read reports, changed total or not.
           this.#total = { ...spend, asOf: Date.now() };
           this.#emit({ type: "usage" });
         } catch {
           this.#totalStale = false;
         }
       }
-    })().finally(() => { this.#totalRead = undefined; });
+    })().finally(() => {
+      this.#totalRead = undefined;
+      // A refresh asked for as this read ended had no read to join: read again for it.
+      if (this.#totalStale && !this.#disposed) this.#refreshTotal();
+    });
     void this.#totalRead;
   }
 
