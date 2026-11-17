@@ -1,3 +1,4 @@
+import ObjectiveC
 import UIKit
 
 /**
@@ -202,10 +203,12 @@ final class ShareViewController: UIViewController {
      provider callback that got here already dispatched there. `UIApplication` is never named: the chain is walked as
      responders, and the extension target stays API-extension-only.
 
-     The call's `BOOL` answer is read through the method's own signature, not discarded: `perform(_:with:)` cannot
-     carry a `BOOL` out, and its `Unmanaged<AnyObject>` return would be undefined. The signature check keeps an unrelated
-     `openURL:` implementation from being called with the wrong ABI — three arguments taking an object, a one-byte
-     `BOOL` return — and a `false` answer is a real answer: the sheet stays, with Copy as the last resort.
+     The call's `BOOL` answer is read through the runtime method's own type encoding (`method_getTypeEncoding`), not
+     discarded: `perform(_:with:)` cannot carry a `BOOL` out, and its `Unmanaged<AnyObject>` return would be undefined.
+     `methodSignature(for:)` would describe the method the same way, but Swift does not expose it, so the encoding is
+     read from the runtime method instead. The encoding check keeps an unrelated `openURL:` implementation from being
+     called with the wrong ABI — three arguments taking an object, a one-byte `BOOL` return — and a `false` answer is a
+     real answer: the sheet stays, with Copy as the last resort.
      */
     private func openFromResponderChain(_ url: URL) {
         let selector = NSSelectorFromString("openURL:")
@@ -214,12 +217,13 @@ final class ShareViewController: UIViewController {
         while let candidate = responder {
             responder = candidate.next
             guard candidate.responds(to: selector) else { continue }
-            guard let signature = candidate.methodSignature(for: selector),
-                  signature.numberOfArguments == 3,
-                  signature.methodReturnLength == 1,
-                  let returnType = signature.methodReturnType,
-                  String(cString: returnType) == "B" || String(cString: returnType) == "c",
-                  String(cString: signature.getArgumentType(at: 2)) == "@" else { continue }
+            guard let cls = object_getClass(candidate),
+                  let method = class_getInstanceMethod(cls, selector),
+                  let encoding = method_getTypeEncoding(method) else { continue }
+            let types = String(cString: encoding)
+            // - (BOOL)openURL:(NSURL *): one-byte BOOL return, object receiver, selector and object argument.
+            guard types.hasPrefix("B") || types.hasPrefix("c"),
+                  types.contains("@0:8@16") else { continue }
             let implementation = unsafeBitCast(candidate.method(for: selector), to: OpenURL.self)
             if implementation(candidate, selector, url as NSURL) {
                 complete()
