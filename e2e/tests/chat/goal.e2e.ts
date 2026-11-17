@@ -10,7 +10,7 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   const transcript = screen.getByTestId("transcript");
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
-  // A wide window opens the popover itself while a turn streams and closes it again when that run ends.
+  // No run opens it: the panel stays shut until the operator presses the header's trigger.
   const openPanel = () => openRunStatus(screen);
 
   // Start a goal whose first turn the provider holds, so the operator can pause it while it runs.
@@ -19,8 +19,8 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await message.fill("/goal E2E_REPLAY get CI green on PR 1");
   await send.tap();
   await expect(transcript.getByText("E2E_REPLAY get CI green on PR 1")).toBeVisible();
-  // A wide window opens the popover while this turn streams, so the header draws its panel rather than the pill; the
-  // control is there either way, and its accessible name reads what the pill would.
+  // The streaming turn leaves the header's pill in place, and its accessible name reads the state it shows: the control is
+  // there either way, and one press opens the panel.
   await expect(trigger).toBeAttached();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, goal pursuing/u);
   await openPanel();
@@ -32,7 +32,7 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await popover.getByRole("button", "Pause goal").tap();
   await hui.provider.release();
   await expect(trigger).toHaveAccessibleName(/^Run status: Goal paused/u);
-  // Pausing ended the run, so the panel it opened by itself closed with it; the operator opens it to read the pause.
+  // Pausing ended the run, and the operator's open outlives it: the panel they opened is still there to read the pause.
   await openPanel();
   await expect(popover.getByRole("button", "Resume goal")).toBeVisible();
   // One state word per box: a paused goal alone in the panel names its state in the head — the pill's own word,

@@ -58,7 +58,7 @@ test("Collapse task progress starts an agent's plan collapsed but expandable, an
     const session = await hui.createSession({ title });
     await hui.prompt(session, "E2E_PROGRESS");
     await hui.open(`/sessions/${session.id}`);
-    // A wide window opens the popover itself while the turn streams; the shared helper takes it once it has settled.
+    // The turn leaves the panel closed, so the shared helper opens it once the run has settled.
     await openRunStatus(screen);
     await expect(card).toBeVisible();
   };

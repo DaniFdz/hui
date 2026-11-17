@@ -14,12 +14,9 @@ export async function openRunStatus(screen: Screen): Promise<Locator> {
   // popover's anchor and its aria-expanded, but it is not painted. Attachment, not paint, is what this read needs until
   // the pill itself has to be pressed.
   await expect(trigger).toBeAttached();
-  const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
-  // A wide window opens and closes it by itself around a run, and Web Awesome's dialog stays on screen through its show
-  // and hide animations. Wait until the trigger's own state and what is on screen agree, so the pill is pressed only in
-  // the settled closed state and never mid-animation.
-  await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
-  if (!(await expanded())) {
+  // The panel opens only on the operator's own press — no run and no window width opens or closes it — so a trigger that
+  // does not report the panel open is the one state the press is made in.
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
     // A closed panel paints the pill, and the pill is the control the operator presses to open it.
     await expect(trigger).toBeVisible();
     await trigger.tap();
@@ -45,14 +42,13 @@ export async function openWatchers(screen: Screen): Promise<Locator> {
 }
 
 /**
- * Opens Run status once the run a prompt just started has settled, and returns the popover. A wide window opens it by
- * itself while a run streams and closes it with that run, while the operator's own open outlasts it, so a read after the
- * turn opens it again when it is closed. `expected` is what the turn leaves in the panel — the rows it starts and the
- * states the gateway's poll records for them — and waiting for it first proves the run began, because
- * `Session status: Idle` also holds in the moment before a prompt's run starts. The gate reads the panel's whole content:
- * more than four watchers sit behind `Watcher details`, and a rendered read leaves those rows out while the panel is open,
- * which is now the state an operator's open leaves it in. What a row shows is asserted through the disclosure that holds
- * it.
+ * Opens Run status once the run a prompt just started has settled, and returns the popover. The panel stays closed through
+ * every run until the operator opens it, so a read after the turn opens it. `expected` is what the turn leaves in the
+ * panel — the rows it starts and the states the gateway's poll records for them — and waiting for it first proves the run
+ * began, because `Session status: Idle` also holds in the moment before a prompt's run starts. The gate reads the panel's
+ * whole content: more than four watchers sit behind `Watcher details`, and a rendered read leaves those rows out while the
+ * panel is open, which is the state an operator's open leaves it in. What a row shows is asserted through the disclosure
+ * that holds it.
  */
 export async function openSettledRunStatus(hui: Hui, screen: Screen, ...expected: readonly string[]): Promise<Locator> {
   await expect.poll(async () => {

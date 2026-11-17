@@ -1478,8 +1478,8 @@ function huiTest(offline: boolean) {
         // is not painted; the pill is pressed, and its visibility read, only in the closed state.
         await expect(trigger).toBeAttached();
         const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
-        // A wide window opens and closes it by itself around a run, and the dialog stays on screen through its show and
-        // hide animations, so the one toggle is pressed only once its state and the screen agree.
+        // The panel opens only on the operator's own press, and the dialog stays on screen through its show and hide
+        // animations, so the one toggle is pressed only once its state and the screen agree.
         await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
         if (!(await expanded())) {
           await expect(trigger).toBeVisible();

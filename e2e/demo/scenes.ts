@@ -335,7 +335,7 @@ export const scenes: Scene[] = [
       await d.caption("Run status tracks every helper");
       await d.say("children");
       await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
-      // A wide window already opened the popover while the helpers run; the trigger is one toggle.
+      // The helpers' run leaves the panel shut, so the operator presses the pill in the header to open it.
       if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
       await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
       await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
