@@ -9,8 +9,9 @@ import UIKit
  app — for the Today and iMessage extension points only, so a share extension calling it is unsupported, and it is
  reported to answer `false` on iOS 18 and later, a cold start especially. The responder chain is the standard workaround:
  `open` is tried first and a `false` answer is handed to the first responder that answers `openURL:` (see
- `openFromResponderChain`). iOS's own restriction on private selectors is App Review's, which this app never goes
- through: HUI ships as an unsigned IPA that SideStore signs with the operator's own Apple ID.
+ `openFromResponderChain`). `openURL:` is a public `UIApplication` method marked unavailable in app extensions, not a
+ private selector: the chain never names the symbol, so App Review's private-API rule is not the runtime barrier, and
+ HUI's unsigned IPA is signed by SideStore with the operator's own Apple ID, so App Review never sees it.
 
  A share that leaves neither way is shown here with a Copy action instead of failing silently. There is no Capacitor and
  no storyboard: `loadView` builds every view it has.
@@ -157,6 +158,8 @@ final class ShareViewController: UIViewController {
     }
 
     private func send(_ payload: String) {
+        // A provider that answers twice must not replace the value Copy would hand over after the first handoff.
+        guard self.payload == nil else { return }
         self.payload = payload
         guard var link = URLComponents(string: "hui://share") else {
             fail("HUI couldn't be opened.")
@@ -199,17 +202,30 @@ final class ShareViewController: UIViewController {
      provider callback that got here already dispatched there. `UIApplication` is never named: the chain is walked as
      responders, and the extension target stays API-extension-only.
 
-     The call's `BOOL` answer is deliberately not read. `perform(_:with:)` returns `Unmanaged<AnyObject>`, and a `BOOL` is
-     not a boxed object, so taking its value would be undefined; a responder that answers is the one handoff attempt.
+     The call's `BOOL` answer is read through the method's own signature, not discarded: `perform(_:with:)` cannot
+     carry a `BOOL` out, and its `Unmanaged<AnyObject>` return would be undefined. The signature check keeps an unrelated
+     `openURL:` implementation from being called with the wrong ABI — three arguments taking an object, a one-byte
+     `BOOL` return — and a `false` answer is a real answer: the sheet stays, with Copy as the last resort.
      */
     private func openFromResponderChain(_ url: URL) {
         let selector = NSSelectorFromString("openURL:")
+        typealias OpenURL = @convention(c) (AnyObject, Selector, NSURL) -> Bool
         var responder: UIResponder? = self
         while let candidate = responder {
             responder = candidate.next
             guard candidate.responds(to: selector) else { continue }
-            _ = candidate.perform(selector, with: url)
-            complete()
+            guard let signature = candidate.methodSignature(for: selector),
+                  signature.numberOfArguments == 3,
+                  signature.methodReturnLength == 1,
+                  let returnType = signature.methodReturnType,
+                  String(cString: returnType) == "B" || String(cString: returnType) == "c",
+                  String(cString: signature.getArgumentType(at: 2)) == "@" else { continue }
+            let implementation = unsafeBitCast(candidate.method(for: selector), to: OpenURL.self)
+            if implementation(candidate, selector, url as NSURL) {
+                complete()
+            } else {
+                fail("HUI couldn't be opened.")
+            }
             return
         }
         fail("HUI couldn't be opened.")
@@ -217,6 +233,7 @@ final class ShareViewController: UIViewController {
 
     /// The handoff was made: the request is answered, which dismisses the sheet.
     private func complete() {
+        guard !finished else { return }
         finished = true
         spinner.stopAnimating()
         extensionContext?.completeRequest(returningItems: [], completionHandler: nil)

@@ -1,13 +1,13 @@
 name: iOS
 # The iOS half of the phone shell has no local loop on Linux, so this job is the whole proof: it builds for the simulator,
-# boots one, launches the app on a fixture gateway and captures the screen. Spike S3 measured the runner
-# (macos-26-arm64, Xcode 26.6, iOS 26.x runtimes only), the build (44-64 s), the boot (92-120 s) and a 6m15s job. Two
-# regressions had pushed the job to 11-13 minutes: a generic simulator destination compiled every architecture, and
-# derived data was thrown away per run. With cached derived data and one `simctl list`, the build measures about 135 s and
-# the job about 8m45s, which a 4-5 minute macOS queue typically still exceeds. It has its own workflow so a Linux-only
-# change under mobile/ never spends macOS minutes (the plan, section 7), and it does not wake for `package.json` or the
-# lockfile: `mobile.yml` builds the same bundle on Linux, and a dependency bump reaches the native proof through the
-# nightly's `ios` job on main.
+# boots one, launches the app on a fixture gateway, checks the app half of a share and captures the screen. Spike S3
+# measured the runner (macos-26-arm64, Xcode 26.6, iOS 26.x runtimes only), the build (44-64 s), the boot (92-120 s) and a
+# 6m15s job. Two regressions had pushed the job to 11-13 minutes: a generic simulator destination compiled every
+# architecture, and derived data was thrown away per run. With cached derived data and one `simctl list`, the build
+# measures about 135 s and the job about 8m45s, which a 4-5 minute macOS queue typically still exceeds. It has its own
+# workflow so a Linux-only change under mobile/ never spends macOS minutes (the plan, section 7), and it does not wake
+# for `package.json` or the lockfile: `mobile.yml` builds the same bundle on Linux, and a dependency bump reaches the
+# native proof through the nightly's `ios` job on main.
 on:
   # A deliberate dispatch is how a branch that is neither `main` nor `mobile/**` gets this proof before its pull request
   # exists: a push is not one of its triggers, and a pull request only wakes it for the paths below.
@@ -138,9 +138,9 @@ jobs:
           # The same single 90 s whole-phase infrastructure ceiling applies, not a UI render-latency SLA.
           # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
-          # The app-side half of a share: the extension's hui://share?url= reaches the app's SceneDelegate.
-          # Terminate first: a share to a HUI that is not running is the reported iOS 18 cold-start shape.
-          xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
+          # The app-side half of a share: the extension's hui://share?url= reaches the app's SceneDelegate. The app stays
+          # running on the gateway, because the OCR oracle cannot dismiss the system confirmation a stopped app's
+          # `simctl openurl` raises; the same SceneDelegate path runs warm, and cold-start delivery stays a device gap.
           xcrun simctl openurl "$HUI_IOS_UDID" 'hui://share?url=https%3A%2F%2Fwww.instagram.com%2Freel%2F987654321%2F'
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" share
           ls -la "$RUNNER_TEMP/shots"

@@ -1,8 +1,10 @@
 /**
- * Keeps the phone shell's two halves speaking one protocol: the Connect page (TypeScript), the Android activity and its
- * plugin (Java), and the loop script (Node) each name the same plugin, the same methods and the same launch extras. A
- * rename on one side would otherwise pass every unit test and only fail on a device. It also holds the one security
- * rule the split makes easy to lose: the page and the app accept exactly the same gateway addresses.
+ * Keeps the phone shell's halves speaking one protocol: the Connect page (TypeScript), the Android activity and its
+ * plugin (Java), and the loop script (Node) each name the same plugin, the same methods and the same launch extras. On
+ * iOS it reads the Share Extension's activation predicates and the link it builds, the SceneDelegate and `DeepLink` that
+ * answer it, and the project and workflows that embed the appex, so no half can drift from the others. A rename on one
+ * side would otherwise pass every unit test and only fail on a device. It also holds the one security rule the split
+ * makes easy to lose: the page and the app accept exactly the same gateway addresses.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";

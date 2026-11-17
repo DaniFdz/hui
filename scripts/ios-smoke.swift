@@ -1,5 +1,5 @@
 // Owns the iOS CI boot-readiness oracle: Vision reads actual simulator frames, not changed pixels or elapsed sleeps.
-// This proves rendered boot content and the app's own half of a share only, not permission dismissal, taps, or an
+// This proves rendered boot content and the app's own warm half of a share only, not permission dismissal, taps, or an
 // interactive phone journey.
 import AppKit
 import Darwin
