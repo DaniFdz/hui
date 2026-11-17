@@ -4173,7 +4173,7 @@ system messages mid-conversation reads every one of them where another reads onl
 prompt. `usage.sessionTotal` is Durable's own ledger, summed: every model call the conversation made, each compaction summary
 and tool-side call included, since no entry holds those. `tokens` and `usd` are that sum (`usd` is null when no call
 carried a price), `reported` is false while neither ledger bucket holds a call, and `asOf` is when the view last read
-the ledger, which it does when a model call commits during the run, after a run settles and after a compaction ends,
+the ledger, which it does when the ledger changes during the run, after a run settles and after a compaction ends,
 never while drawing a snapshot.
 The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and
 the meter draws the plain bar. A bot's chat reads the bot's cost beside the session's through

@@ -290,7 +290,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #shown: unknown[] | undefined;
   /** The cached size of the whole context, and where it goes. */
   #measurement: Measurement | undefined;
-  /** What every model call of this conversation cost, read when a model call commits during the run, after each run
+  /** What every model call of this conversation cost, read when the ledger records a call during the run, after each run
    * and after each compaction; undefined until read. */
   #total: RuntimeUsage["sessionTotal"];
   #totalRead: Promise<void> | undefined;

@@ -8,11 +8,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, Usage } from "@earendil-works/pi-ai";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { getImageDimensions } from "@earendil-works/pi-tui";
-import { afterAll, test, type TestContext } from "vitest";
+import { afterAll, test, vi, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
@@ -33,6 +33,10 @@ const { createDurableBots } = await import("../bots/durable-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
+};
+// The ledger's own writer: Durable keeps it out of the package root, like the estimator above.
+const { recordUsage } = await import(new URL("./harness/usage.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  recordUsage(tx: unknown, conversationId: ConversationId, bucket: "models" | "tools", key: string, usage: Usage): Promise<void>;
 };
 const { estimateTextTokens } = await import("@earendil-works/pi-ai/utils/estimate");
 const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai/utils/transcript");
@@ -1075,6 +1079,67 @@ test("a tool's own model spend reaches the session total while its run still str
   );
   releaseHold();
   await settled;
+});
+
+/** A call the ledger tests write themselves: ten tokens, whose recorded price is zero. */
+const LEDGER_CALL: Usage = {
+  input: 4, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+test("a commit that writes only the ledger refreshes the session total", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ledger-total" }, host);
+  const empty = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  assert.equal(empty.reported, false, "the ledger holds no call yet");
+  const harness = await host.open();
+  const conversationId = durableConversationId(session.sessionFile)!;
+  const changed = nextEvent(session, (event) => event.type === "usage");
+  // A commit that writes the ledger and nothing else: no entry at all, which is how a nested call's and a summary's spend
+  // arrive. Nothing about a message can announce it, so a total refreshed from the message that carries a call would never
+  // see it; the refresh follows the ledger's own revision instead.
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger", LEDGER_CALL), durableContext);
+  await changed;
+  const total = session.currentUsage()?.sessionTotal;
+  assert(total, "the meter reads the ledger");
+  const { asOf, ...spend } = total;
+  assert.deepEqual(spend, { tokens: 10, usd: 0, reported: true }, "the whole ledger, read from its own commit");
+  assert.equal(typeof asOf, "number", "and says when it read it");
+});
+
+test("a failed read reads again for a refresh that arrived beside it", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stale-total" }, host);
+  const empty = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  assert.equal(empty.reported, false, "the ledger holds no call yet");
+  const harness = await host.open();
+  const conversationId = durableConversationId(session.sessionFile)!;
+  // The next read fails, once the test says so; every later one answers from the real ledger.
+  const original = host.conversationSpend.bind(host);
+  let reading!: () => void;
+  const readingStarted = new Promise<void>((resolve) => { reading = resolve; });
+  let failRead!: (error: Error) => void;
+  const failedRead = new Promise<never>((_, reject) => { failRead = reject; });
+  void failedRead.catch(() => {});
+  const reads = vi.spyOn(host, "conversationSpend");
+  reads.mockImplementationOnce(() => { reading(); return failedRead; });
+  reads.mockImplementation((id) => original(id));
+  t.onTestFinished(() => { reads.mockRestore(); });
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger", LEDGER_CALL), durableContext);
+  await readingStarted;
+  // A second call lands while that read is still pending: there is no read to join, so only the stale flag holds it until
+  // this read ends.
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger_2", LEDGER_CALL), durableContext);
+  const second = await waitFor("the second call in the ledger", async () => (await host.conversationUsage(conversationId))?.tools?.["fixture_ledger_2"]);
+  assert.equal(second.totalTokens, 10, "the ledger holds both calls");
+  failRead(new Error("the fixture read failed"));
+  const total = await waitFor("the total that carries both calls", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.tokens === 20 ? current : undefined;
+  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
+  assert.equal(total.usd, 0, "both calls carry a recorded zero price");
+  assert(reads.mock.calls.length >= 2, `the failed read is read again for the refresh it missed (${reads.mock.calls.length} reads)`);
 });
 
 test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {
