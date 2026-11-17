@@ -195,6 +195,7 @@ test.each([
   ["src/lib/theme/shadcn-theme.fixture.json", "server/themes.fixture.json"],
   ["src/lib/composer/slash-commands.fixture.json", "server/sessions/slash-commands.fixture.json"],
   ["src/lib/composer/command-references.fixture.json", "server/runtimes/command-references.fixture.json"],
+  ["src/lib/attachments.fixture.json", "server/sessions/attachments.fixture.json"],
   ["src/lib/session/tree.fixture.json", "server/sessions/session-tree.fixture.json"],
   ["src/lib/subagent-completion.fixture.json", "server/agent-tools/subagent-completion.fixture.json"],
   ["src/lib/markdown/github-links.fixture.json", "server/integrations/github-links.fixture.json"],

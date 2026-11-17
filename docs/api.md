@@ -1126,8 +1126,8 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   `{ power: { keepAwake, lidAwake, lidOn } }`. `keepAwake` and `lidAwake` are
   `{ state: "off" | "pending" | "active" | "error", detail }`, what the gateway
   actually holds; `lidOn` is the lid switch. The UI polls it every three seconds
-  while visible and shows a top notice while `lidOn` is true and `lidAwake` is
-  active.
+  while visible and draws a notice in the open conversation, below its chat
+  header, while `lidOn` is true and `lidAwake` is active.
 - `PUT /__hui/power` with `{ "lidAwake": boolean }` sets the switch and returns
   the status at once; the outcome of a password prompt appears in later reads.
   JSON without a boolean `lidAwake` is 400, and off macOS it is 404.
@@ -3915,10 +3915,13 @@ and the decoded total to 16 MB. Base64 must be canonical; image MIME types are
 PNG, JPEG, GIF or WebP. Display names may contain Unicode and spaces, but must
 be 1–128 characters, cannot be `.` or `..`, and cannot contain `/`, `\\` or
 control characters. The browser enforces the same count, byte, type and name
-limits before upload. File uploads receive immutable UUID-backed paths, so a
-later upload with the same display name cannot replace bytes PI is still
-reading. If prompt or queue acceptance fails, only files created for that
-rejected request are removed.
+limits before upload, and its refusal names the limit it broke: a size refusal
+points at the Files pane, which takes up to 2 GB per file, except in a
+conversation on a remote worker, which has no Files pane and gets the same
+sentence alone, while a ninth attachment says to send the rest in another
+message. File uploads receive immutable UUID-backed paths, so a later upload with
+the same display name cannot replace bytes PI is still reading. If prompt or
+queue acceptance fails, only files created for that rejected request are removed.
 
 Because PI's image content does not carry filenames, HUI appends a versioned,
 base64url attachment manifest to the message sent through PI RPC. PI persists

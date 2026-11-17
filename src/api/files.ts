@@ -2,12 +2,14 @@
  * Browser client for the Files view's routes (`/__hui/sessions/:id/files…`, see docs/api.md). The gateway owns the
  * disk and resolves every path inside the conversation's working directory; this only sends requests with the
  * local-client header and turns refusals into errors, except a save conflict, which is an answer. It also downloads
- * the blobs behind media and file previews, and uploads a file with its progress, over an XHR because only that
- * reports how much of a body the browser has sent.
+ * the blobs behind media and file previews, and uploads a file with its progress and a no-progress deadline that
+ * tells the body phase from the answer phase, over an XHR because only that reports how much of a body the browser has
+ * sent.
  */
 import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "./schema/files.ts";
+import { filesBytes } from "../lib/files/copy.ts";
 import { assertCurrentBuild } from "./offline.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { BODY_STALL_MS, CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 import { reportReachable, reportRequestFailure } from "./ui-errors.ts";
 
 export const MAX_RESOLVE_PATHS = 100;
@@ -158,14 +160,68 @@ export async function uploadFile(
       return;
     }
     const request = new XMLHttpRequest();
+    // How much of the body the browser last reported as sent, so a stall can say how far it got.
+    let sent = 0;
+    let total = file.size;
+    // Whether every byte of the body is out: the deadline's two messages, and what it waits on, differ by this.
+    let bodySent = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
     const cancel = () => request.abort();
-    const done = (settle: () => void) => {
+    const stop = () => {
+      clearTimeout(timer);
+      timer = undefined;
       options.signal?.removeEventListener("abort", cancel);
-      settle();
+    };
+    /** Every terminal path settles once: clearing the deadline first makes the abort a stall itself fires a no-op, so
+     * it can never replace the stall's rejection with a cancellation. */
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      stop();
+      finish();
+    };
+    /** What a stall says depends on the phase it caught. While bytes are still going out the gateway cannot have
+     * written anything: it renames into place only once the whole body has arrived. Once every byte is out the rename
+     * may already have happened, and the abort below cannot undo it, so claiming the file was rolled back would be
+     * false; the folder is what tells the operator which it was. */
+    const stalled = (percent: number) => bodySent
+      ? `“${file.name}” sent all of ${filesBytes(total)}, but HUI did not answer. The upload may have finished; check the folder.`
+      : `“${file.name}” stopped uploading at ${percent}% (${filesBytes(sent)} of ${filesBytes(total)} sent). Nothing was saved and the folder is unchanged. Check the connection and try again.`;
+    /** A body that stops arriving fires neither `load`, `error` nor `abort`, so the upload would never answer and its
+     * bytes would sit in a temporary file beside the target. The deadline measures progress only: a large upload that
+     * keeps sending is never aborted. */
+    const arm = () => {
+      if (settled) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => settle(() => {
+        const percent = total > 0 ? Math.min(100, Math.floor((sent / total) * 100)) : 0;
+        const error = new FilesRequestError(stalled(percent), 0);
+        reject(error);
+        request.abort();
+      }), BODY_STALL_MS);
+    };
+    /** The body is out whole, so the deadline now waits for the answer rather than the body and gets its own window.
+     * `XMLHttpRequestUpload`'s `load` is the browser saying exactly that; a final `progress` reporting every byte is
+     * the same news a moment earlier. */
+    const bodyComplete = () => {
+      if (settled || bodySent) return;
+      bodySent = true;
+      arm();
     };
     options.signal?.addEventListener("abort", cancel, { once: true });
-    request.upload.addEventListener("progress", (event) => options.onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size));
-    request.addEventListener("load", () => done(() => {
+    request.upload.addEventListener("progress", (event) => {
+      if (settled) return;
+      sent = event.loaded;
+      total = event.lengthComputable ? event.total : file.size;
+      arm();
+      // A progress event that accounts for every byte means the body is out: the gateway may rename it into place from
+      // here on, so a deadline after this point must never promise the folder is unchanged.
+      if (event.lengthComputable && event.total > 0 && event.loaded >= event.total) bodyComplete();
+      options.onProgress?.(sent, total);
+    });
+    request.upload.addEventListener("load", bodyComplete);
+    request.addEventListener("load", () => settle(() => {
       reportReachable();
       if (request.status === 201) {
         resolve((JSON.parse(request.responseText) as { entry: FileEntry }).entry);
@@ -180,16 +236,17 @@ export async function uploadFile(
       })();
       reject(new FilesRequestError(body?.error ?? `The gateway answered HTTP ${request.status}.`, request.status, body?.code));
     }));
-    request.addEventListener("error", () => done(() => {
+    request.addEventListener("error", () => settle(() => {
       const error = new FilesRequestError("Could not reach HUI. Check the connection and try again.", 0);
       reportRequestFailure(error, { method: "POST", path: new URL(url, location.href).pathname });
       reject(error);
     }));
-    request.addEventListener("abort", () => done(() => reject(new DOMException("The upload was cancelled.", "AbortError"))));
+    request.addEventListener("abort", () => settle(() => reject(new DOMException("The upload was cancelled.", "AbortError"))));
     request.open("POST", url);
     for (const [name, value] of Object.entries(CLIENT_HEADERS)) request.setRequestHeader(name, value);
     request.setRequestHeader("content-type", "application/octet-stream");
     request.send(file);
+    arm();
   });
 }
 
