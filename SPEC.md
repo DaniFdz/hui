@@ -3288,11 +3288,16 @@ a link by hand. The web owns the intake; a phone's share only has to open that a
   hand the composer an unbounded draft.
 - **Both phones, and the web.** The same address opens New Session prefilled in any browser, and `SESS-080` proves
   the intake in the shared suite, which runs on the web and inside the Android app.
-- **The iOS transport is best-effort.** Apple documents `NSExtensionContext.open(_:)` — how a share extension asks
-  iOS to open its app — as unsupported, and it is reported to fail on iOS 18 and later cold starts. When the link
-  does not open, the extension shows the share with a Copy action instead of failing silently. The known upgrade path
-  is an App Group the extension writes the share into, which the app reads on its next start; it touches the two
-  native targets and their entitlement, not this contract nor the web intake.
+- **The iOS transport is best-effort, in two steps.** Apple documents `NSExtensionContext.open(_:)` — how an
+  extension asks iOS to open its app — for the Today and iMessage extension points only; for a share extension it
+  is unsupported and reported to answer `false` on iOS 18 and later, a cold start especially. The extension calls
+  it first and, when it answers `false`, hands the same `hui://share?url=<value>` link to the first responder in
+  its own chain that answers `openURL:` — always behind `responds(to:)`, the method's `BOOL` answer read through
+  the runtime method's type encoding. A `true` answer completes the sheet; a `false` answer leaves the share on
+  screen with its Copy action. No App Group is added: SideStore signs the IPA with the operator's free Apple ID,
+  and free-account signing cannot use App Groups, so a share that opens neither way ends in Copy; an App Group the
+  extension writes into stays the unused upgrade path, and it touches the two native targets and their entitlement,
+  not this contract nor the web intake.
 
 ### Android replaces the iOS app as HUI's native client (2026-11-09)
 

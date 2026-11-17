@@ -136,7 +136,8 @@ jobs:
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500
           # Both seeded titles must render in the same fresh frame; clocks, splash and errors cannot pass.
           # The same single 90 s whole-phase infrastructure ceiling applies, not a UI render-latency SLA.
-          # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
+          # This gateway phase is boot visual proof only; a startup permission modal may remain and no taps are proved here.
+          # The share phase follows.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
           # The app-side half of a share: this cold Debug launch carries the link and runs the same SceneDelegate
           # openDeepLink the system's URL context runs. `simctl openurl` raises iOS's "Open in HUI?" confirmation, which
