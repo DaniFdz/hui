@@ -83,3 +83,50 @@ withdrawn prompt and a quick restart. Those are covered by
 dialog is unverified. Off macOS, `GET /__hui/power` returns `null`, so the
 section and notice are absent (covered by `server/routes/power.test.ts` and
 `src/views/settings-gateway.test.ts`).
+
+## The notice in the conversation (2026-11-17)
+
+Recorded on this checkout's HEAD with an isolated instance from
+`node e2e/visual-verification.mjs launch`: Chromium driven by `playwright-core`
+against the receipt URL, because HUI's Browser tool can neither stub a route nor
+set a CSS variable. The host is Linux, so `GET /__hui/power` returned `null`
+until the run stubbed `GET` and `PUT /__hui/power` with `page.route`, and the
+phone's notch was simulated with
+`document.documentElement.style.setProperty("--safe-area-top", "47px")`, a page
+where `matchMedia("(display-mode: browser)")` matched.
+
+- **Desktop, 1440×900.** The chat header was x 258, y 0, 1138×48 and the sidebar
+  x 0, y 0, 257×900 both before and after the notice appeared: the same boxes
+  within the 0.5 px tolerance, a 0.00 difference. The notice was x 258, y 48,
+  1138×45 — under the header's bottom, across the transcript's column — and the
+  transcript's y moved 48 → 93, losing exactly the notice's 45 px height. The
+  composer's bottom stayed at 817 and stayed hit-testable.
+- **The notice's two controls, desktop.** Dismiss removed the notice and
+  focused the `Message` textarea; a reload drew it again; Turn off sent
+  `PUT /__hui/power` with `{"lidAwake":false}` and removed it.
+- **Mobile, 390×844 with the simulated 47 px inset.** The header sat at y 51
+  with a height of 48; the notice was x 4, y 99, 382×53 with its bottom at 152,
+  below both the inset and the header's bottom 99. The transcript's y moved
+  99 → 152 and the composer stayed at y 747. The dismiss button was 44×44 and
+  fully on screen, and `document.elementFromPoint` at its centre landed inside
+  the button, on its icon. Dismiss removed the notice and focused the textarea,
+  and the header and sidebar boxes were identical before and after.
+- Home `/` and Settings → Gateway drew no notice while the stubbed state said
+  the lid switch was on and held awake, and Settings' own switch read that
+  state.
+- With the update notice stubbed, its message sat at y 60, clear of the 47 px
+  inset, and the shell below it began at y 96 with no top padding of its own.
+- Console: no page errors and no failed requests, only the existing Lit
+  development-mode warnings.
+
+The macOS switch, its administrator prompt and `pmset` were not exercised in
+this run; the 2026-09-29 coverage above still stands for those. Nor does it
+prove `webkit-phone`, which cannot launch on this host — WebKit's Ubuntu shared
+libraries are absent — and is CI's, or the bot-chat and split-pane placements,
+which have no shared journey yet. The 2026-09-29 section's "top notice" wording
+is historical and was left untouched.
+
+The shared test `e2e/tests/shell/lid-notice.e2e.ts` (SET-021) proves the same
+placement, the absence on Home and Settings, Dismiss, the reload and the
+turn-off request on the `web` target and on `webkit-phone`, with
+`GET`/`PUT /__hui/power` stubbed, so it needs no macOS host.

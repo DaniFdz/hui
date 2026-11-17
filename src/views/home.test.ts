@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test, vi } from "vitest";
+import type { PowerStatus } from "../api/schema/power.ts";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -23,6 +24,18 @@ test("chat notifications of every level render as the shell toast, not an inline
   const styles = readStyles("../styles/openclaw-chat.css");
   assert.match(styles, /\.chat-operation-toast\[data-level="warning"\] \.app-toast__icon \{ color: var\(--warn\); \}/);
   assert.match(styles, /\.chat-operation-toast\[data-level="error"\] \.app-toast__icon \{ color: var\(--danger\); \}/);
+});
+
+test("the open chat draws the sleep notice in flow between its header and its transcript, and only when handed one", async () => {
+  const power: PowerStatus = { keepAwake: { state: "active", detail: "" }, lidAwake: { state: "active", detail: "" }, lidOn: true };
+  const notice = { power, dismissed: false, onTurnOff: () => {}, onDismiss: () => {} };
+  const html = await renderWorkerSession("idle", { powerNotice: notice });
+  const header = html.indexOf('data-testid="chat-header"');
+  const sleep = html.indexOf('aria-label="Sleep prevention"');
+  const transcript = html.indexOf('data-testid="transcript"');
+  assert.ok(header >= 0 && sleep > header && transcript > sleep, `header ${header}, notice ${sleep}, transcript ${transcript}`);
+  assert.match(html, /class="chat-main__conversation-column"> <aside class="hui-update-notice" aria-label="Sleep prevention" \?inert=false>/u, "the column's first child, in flow");
+  assert.doesNotMatch(await renderWorkerSession("idle"), /Sleep prevention/u, "a chat handed no notice draws none");
 });
 
 test("auto-follow and scroll-to-latest target the real reference transcript scroller", async () => {

@@ -64,7 +64,7 @@ import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderGatewayDialog } from "./views/gateway-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
-import { renderPowerNotice } from "./views/power-notice.ts";
+import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
@@ -392,6 +392,8 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneMobileNav = false;
   /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
   @property({ attribute: false }) panePanelPicker?: TemplateResult;
+  /** The sleep-prevention notice the shell hands the one pane that may draw it, so no pane reads the power state. */
+  @property({ attribute: false }) panePowerNotice?: PowerNoticeProps;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
   /** Opens this session's browser view in the Work pane: the larger live view beside the chat. */
   @property(paneCallback) onPaneBrowser: (() => void) | undefined;
@@ -1522,7 +1524,11 @@ export class HuiApp extends HuiElement {
   private focusActiveComposer() {
     void this.updateComplete.then(() => {
       const app = this.activePaneApp();
-      const target = app?.querySelector<HTMLElement>("textarea") ?? app?.querySelector<HTMLElement>(".chat-pane__header");
+      // A bot's chat, or the only chat, is rendered by this element itself. A split layout is not: its composers belong
+      // to pane apps, and this element's light DOM holds every pane's copy, so the fallback would focus the first one.
+      const target = app?.querySelector<HTMLElement>("textarea")
+        ?? app?.querySelector<HTMLElement>(".chat-pane__header")
+        ?? (this.work.layout ? undefined : this.renderRoot.querySelector<HTMLElement>(".agent-chat__composer-combobox > textarea"));
       target?.focus({ preventScroll: true });
     });
   }
@@ -2362,6 +2368,7 @@ export class HuiApp extends HuiElement {
           .paneVisible=${true}
           .paneNarrow=${sheet}
           .paneMobileNav=${this.mobileNavLayout}
+          .panePowerNotice=${this.powerNoticeState()}
           .paneBot=${paneBot}
           .paneBotCost=${this.botCost()}
           .onPaneBotPanel=${this.toggleBotPanel}
@@ -2919,6 +2926,27 @@ export class HuiApp extends HuiElement {
     </dialog>`;
   }
 
+  /** The sleep-prevention notice's state; its buttons change that state and leave focus to the chat that draws it. */
+  private powerNoticeState(): PowerNoticeProps {
+    return {
+      power: this.control.power,
+      dismissed: this.control.powerNoticeDismissed,
+      onTurnOff: () => this.control.setLidAwake(false),
+      onDismiss: () => this.control.dismissPowerNotice(),
+    };
+  }
+
+  /** The notice a chat this element renders draws in flow, its buttons returning focus to that chat's composer. */
+  private chatPowerNotice(notice: PowerNoticeProps | undefined): PowerNoticeProps | undefined {
+    if (!notice) return undefined;
+    const focusComposer = () => this.embeddedPane ? this.composerTextarea?.focus() : this.focusActiveComposer();
+    return {
+      ...notice,
+      onTurnOff: () => { notice.onTurnOff(); focusComposer(); },
+      onDismiss: () => { notice.onDismiss(); focusComposer(); },
+    };
+  }
+
   private homeProps(): HomeProps {
     const launchModels = this.control.pi?.model.catalog ?? [];
     const launchModel = resolveLaunchModel(
@@ -2936,6 +2964,11 @@ export class HuiApp extends HuiElement {
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,
+      // The open chat draws the sleep notice in flow under its header; a pane draws the one the shell hands it, so
+      // no pane reads the power state, and the launcher draws none.
+      ...(this.conversation.selected
+        ? { powerNotice: this.chatPowerNotice(this.embeddedPane ? this.panePowerNotice : this.powerNoticeState()) }
+        : {}),
       groups: this.listedGroups,
       findSession: (id) => this.listedSession(id),
       ...(this.paneBot && this.onPaneBotPanel ? { bot: {
@@ -3067,13 +3100,6 @@ export class HuiApp extends HuiElement {
           this.composerTextarea?.focus();
         },
       })}
-      ${this.embeddedPane ? null : renderPowerNotice({
-        power: this.control.power,
-        dismissed: this.control.powerNoticeDismissed,
-        inert: noticesInert,
-        onTurnOff: () => { this.control.setLidAwake(false); this.composerTextarea?.focus(); },
-        onDismiss: () => { this.control.dismissPowerNotice(); this.composerTextarea?.focus(); },
-      })}
       ${this.embeddedPane ? null : renderAppLinkNotice({
         href: this.appLink,
         dismissed: this.appLinkDismissed,
@@ -3121,6 +3147,8 @@ export class HuiApp extends HuiElement {
       groups: this.sessions.revision ? this.sessions.groups : undefined,
       mobileNav: this.mobileNavLayout,
       panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
+      // At most one split pane draws the sleep notice, and the shell hands it so panes never read the power state.
+      powerNotice: pane.id === this.work.layout?.activePaneId ? this.powerNoticeState() : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
       onBrowser: () => this.work.openBrowser(pane),

@@ -14,6 +14,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
+import { renderPowerNotice, type PowerNoticeProps } from "./power-notice.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
 import { sessionGroupLabel, unreachableHost } from "../lib/session/sessions.ts";
 import type {
@@ -291,6 +292,8 @@ export type HomeProps = {
   /** Live preview of the agent's browser under its latest browser activity;
    * absent while the browser tool is off. `visible` is false for hidden panes. */
   browserPreview?: { visible: boolean; onExpand?: () => void };
+  /** The sleep-prevention notice this chat draws in flow under its header; absent when no chat is open. */
+  powerNotice?: PowerNoticeProps;
   /** Present while the workspace has more than one pane. */
   onClosePane?: () => void;
   paneMovable?: boolean;
@@ -2552,6 +2555,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
           <div class="chat-split-container">
             <div class="chat-main">
               <div class="chat-main__conversation-column">
+                ${props.powerNotice ? renderPowerNotice({ ...props.powerNotice, inert: false }) : nothing}
                 ${renderNote(props)}
                 ${props.offlineSupported === false ? html`<p class="transcript__note" role="status">Offline reload needs HTTPS or localhost.</p>` : nothing}
                 ${session.status === "error" && !props.worktreeError
