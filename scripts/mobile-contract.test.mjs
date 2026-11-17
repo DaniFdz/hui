@@ -1,8 +1,10 @@
 /**
- * Keeps the phone shell's two halves speaking one protocol: the Connect page (TypeScript), the Android activity and its
- * plugin (Java), and the loop script (Node) each name the same plugin, the same methods and the same launch extras. A
- * rename on one side would otherwise pass every unit test and only fail on a device. It also holds the one security
- * rule the split makes easy to lose: the page and the app accept exactly the same gateway addresses.
+ * Keeps the phone shell's halves speaking one protocol: the Connect page (TypeScript), the Android activity and its
+ * plugin (Java), and the loop script (Node) each name the same plugin, the same methods and the same launch extras. On
+ * iOS it reads the Share Extension's activation predicates and the link it builds, the SceneDelegate and `DeepLink` that
+ * answer it, and the project and workflows that embed the appex, so no half can drift from the others. A rename on one
+ * side would otherwise pass every unit test and only fail on a device. It also holds the one security rule the split
+ * makes easy to lose: the page and the app accept exactly the same gateway addresses.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -234,6 +236,21 @@ test("the iOS app opens a share on the gateway it remembers, as the Android one 
   assert.match(swiftDeepLink, /"\/new-session"/u, "the same route the Android half builds");
   assert.match(swiftDeepLink, /maxShareCharacters = 8_000/u, "the same 8 000-character cap as the Android half");
   assert.match(swiftDeepLink, /maxShareQueryBytes = 12 \* 1024/u, "the same 12 KiB query bound as the Android half");
+});
+
+test("the extension's link opens the scheme the app registers, under the host and query the app reads", async () => {
+  // The link crosses two processes with no compiler between them: the extension builds a string the app parses, and a
+  // rename on either side would still pass every unit test. The app's own registration is the third half — an unregistered
+  // scheme leaves the system with nothing to open, and neither half shows it in a log.
+  const plist = await read("mobile/ios/App/App/Info.plist");
+  const extension = await read("mobile/ios/App/ShareExtension/ShareViewController.swift");
+  const scene = await read("mobile/ios/App/App/SceneDelegate.swift");
+  const schemes = /<key>CFBundleURLSchemes<\/key>\s*<array>([\s\S]*?)<\/array>/u.exec(plist)?.[1] ?? "";
+  assert.match(schemes, /<string>hui<\/string>/u, "the app registers the scheme the extension opens");
+  assert.match(extension, /URLComponents\(string: "hui:\/\/share"\)/u, "the extension builds the share link");
+  assert.match(extension, /URLQueryItem\(name: "url", value:/u, "under the query name it has to agree on");
+  assert.match(scene, /case "share":/u, "and the app answers that host");
+  assert.match(scene, /query\("url"\)/u, "reading the same query");
 });
 
 test("both workflows refuse a build whose Share Extension is missing from the app", async () => {

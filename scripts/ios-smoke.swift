@@ -1,5 +1,6 @@
 // Owns the iOS CI boot-readiness oracle: Vision reads actual simulator frames, not changed pixels or elapsed sleeps.
-// This proves rendered boot content only, not permission dismissal, taps, or an interactive phone journey.
+// This proves rendered boot content and the app's own warm half of a share only, not permission dismissal, taps, or an
+// interactive phone journey.
 import AppKit
 import Darwin
 import Dispatch
@@ -12,6 +13,7 @@ struct Failure: Error, CustomStringConvertible {
 let required: [String: [String]] = [
     "connect": ["Connect to HUI", "GATEWAY URL"],
     "gateway": ["Plan the Android app", "Fix the flaky upload test"],
+    "share": ["Look this post in Instagram"],
 ]
 
 func normalized(_ text: String) -> String {
@@ -72,19 +74,26 @@ func selfTest() throws {
     }
     let blank = try rendered("")
     let wrong = try rendered("9:41\nConnecting to HUI\nError: gateway unavailable")
-    for phase in ["connect", "gateway"] {
+    for phase in ["connect", "gateway", "share"] {
         let phrases = required[phase]!
         try check(!isReady(blank, for: phase), "blank frame passed \(phase)")
         try check(!isReady(wrong, for: phase), "clock, splash or error frame passed \(phase)")
-        for phrase in phrases {
-            let partial = try rendered(phrase)
-            try check(!isReady(partial, for: phase), "one required phrase alone passed \(phase)")
+        // The share sentence's URL is not whitespace-delimited, so that phase names the sentence's lead only;
+        // a one-phrase phase has no partial rendering to reject.
+        if phrases.count > 1 {
+            for phrase in phrases {
+                let partial = try rendered(phrase)
+                try check(!isReady(partial, for: phase), "one required phrase alone passed \(phase)")
+            }
         }
         let positive = try rendered(phrases.joined(separator: "\n"))
         try check(isReady(positive, for: phase), "required rendered text failed \(phase): \(positive)")
         try check(isReady(phrases.joined(separator: "\n").uppercased()
             .replacingOccurrences(of: " ", with: "\n  "), for: phase), "case/line normalization failed")
     }
+    // The share phase names the sentence's lead, so another site's seed must still fail it.
+    let otherSiteShare = try rendered("Look this post in YouTube https://www.youtube.com/watch?v=1")
+    try check(!isReady(otherSiteShare, for: "share"), "another site's share seed passed share")
     // CI's cold first capture arrived after the deadline, but the matcher was already correct.
     let ciConnectOCR = "3:52\nC\nConnect to HUI\nThe address of the gateway you want this\napp to show.\nGATEWAY URL\nhttps://my-machine.example.ts.net\nConnect"
     try check(isReady(ciConnectOCR, for: "connect"), "CI Connect OCR did not match")
@@ -278,7 +287,7 @@ do {
     } else if args.count == 4 && args[0] == "wait" {
         try waitForReady(udid: args[1], directory: URL(fileURLWithPath: args[2]), phase: args[3])
     } else {
-        throw Failure(description: "Usage: ios-smoke self-test | warm-up <udid> <shots-directory> | wait <udid> <shots-directory> <connect|gateway>")
+        throw Failure(description: "Usage: ios-smoke self-test | warm-up <udid> <shots-directory> | wait <udid> <shots-directory> <connect|gateway|share>")
     }
 } catch {
     fputs("ios-smoke: \(error)\n", stderr)

@@ -267,6 +267,7 @@ request helper and the API guard paired with the target SDK, and rejects the dec
 | Android launch extra | `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (the app remembers it; honoured in debug builds only) |
 | Fallback marker | `huiGatewayFailed` marks the address that did not answer, so the restart shows the Connect page instead of an empty WebView. The app sets it itself; another app's intent only counts while it names the remembered gateway. |
 | iOS launch argument | `-HUIGatewayURL <url>` |
+| iOS share launch argument | `-HUIURL <hui://share?url=…>` (Debug only; stands in for the system's URL delivery in `ios.yml`) |
 | Deep link | `hui://open?path=<path>` on both (WP2 implemented; see "The deep link opens one screen") |
 | App ids | `dev.hui.app` (release, iOS), `dev.hui.app.debug` (Android debug, `applicationIdSuffix`) |
 | E2E target names | `web`, `android`, `webkit-phone`, `ios-smoke` |
@@ -416,13 +417,32 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   beside text would otherwise seed `file:///…`) with the plain-text candidate used instead, text beside an image prefills
   the text, and an image on its own is refused — the extension does not even offer itself for it. A provider callback
   that lands after the operator tapped Done, or after the request completed, is ignored, so it cannot open HUI from under
-  them. **The transport is best-effort:** Apple documents `NSExtensionContext.open(_:)`, how an extension asks iOS to
-  open its app, for the Today and iMessage extension points only; a share extension calling it is unsupported, and it is
-  reported to fail on iOS 18 and later cold starts. The extension then shows the share with a Copy action instead of
-  losing it, and an App Group the extension writes into — read by the app on its next start — is the known upgrade path,
-  touching the two native targets and their entitlement, not the web intake or this contract. **What is proven:** the
-  parser's JVM tests, the web intake's tests, and the appex's embedding checked by `ios.yml` and `release.yml`. **Not
-  proven:** no device's share sheet, no emulator run and no Xcode build were available in this change.
+  them. **The transport is two steps.** Apple documents `NSExtensionContext.open(_:)`, how an extension asks iOS to
+  open its app, for the Today and iMessage extension points only: a share extension calling it is unsupported, and it is
+  reported to answer `false` on iOS 18 and later, a cold start especially. The extension therefore calls
+  `extensionContext.open` first and, when that answers `false`, hands the same link to the first responder in its own
+  chain that answers `openURL:` — always behind `responds(to:)`, so the selector is only performed on a responder that
+  really implements it and `UIApplication` is never named, which keeps the appex compilable with
+  `APPLICATION_EXTENSION_API_ONLY = YES`. The
+  method's `BOOL` answer is read through its signature (three arguments, a one-byte `BOOL` return), not discarded: a
+  `true` answer completes the sheet, and a `false` answer leaves the share on screen with its Copy action. `openURL:` is
+  public but marked unavailable in app extensions, not a private selector, and the chain never names it: App Review's
+  private-API rule is not the runtime barrier, and the unsigned IPA is signed by SideStore with the operator's own Apple
+  ID, so App Review never sees it. One `requested` flag is set before the first attempt, so a provider callback that
+  answers twice, or lands late, cannot ask iOS to open HUI twice, and the `finished` guard still drops every callback
+  after Done or completion. **An App Group is rejected:** SideStore's free-account signing cannot use App Groups, so
+  adding the entitlement would break installs. A share that leaves neither way shows the share with a Copy action
+  instead of losing it. **A share that held only a file says so:** a share with a file and nothing New Session can open
+  reads "HUI can't open this file. Share the post's link instead." — that flag is sticky, so a later candidate that
+  hands back nothing cannot turn the file into an empty share — and the activation rule stays as it is, because a
+  predicate narrow enough to exclude a file would also hide a share that carries a link and a file together, and there
+  is no device here to try one. **What is proven:** the parser's JVM tests, the web intake's tests, the appex's embedding
+  checked by `ios.yml` and `release.yml`, and the app half on a simulator: the PR-triggered `ios.yml` run terminates HUI,
+  launches it in Debug with `-HUIURL` and the remembered gateway, and OCRs the seed's lead; that run checks the app half
+  and `openDeepLink`, not the system's delivery. **Not proven:** the system's own delivery of the link, cold start
+  included (iOS's "Open in HUI?" confirmation covers the app when `simctl openurl` delivers one, and this oracle cannot
+  dismiss it, so the Debug launch argument stands in for the system rather than being it), the extension's own tap,
+  `NSExtensionContext.open`'s answer and the responder-chain handshake, all device-only.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
 - **The pickers need their usage strings.** The composer's "Take photo" is an image input with `capture`, and WebKit's
