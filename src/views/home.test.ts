@@ -354,14 +354,23 @@ test("the composer shows context usage and only offers compaction on a live idle
 });
 
 test("the meter adds what every model call cost, compaction summaries included", async () => {
-  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionTotal: { tokens: 1_200_000, usd: 4.25, asOf: Date.now() - 60_000 } };
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionTotal: { tokens: 1_200_000, usd: 4.25, reported: true, asOf: Date.now() - 60_000 } };
   const html = await renderWorkerSession("idle", { usage });
   assert.match(html, /Session total/u);
   assert.match(html, /<dt>All model calls<\/dt><dd>1\.2m tokens · \$4\.25<\/dd>/u, "the whole conversation, not the latest run");
   assert.doesNotMatch(html, /Latest run tokens/u, "the run's figures give way to the session's");
   assert.match(html, /<dt>Checked<\/dt>/u);
-  const unpriced = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null, asOf: Date.now() } } });
+  const unpriced = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null, reported: true, asOf: Date.now() } } });
   assert.match(unpriced, /12\.0k tokens · unpriced/u, "a call nobody priced is said, not counted as free");
+  assert.match(unpriced, /<dt>Checked<\/dt>/u);
+  // Version skew: a worker from before `reported` sends its total without the field, and still spent what it says.
+  const legacy = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null } } });
+  assert.match(legacy, /12\.0k tokens · unpriced/u, "an older payload's total still reads");
+  assert.doesNotMatch(legacy, /No calls recorded yet/u, "not as an empty ledger");
+  const empty = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 0, usd: null, reported: false, asOf: Date.now() } } });
+  assert.match(empty, /<dt>All model calls<\/dt><dd>No calls recorded yet<\/dd>/u, "an empty ledger says no call was recorded");
+  assert.doesNotMatch(empty, /<dd>0 tokens/u, "rather than reading as a zero total");
+  assert.match(empty, /<dt>Checked<\/dt>/u, "when it was read still shows");
   const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle" as const, bot: { id: "b", handle: "ada", name: "Ada" } };
   const botChat = await renderWorkerSession("idle", { session: bot, usage, botCost: { usd: 1.5, subagents: 0 } });
   assert.doesNotMatch(botChat, /Session total/u, "a bot's cost already counts its chat and its subagents");

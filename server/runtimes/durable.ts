@@ -290,7 +290,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #shown: unknown[] | undefined;
   /** The cached size of the whole context, and where it goes. */
   #measurement: Measurement | undefined;
-  /** What every model call of this conversation cost, read after each run and compaction; undefined until read. */
+  /** What every model call of this conversation cost, read when the ledger records a call during the run, after each run
+   * and after each compaction; undefined until read. */
   #total: RuntimeUsage["sessionTotal"];
   #totalRead: Promise<void> | undefined;
   #totalStale = false;
@@ -765,13 +766,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         try {
           const spend = await this.#host.conversationSpend(this.#conversation.id);
           if (!spend) return;
+          // `asOf` is when the view last read the ledger, so every read reports, changed total or not.
           this.#total = { ...spend, asOf: Date.now() };
           this.#emit({ type: "usage" });
         } catch {
-          this.#totalStale = false;
+          // A refresh that arrived during the failed read keeps the flag set, for the next attempt.
         }
       }
-    })().finally(() => { this.#totalRead = undefined; });
+    })().finally(() => {
+      this.#totalRead = undefined;
+      // A refresh asked for as this read ended had no read to join: read again for it.
+      if (this.#totalStale && !this.#disposed) this.#refreshTotal();
+    });
     void this.#totalRead;
   }
 
@@ -899,6 +905,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       case "inbox_update":
         await this.#refreshQueue();
         this.#emit({ type: "queue_update", queue: this.pendingQueue() });
+        return;
+      case "usage_changed":
+        // Every commit to the ledger is spend: an answer's, a tool's own model call, a nested one, a summary's.
+        this.#refreshTotal();
         return;
       case "agent_changed":
         this.#useAgent(event.agent);

@@ -68,6 +68,8 @@ export type AgentEvent =
     } & ToolEventCall)
   | ({ type: "tool_execution_end"; entry?: EntryRecord; result?: NestedResult } & ToolEventCall)
   | { type: "inbox_update"; items: readonly QueuedItem[] }
+  /** The conversation's `pi.usage` ledger holds a new commit: an answer's spend, or a call of its own. */
+  | { type: "usage_changed" }
   | { type: "auto_retry_start"; attempt: number; at: number; errorMessage: string }
   | { type: "entry_appended"; entry: EntryRecord }
   | { type: "agent_changed"; agent: AgentState }
@@ -93,6 +95,7 @@ type Shown = {
   live: LiveState;
   inbox: unknown;
   agent: unknown;
+  usage: JsonObject | undefined;
 };
 
 const live = (view: ConversationView): LiveState => (view.docs["pi.live"] ?? {}) as LiveState;
@@ -170,6 +173,7 @@ function shown(view: ConversationView): Shown {
     live: live(view),
     inbox: view.docs["pi.inbox"],
     agent: view.docs["pi.agent"],
+    usage: view.docs["pi.usage"],
   };
   for (const entry of view.entries) readArgs(entry, state.args);
   return state;
@@ -301,6 +305,8 @@ function translate(after: ConversationView, state: Shown): AgentEvent[] {
   }
   if (after.docs["pi.inbox"] !== state.inbox) events.push({ type: "inbox_update", items: queued(after) });
   if (after.docs["pi.agent"] !== state.agent) events.push({ type: "agent_changed", agent: (after.docs["pi.agent"] ?? {}) as AgentState });
+  // A usage doc is tiny and its object identity is no contract of the store's: compare what it holds.
+  if (!isDeepStrictEqual(after.docs["pi.usage"], state.usage)) events.push({ type: "usage_changed" });
   for (const status of now.compactions ?? []) {
     if (!state.compactions.has(String(status.taskId))) {
       events.push({ type: "compaction_start", taskId: status.taskId, reason: status.trigger, blocking: status.blocking });
@@ -313,6 +319,7 @@ function translate(after: ConversationView, state: Shown): AgentEvent[] {
   state.compactions = new Set((now.compactions ?? []).map((status) => String(status.taskId)));
   state.inbox = after.docs["pi.inbox"];
   state.agent = after.docs["pi.agent"];
+  state.usage = after.docs["pi.usage"];
   return events;
 }
 

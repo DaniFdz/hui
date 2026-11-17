@@ -2055,6 +2055,13 @@ function renderModelMetric(metric: ModelMetric | undefined) {
   </details></div>`;
 }
 
+/** What a session's ledger total reads: no recorded call is said, not counted as a zero. A worker older than the
+ * `reported` field sends a total without it; that total still carries what its calls spent. */
+function sessionTotalText(total: NonNullable<RuntimeUsage["sessionTotal"]>): string {
+  if (total.reported === false) return "No calls recorded yet";
+  return `${compactTokens(total.tokens)} tokens · ${total.usd === null ? "unpriced" : `$${total.usd.toFixed(2)}`}`;
+}
+
 /** `onCompact` is absent while the session is busy; `compactable` is false
  * for a bot's permanent chat, whose memory summarizes older messages itself. */
 function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true, botCost?: HomeProps["botCost"]) {
@@ -2086,7 +2093,7 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
         ${botCost ? html`<div class="context-usage__section-label">Bot cost</div>
           <dl class="context-usage__stats"><div><dt>${botCost.remote ? "Kept on" : botCost.reading ? "Reading" : botCost.unavailable ? "Could not read" : botCost.subagents ? (botCost.subagents === 1 ? "Includes one subagent" : `Includes ${botCost.subagents} subagents`) : "Chat, subagents and memory"}</dt><dd>${botCost.remote ?? (botCost.reading ? "cost…" : botCost.unavailable ? "Unavailable" : botCost.usd === null || (botCost.usd === undefined && !botCost.memory) ? "Not reported" : `$${((botCost.usd ?? 0) + (botCost.memory ?? 0)).toFixed(2)}`)}</dd></div></dl>` : nothing}
         ${usage?.sessionTotal && !botCost ? html`<div class="context-usage__section-label">Session total</div>
-          <dl class="context-usage__stats"><div><dt>All model calls</dt><dd>${compactTokens(usage.sessionTotal.tokens)} tokens · ${usage.sessionTotal.usd === null ? "unpriced" : `$${usage.sessionTotal.usd.toFixed(2)}`}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionTotal.asOf)}</dd></div></dl>` : nothing}
+          <dl class="context-usage__stats"><div><dt>All model calls</dt><dd>${sessionTotalText(usage.sessionTotal)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionTotal.asOf)}</dd></div></dl>` : nothing}
         ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
           <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
