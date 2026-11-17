@@ -1007,14 +1007,18 @@ test("a model call's spend shows while its run streams, before the run settles",
 });
 
 test("a tool's own model spend reaches the session total while its run still streams", { timeout: 60_000 }, async (t) => {
-  // An extension tool that reports what its own model calls cost, and one held open so the run keeps streaming after
-  // the usage committed.
+  // Two tools held open: one reports what its own model calls cost once the test lets it return, the other keeps the run
+  // streaming after the tool's usage committed. A total read the assistant call triggers can only hold that call, so the
+  // tool's spend can show before the settle only by a refresh of its own commit.
   const tools = `export default function (pi) {
     const usage = { input: 4, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
     pi.registerTool({
       name: 'fixture_usage', label: 'Usage', description: 'Reports its own model spend.', promptSnippet: 'Report usage',
       parameters: { type: 'object', properties: {} },
-      async execute() { return { content: [{ type: 'text', text: 'used' }], details: {}, usage }; },
+      async execute() {
+        if (globalThis.fixtureUsageTool) await globalThis.fixtureUsageTool;
+        return { content: [{ type: 'text', text: 'used' }], details: {}, usage };
+      },
     });
     pi.registerTool({
       name: 'fixture_hold', label: 'Hold', description: 'Waits for the test.', promptSnippet: 'Hold',
@@ -1028,32 +1032,48 @@ test("a tool's own model spend reaches the session total while its run still str
   const f = await fixture(t, { extensions: { "usage.js": tools } });
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-tool-total" }, host);
-  let release!: () => void;
-  (globalThis as { fixtureHoldTool?: Promise<void> }).fixtureHoldTool = new Promise((resolve) => { release = resolve; });
-  t.onTestFinished(() => { release(); delete (globalThis as { fixtureHoldTool?: Promise<void> }).fixtureHoldTool; });
+  let releaseUsage!: () => void;
+  let releaseHold!: () => void;
+  const gates = globalThis as { fixtureUsageTool?: Promise<void>; fixtureHoldTool?: Promise<void> };
+  gates.fixtureUsageTool = new Promise((resolve) => { releaseUsage = resolve; });
+  gates.fixtureHoldTool = new Promise((resolve) => { releaseHold = resolve; });
+  t.onTestFinished(() => { releaseUsage(); releaseHold(); delete gates.fixtureUsageTool; delete gates.fixtureHoldTool; });
   const conversationId = durableConversationId(session.sessionFile)!;
   const round = ["fixture_usage", "fixture_hold"].map((name) => ({ name, input: {} }));
   const usageEnded = nextEvent(session, (event) => event.type === "tool_end" && event.name === "fixture_usage");
   const settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify(round)).toString("base64url")}`);
+  // The assistant call's own spend shows first; the tool's call has not happened yet.
+  const before = await waitFor("the assistant call's total", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.reported && current.tokens > 0 ? current : undefined;
+  });
+  assert.equal(session.isStreaming, true, "the run is still streaming while both tools wait");
+  releaseUsage();
   await usageEnded;
-  // Durable records a tool's usage in the same commit as its result: the ledger holds it while the run still waits.
+  // Durable records a tool's usage in the commit that records its result, so the ledger grows by that call now: the total
+  // has to show it before the run settles.
+  const total = await waitFor("the session total that carries the tool's spend", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current && current.reported && current.tokens >= before.tokens + 10 ? current : undefined;
+  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
+  assert.equal(total.usd, 0, "the fixture prices every call at zero, which is a price");
+  assert.equal(session.isStreaming, true, "and the run had not settled when the total showed it");
   const ledger = await waitFor("the tool's spend in the ledger", async () => {
     const buckets = await host.conversationUsage(conversationId);
     return buckets?.tools?.fixture_usage ? buckets : undefined;
   });
   assert.equal(ledger.tools?.fixture_usage?.totalTokens, 10, "the tool's own call is priced in its bucket");
-  assert.equal(session.isStreaming, true, "the run is still streaming while the holding tool waits");
   const spend = await host.conversationSpend(conversationId);
   assert(spend, "the conversation's ledger is readable");
-  const total = await waitFor("the session total that carries the tool's spend", () => {
-    const current = session.currentUsage()?.sessionTotal;
-    return current?.reported && current.tokens === spend.tokens && current.usd === spend.usd ? current : undefined;
-  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
-  assert.equal(total.reported, true, "a call is recorded");
-  assert.equal(total.usd, 0, "the fixture prices every call at zero, which is a price");
-  assert.equal(session.isStreaming, true, "and the run had not settled when the total showed it");
-  release();
+  const meter = session.currentUsage()?.sessionTotal;
+  assert(meter, "the meter reads the ledger");
+  assert.deepEqual(
+    [meter.tokens, meter.usd, meter.reported],
+    [spend.tokens, spend.usd, spend.reported],
+    "the meter equals the whole ledger, not the assistant call alone",
+  );
+  releaseHold();
   await settled;
 });
 

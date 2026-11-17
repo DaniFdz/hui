@@ -770,7 +770,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           this.#total = { ...spend, asOf: Date.now() };
           this.#emit({ type: "usage" });
         } catch {
-          this.#totalStale = false;
+          // A refresh that arrived during the failed read keeps the flag set, for the next attempt.
         }
       }
     })().finally(() => {
@@ -850,9 +850,6 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           if (metric) this.#emit({ type: "model_metric", metric });
         }
         this.#add(event.entry);
-        // Usage commits with its message, and a tool's own model calls with its result: the total holds that call before
-        // the run ends.
-        if (event.type === "message_end" && event.entry.model?.some((message) => "usage" in message && message.usage)) this.#refreshTotal();
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && !this.#streaming) {
           if (CallEntry.is(event.entry)) this.#emit({ type: "history" });
@@ -908,6 +905,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       case "inbox_update":
         await this.#refreshQueue();
         this.#emit({ type: "queue_update", queue: this.pendingQueue() });
+        return;
+      case "usage_changed":
+        // Every commit to the ledger is spend: an answer's, a tool's own model call, a nested one, a summary's.
+        this.#refreshTotal();
         return;
       case "agent_changed":
         this.#useAgent(event.agent);
