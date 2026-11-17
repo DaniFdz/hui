@@ -755,7 +755,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-077",
     title: "The gateway heartbeat continues a watched session",
-    behaviour: "A session watches another. Running the gateway heartbeat reports an idle watched session to the watcher, who decides the next step; it never prompts the target. A decision, waiting or errored target is reported the same way. No heartbeat turn enters any bot's chat.",
+    behaviour: "A session watches another. Running the gateway heartbeat reports an idle watched session to the watcher, who decides the next step; it never prompts the target. A second check with the same status, stage, goal and last reply reports nothing. A decision, waiting or errored target is reported the same way. No heartbeat turn enters any bot's chat.",
     spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#post-__huiheartbeat"],
     surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
     journeys: ["bots"],

@@ -2,10 +2,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { AutomationTask } from "./automation.ts";
+import type { RouteRequest } from "./http/route.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import type { SessionStatus } from "./api/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
 import { createHeartbeat, LEGACY_HEARTBEAT_DESCRIPTION, removeLegacyHeartbeatRoutines } from "./heartbeat.ts";
+import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 
 const session = (id: string, updatedAt = "2026-11-11T10:00:00.000Z", extra: Partial<SessionRecord> = {}) => ({
   id, title: id, group: "", cwd: "/tmp", tool: "durable", createdAt: updatedAt, updatedAt, ...extra,
@@ -13,7 +15,6 @@ const session = (id: string, updatedAt = "2026-11-11T10:00:00.000Z", extra: Part
 
 function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherState[] = []) {
   const notifications: Array<{ id: string; text: string }> = [];
-  let now = Date.parse("2026-11-11T10:05:00.000Z");
   const deps = {
     records: async () => [
       session("watcher", undefined, { watches: ["target"] }),
@@ -28,12 +29,19 @@ function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherSta
     bots: async (): Promise<readonly { title?: string; group?: string; archived?: boolean; sessionId: string }[]> => [],
     watch: async (_watcherId: string, _id: string, _on: boolean) => {},
     watchLimit: 50,
-    now: () => now,
   };
   return { deps, notifications };
 }
 
-test("an idle watched session is reported once, and again only after it changes", async () => {
+/** The route's request, with no body: `POST /__hui/heartbeat` takes none. */
+function post(path = "/__hui/heartbeat"): RouteRequest {
+  return {
+    method: "POST", path, query: new URLSearchParams(), headers: {}, signal: new AbortController().signal,
+    json: async () => ({}), bytes: async () => Buffer.alloc(0), stream: async function* () { /* no body */ },
+  };
+}
+
+test("an idle watched session is reported once, and again only after a new reply", async () => {
   const f = fixture();
   const heartbeat = createHeartbeat(f.deps);
   assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
@@ -46,12 +54,144 @@ test("an idle watched session is reported once, and again only after it changes"
   assert.match(f.notifications[0]?.text ?? "", /Do not send a generic continue/u);
   assert.doesNotMatch(f.notifications[0]?.text ?? "", /Autonomous/u);
   assert.deepEqual(await heartbeat.scan(), { notified: [] });
-  // The target changed: a new idle span is due.
+  assert.equal(f.notifications.length, 1);
+  // The target said something new: a new report is due.
+  f.deps.lastAssistant = () => "Done. The migration ran and its tests pass.";
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.equal(f.notifications.length, 2);
+  assert.match(f.notifications[1]?.text ?? "", /Done\. The migration ran and its tests pass\./u);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("an updatedAt bump alone reports nothing, since no fact the report states changed", async () => {
+  const f = fixture();
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
   f.deps.records = async () => [
-    session("watcher", undefined, { watches: ["target"] }),
+    session("watcher", "2026-11-11T10:06:00.000Z", { watches: ["target"] }),
     session("target", "2026-11-11T10:06:00.000Z"),
   ];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 1);
+});
+
+test("a title edit alone reports nothing, and a stage change does", async () => {
+  const f = fixture();
+  const heartbeat = createHeartbeat(f.deps);
   assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    { ...session("target"), title: "Renamed" },
+  ];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 1);
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("target", undefined, { stage: "done" }),
+  ];
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.match(f.notifications[1]?.text ?? "", /is done; decide the next step/u);
+  assert.equal(f.notifications.length, 2);
+});
+
+test("a new blocker with the same last reply is reported once per kind", async () => {
+  const f = fixture();
+  const heartbeat = createHeartbeat(f.deps);
+  f.deps.lastAssistant = () => "The migration is ready. Should I deploy it?";
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  f.deps.status = () => "waiting";
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.match(f.notifications[1]?.text ?? "", /is waiting for an answer/u);
+  f.deps.status = () => "error";
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.match(f.notifications[2]?.text ?? "", /is in error/u);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 3);
+});
+
+test("a restart reports a live watched session once more, because the fingerprints are in memory", async () => {
+  const f = fixture();
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  const restarted = createHeartbeat(f.deps);
+  assert.deepEqual(await restarted.scan(), { notified: ["target"] });
+  assert.deepEqual(await restarted.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("each watcher is told once, and one added later is told once while the others are not", async () => {
+  const f = fixture();
+  let records: SessionRecord[] = [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("other", undefined, { watches: ["target"] }),
+    session("target"),
+  ];
+  f.deps.records = async () => records;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(f.notifications.map((notification) => notification.id), ["watcher", "other"]);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  records = [...records, session("third", undefined, { watches: ["target"] })];
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(f.notifications.map((notification) => notification.id), ["watcher", "other", "third"]);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 3);
+});
+
+test("a watch removed and added again reports once more, and one left on an archived target is kept", async () => {
+  const f = fixture();
+  let records: SessionRecord[] = [session("watcher", undefined, { watches: ["target"] }), session("target")];
+  f.deps.records = async () => records;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  records = [session("watcher"), session("target")];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  records = [session("watcher", undefined, { watches: ["target"] }), session("target")];
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.equal(f.notifications.length, 2);
+  // The watch stayed on, so its facts are remembered through the archive and report nothing when it comes back.
+  records = [session("watcher", undefined, { watches: ["target"] }), session("target", undefined, { archived: true })];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  records = [session("watcher", undefined, { watches: ["target"] }), session("target")];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("a watcher whose delivery failed is told again, and one that already got the report is not", async () => {
+  const f = fixture();
+  const records = [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("other", undefined, { watches: ["target"] }),
+    session("target"),
+  ];
+  f.deps.records = async () => records;
+  let failing = true;
+  f.deps.notify = async (id, text) => {
+    if (id === "watcher" && failing) throw new Error("that chat is busy");
+    f.notifications.push({ id, text });
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(f.notifications.map((notification) => notification.id), ["other"]);
+  failing = false;
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.deepEqual(f.notifications.map((notification) => notification.id), ["other", "watcher"]);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("the heartbeat route reports a POST once, not again until its facts change", async () => {
+  const f = fixture();
+  const route = createHeartbeatRoutes({ heartbeat: createHeartbeat(f.deps) });
+  assert.deepEqual(await route(post()), { status: 200, body: { notified: ["target"] } });
+  assert.deepEqual(await route(post()), { status: 200, body: { notified: [] } });
+  f.deps.lastAssistant = () => "Merged and deployed. All checks green.";
+  assert.deepEqual(await route(post()), { status: 200, body: { notified: ["target"] } });
+  assert.deepEqual(await route(post()), { status: 200, body: { notified: [] } });
+  assert.equal(f.notifications.length, 2);
 });
 
 test("an idle decision is reported with the decision status", async () => {

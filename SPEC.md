@@ -4234,9 +4234,10 @@ Session, never in a bot's chat or a subagent, and persists as `autonomous: true`
   in its own chat, with the desktop notification HUI already sends when one of its runs ends.
 - **What is not reported at once.** A stop while the session's subagents or watchers still work and its reply does
   not end on a question (they wake it), a run the operator stopped and a failed run (it retries or shows its error).
-  Scans run one at a time so a stop is reported once, and the heartbeat skips a session not open in this gateway, so
-  a restart does not report every watched session again. An active goal does not continue by itself in this mode: the
-  session's supervisor takes the next step.
+  Scans run one at a time so a stop is reported once, and a report is sent only when its facts change (status, stage,
+  goal and last reply). Those fingerprints live in memory, so a restart reports a live watched session once more; a
+  session not open in this gateway is skipped. An active goal does not continue by itself in this mode: the session's
+  supervisor takes the next step.
 - **The chief's method is in the pack.** `chief-mode` (pack 16) tells a chief a session it started runs Autonomous,
   to approve or correct its plan with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle
   its report like a lead's.
