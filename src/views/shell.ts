@@ -1144,7 +1144,8 @@ export function setNavigationDrawer(
   trigger?.setAttribute("aria-expanded", String(reconciledOpen));
   trigger?.setAttribute("aria-label", reconciledOpen ? "Close navigation" : "Open navigation");
   main?.toggleAttribute("inert", reconciledOpen);
-  sidebar.closest?.(".hui-application")?.querySelector(".hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
+  // Direct children only: the chat draws its own sleep notice with this class, and the drawer must not inert that one.
+  sidebar.closest?.(".hui-application")?.querySelector(":scope > .hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
   if (reconciledOpen && typeof sidebar.focus === "function") {
     queueMicrotask(() => sidebar.focus());
   }

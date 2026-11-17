@@ -8,6 +8,7 @@ import type { Attachment, SessionGroup, SessionView } from "../api/sessions.ts";
 import type { BotView } from "../lib/bots/bots.ts";
 import type { SessionPane } from "../lib/session/multiplexer.ts";
 import type { PanePresentation } from "../components/session-multiplexer.ts";
+import type { PowerNoticeProps } from "./power-notice.ts";
 
 export type SessionPaneProps = {
   pane: SessionPane;
@@ -18,6 +19,8 @@ export type SessionPaneProps = {
   mobileNav: boolean;
   /** The destination chooser, when the phone layout puts it in this pane's header. */
   panelPicker?: TemplateResult;
+  /** The sleep-prevention notice, handed to the one split pane the shell lets draw it. */
+  powerNotice?: PowerNoticeProps;
   bots: readonly BotView[];
   onClose: (() => void) | undefined;
   onBrowser: () => void;
@@ -40,6 +43,7 @@ export const renderSessionPane = (props: SessionPaneProps) => html`
       .paneNarrow=${props.state.narrow}
       .paneMobileNav=${props.mobileNav}
       .panePanelPicker=${props.panelPicker}
+      .panePowerNotice=${props.powerNotice}
       .onPaneClose=${props.onClose}
       .onPaneBrowser=${props.onBrowser}
       .onPaneNavigate=${props.onNavigate}

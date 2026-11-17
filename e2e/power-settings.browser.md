@@ -83,3 +83,42 @@ withdrawn prompt and a quick restart. Those are covered by
 dialog is unverified. Off macOS, `GET /__hui/power` returns `null`, so the
 section and notice are absent (covered by `server/routes/power.test.ts` and
 `src/views/settings-gateway.test.ts`).
+
+## The notice in the conversation (2026-11-17)
+
+This is the current placement. The notice is no longer drawn over the shell: the
+open conversation renders it in flow as the first child of the chat's
+conversation column, between the chat header and the transcript. The shell,
+header and sidebar never move, and only the transcript area shrinks while it is
+up. Home, Settings, the launcher and the phone's native shell draw none, a bot
+chat draws it above its messages, and a split shows one copy, in the active
+pane. It says the same sentence, "This Mac won't sleep with the lid closed.",
+with **Turn off** and a dismiss button.
+
+What this run verifies, on an isolated instance from
+`node e2e/visual-verification.mjs launch` with the lid switch approved (the
+prompt procedure is above):
+
+1. Open a session chat at 1440×900 and at 390×844, and read the notice's
+   bounding box against `data-testid="chat-header"` and
+   `data-testid="transcript"`: it starts at or below the header's bottom, ends at
+   or above the transcript's top, and spans the transcript's own horizontal
+   range. Confirm the header and the sidebar are where they were before the
+   notice appeared.
+2. Simulate the phone's notch with `hui.insets({ top: 47 })` (or by setting
+   `--safe-area-top: 47px`) and confirm the notice's text and both buttons stay
+   below that inset and fully on screen. The 2026-09-29 section's "top notice"
+   wording describes the notice that predates this placement and is historical.
+3. Dismiss it with **Dismiss sleep prevention notification**: it leaves, the
+   composer's textarea has focus, and a reload while the switch is still on
+   draws it again.
+4. Press **Turn off**: the notice leaves, `PUT /__hui/power` carried
+   `{ "lidAwake": false }`, `pmset -g` reports `SleepDisabled 0`, the watcher
+   exits, and the composer has focus.
+
+The shared test `e2e/tests/shell/lid-notice.e2e.ts` (SET-021) proves the same
+placement, dismissal, reload and turn-off request on the `web` target and runs
+on `webkit-phone` too, with `GET`/`PUT /__hui/power` stubbed, so it needs no
+macOS host. The screenshots for this section are captured on a macOS host; this
+checkout is Linux, so they are the remaining proof for the real
+administrator-approved switch and are not recorded here.
