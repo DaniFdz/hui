@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
-import type { QueueSnapshot, RuntimeCommand, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import type { Attachment, QueueSnapshot, RuntimeCommand, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import { MAX_UPLOAD_FILE_BYTES } from "../api/files.ts";
+import { MAX_ATTACHMENT_BYTES, MAX_FILES_PANE_BYTES } from "../lib/attachments.ts";
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
 import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
@@ -64,7 +66,7 @@ beforeEach(() => {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection } = {}) {
+function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection; launching?: boolean } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
   let updates = 0;
@@ -88,7 +90,7 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
     mentionable: () => [],
     textarea: () => options.textarea ?? null,
     handleUpdateCommand: () => false,
-    launching: () => false,
+    launching: () => options.launching ?? false,
   });
   return { controller, conversation, notes, reported, updates: () => updates };
 }
@@ -431,4 +433,144 @@ test("switching sessions closes the goal editor", () => {
   assert.equal(controller.goalPanel.editing, true);
   controller.switchDraft(sessionDraftKey("s2"));
   assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" });
+});
+
+/** A file the picker refuses by size. `arrayBuffer` reports if the refusal ever reaches it. */
+const oversizeFile = (name: string, size: number, onRead?: () => void): File => ({
+  name,
+  size,
+  type: "application/octet-stream",
+  arrayBuffer: async () => {
+    onRead?.();
+    return new ArrayBuffer(0);
+  },
+} as unknown as File);
+
+/** `count` MiB of base64, so the composer's own size checks see exactly that many bytes. */
+const megabytes = (count: number, name: string): Attachment => ({
+  kind: "file",
+  name,
+  mimeType: "application/octet-stream",
+  dataBase64: "A".repeat((count * 1024 * 1024 * 4) / 3),
+});
+
+test("the Files-pane cap a size refusal names is the client's real upload cap", () => {
+  // `src/lib/` may not read a value from `src/api/` (R6 in docs/map.md), so `MAX_FILES_PANE_BYTES` mirrors
+  // `MAX_UPLOAD_FILE_BYTES`; the mirror is held to the real cap wherever the two can meet.
+  assert.equal(MAX_FILES_PANE_BYTES, MAX_UPLOAD_FILE_BYTES);
+});
+
+test("an oversize pick stays out of the composer, is never read and says where the file fits", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  let read = false;
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1, () => { read = true; })]);
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.attachments.length, 0, "the refused file never enters the composer");
+  assert.equal(read, false, "the refusal comes before the file is read into memory");
+  assert.deepEqual(fake.draftWrites, [], "nothing is stored");
+  assert.deepEqual(fake.prompts, [], "nothing is posted");
+});
+
+test("a pick while a send or a session start is in flight says so instead of vanishing", async () => {
+  const sending = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  sending.controller.sending = true;
+  sending.controller.props().onAddAttachments([new File(["hi"], "notes.txt", { type: "text/plain" })]);
+  await settle();
+  assert.deepEqual(sending.notes, ["error:Wait for this message to be sent before adding attachments."]);
+  assert.equal(sending.controller.attachments.length, 0);
+
+  const launching = composer({ current: { id: "s1", status: "starting" } as SessionView }, { launching: true });
+  launching.controller.props().onAddAttachments([new File(["hi"], "notes.txt", { type: "text/plain" })]);
+  await settle();
+  assert.deepEqual(launching.notes, ["error:Wait for the session to start before adding attachments."]);
+  assert.equal(launching.controller.attachments.length, 0);
+  assert.deepEqual(fake.draftWrites, [], "neither pick is stored");
+});
+
+test("a send holding restored oversize attachments posts nothing and reports the refusal once", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.setDraft("send these");
+  // A draft stored before the limits, or a launch prompt: the picker never saw this set, so the send is what refuses it.
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.attachments = restored;
+  controller.send("send these", restored);
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes, ["error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.sending, false, "the composer stays free");
+  assert.equal(controller.draft, "send these", "the draft is not taken from the operator");
+  assert.deepEqual(controller.attachments, restored, "the files stay, merged in once and never duplicated");
+});
+
+test("a launch prompt the size check refuses comes back to the composer with its files", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.pendingLaunchPrompt = "first";
+  controller.pendingLaunchAttachments = restored;
+  controller.flushLaunchPrompt();
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes, ["error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.draft, "first", "the launch prompt is not lost");
+  assert.deepEqual(controller.attachments.map(({ name }) => name), ["a.bin", "b.bin"]);
+  assert.equal(fake.drafts.get(sessionDraftKey("s1"))?.text, "first", "the restored draft is stored");
+});
+
+test("a pick that fails after the composer moved to another draft still reports it", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  // The operator picked this file: a switch that lands while it is read does not make the failure invisible.
+  controller.switchDraft(sessionDraftKey("s2"));
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.attachments.length, 0);
+});
+
+const REFUSED_TOTAL = "error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each.";
+
+/** Queues a launch prompt the size check refuses, with the files that are too large for one message. */
+function refusedLaunch(controller: ComposerController): readonly Attachment[] {
+  const files = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.pendingLaunchPrompt = "first";
+  controller.pendingLaunchAttachments = files;
+  controller.flushLaunchPrompt();
+  return files;
+}
+
+test("typing while a refused launch prompt is recovered keeps the typed text", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  refusedLaunch(controller);
+  // The operator goes on typing in the gap between the refusal and the recovered draft landing: what they type is
+  // newer than the recovery, so it is what the composer keeps.
+  controller.props().onDraftInput("first and then this");
+  await settle();
+  assert.deepEqual(notes, [REFUSED_TOTAL], "the refusal is reported once");
+  assert.equal(controller.draft, "first and then this", "the recovery never overwrites what was typed after it");
+  assert.deepEqual(controller.attachments.map(({ name }) => name), ["a.bin", "b.bin"], "the refused files come back once");
+  assert.equal(fake.drafts.get(sessionDraftKey("s1"))?.text, "first and then this", "the newest draft is the stored one");
+});
+
+test("switching sessions while a refused launch prompt is recovered keeps it out of the new one", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller, notes } = composer(selected);
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const files = refusedLaunch(controller);
+  // The operator opens another conversation in the gap between the refusal and the recovered draft landing.
+  selected.current = { id: "s2", status: "idle" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s2"));
+  await settle();
+  assert.deepEqual(notes, [REFUSED_TOTAL], "the refusal is reported once");
+  assert.equal(controller.draft, "", "the second conversation's composer is left alone");
+  assert.deepEqual(controller.attachments, [], "the refused files never land in the second conversation");
+  assert.deepEqual(fake.drafts.get(sessionDraftKey("s1")), { text: "first", attachments: files }, "the refused prompt waits on its own session's draft");
 });

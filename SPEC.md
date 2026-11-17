@@ -1373,9 +1373,14 @@ confirmation listing each path. The bytes stream to a temporary name beside the
 target and replace it only once the whole file arrived, so a cancelled or
 failed upload leaves the folder as it was; each upload is at most 2 GB and the
 navigator shows its progress and **Cancel upload** while one is in flight.
-Files upload one at a time. Deleting a file, link or folder asks first,
-listing what goes — a folder with everything inside it, unsaved edits, the open
-file — and states that it does not use the trash; the gateway deletes a
+Files upload one at a time. An upload that stops making progress fails on its own
+with an explicit message stating how far it got and whether anything was saved —
+that **the folder is unchanged** while bytes are still going out, or that the
+upload may have finished and the folder is where to look once every byte is sent —
+instead of waiting forever. That deadline bounds progress, not total time: an
+upload that keeps sending is never cut off. Deleting a file, link or folder asks
+first, listing what goes — a folder with everything inside it, unsaved edits, the
+open file — and states that it does not use the trash; the gateway deletes a
 non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
@@ -1760,7 +1765,10 @@ rejected prompt/queue operation removes only the files created for that request;
 HUI never edits or deletes PI's transcript. Browser and gateway share the same
 limits: eight attachments, 12 MB per item, 16 MB decoded total, and safe bounded
 display names (including ordinary spaces and Unicode, but never paths or control
-characters). PI's RPC image shape has no filename field, so HUI sends a validated,
+characters). A refusal in the composer names the limit it broke and points a size
+refusal at the Files pane, which takes up to 2 GB per file, while a ninth
+attachment is refused with the count and the advice to send the rest in another
+message. PI's RPC image shape has no filename field, so HUI sends a validated,
 versioned attachment manifest inside the user message. PI remains the durable
 writer; on replay HUI removes that transport marker and restores the original
 image/file display names and order.

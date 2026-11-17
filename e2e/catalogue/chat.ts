@@ -173,7 +173,7 @@ const cases: UseCase[] = [
     id: "CHAT-014",
     title: "Get told when attachments break the limits",
     behaviour:
-      'Adding a ninth attachment, a file over 12 MB, more than 16 MB in total or a name with path separators or control characters shows an error toast (for example "<name> is larger than 12 MB." or "Attachments must be 16 MB or less in total.") and sends nothing. Names with spaces and Unicode are accepted.',
+      'Adding a ninth attachment, a file over 12 MB, more than 16 MB in total or a name with path separators or control characters shows an error toast and sends nothing. A size refusal names the file or the total and points at the Files pane, which takes larger files up to 2 GB each: "<name> is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each." or "Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each." A ninth says "At most 8 attachments may be sent at once. Send the rest in another message." Names with spaces and Unicode are accepted.',
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["chat-composer"],
