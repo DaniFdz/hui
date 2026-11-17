@@ -4,7 +4,7 @@ import { test } from "vitest";
 import type { AutomationTask } from "./automation.ts";
 import type { RouteRequest } from "./http/route.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
-import type { SessionStatus } from "./api/sessions.ts";
+import type { SessionGoal, SessionStatus } from "./api/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
 import { createHeartbeat, LEGACY_HEARTBEAT_DESCRIPTION, removeLegacyHeartbeatRoutines } from "./heartbeat.ts";
 import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
@@ -111,6 +111,33 @@ test("a new blocker with the same last reply is reported once per kind", async (
   assert.equal(f.notifications.length, 3);
 });
 
+test("an Autonomous target's goal objective is a fact, while its note and continuations are not", async () => {
+  const goal = (extra: Partial<SessionGoal> = {}): SessionGoal => ({
+    objective: "Land the heartbeat fix", status: "active",
+    createdAt: "2026-11-11T10:00:00.000Z", updatedAt: "2026-11-11T10:00:00.000Z", continuations: 0, ...extra,
+  });
+  const target = (itsGoal: SessionGoal): SessionRecord =>
+    session("target", undefined, { autonomous: true, stage: "implementation", goal: itsGoal });
+  const f = fixture();
+  f.deps.records = async () => [session("watcher", undefined, { watches: ["target"] }), target(goal())];
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.match(f.notifications[0]?.text ?? "", /Autonomous session "target" is idle/u);
+  // The goal's note and its continuation count are not facts the report depends on.
+  f.deps.records = async () => [session("watcher", undefined, { watches: ["target"] }), target(goal({ note: "paused for review", continuations: 3 }))];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 1);
+  // Its objective is: a second report is due, and its text is the same one, since a report never states the goal.
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    target(goal({ objective: "Land the heartbeat fix and its docs", note: "paused for review", continuations: 3 })),
+  ];
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.equal(f.notifications.length, 2);
+  assert.equal(f.notifications[1]?.text, f.notifications[0]?.text);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+});
+
 test("a restart reports a live watched session once more, because the fingerprints are in memory", async () => {
   const f = fixture();
   const heartbeat = createHeartbeat(f.deps);
@@ -141,7 +168,7 @@ test("each watcher is told once, and one added later is told once while the othe
   assert.equal(f.notifications.length, 3);
 });
 
-test("a watch removed and added again reports once more, and one left on an archived target is kept", async () => {
+test("a watch removed for a scan and added again reports once more, and one left on an archived target is kept", async () => {
   const f = fixture();
   let records: SessionRecord[] = [session("watcher", undefined, { watches: ["target"] }), session("target")];
   f.deps.records = async () => records;

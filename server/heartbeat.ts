@@ -5,9 +5,10 @@
  * Staff started stops for its chief only: `supervise` gives that chief the watch (`chiefToWatch`) and a scan runs at
  * once, saying the session is autonomous, so the chief reads its blocker or its report. The operator who switches it
  * back to Supervised takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and the
- * run-end scan never report one change twice; a report also goes out only when the facts it states change (status,
- * stage, goal and last reply). Those fingerprints live in memory, so a restart reports a live watched session once
- * more. Also removes the Heartbeat routines a previous build provisioned in bot chats.
+ * run-end scan never report one change twice; a report also goes out only when the facts it depends on change (status,
+ * stage, goal status and objective, the Autonomous flag and the last reply). Those fingerprints live in memory, so a
+ * restart reports a live watched session once more. Also removes the Heartbeat routines a previous build provisioned in
+ * bot chats.
  */
 import { createHash } from "node:crypto";
 import type { AutomationService, AutomationTask } from "./automation.ts";
@@ -151,7 +152,8 @@ export function createHeartbeat(deps: HeartbeatDeps) {
       if (watcher.archived) continue;
       for (const id of watcher.watches ?? []) watchedBy.set(id, [...(watchedBy.get(id) ?? []), watcher.id]);
     }
-    // A watch taken off and put back reports once again; one whose target is archived or missing stays remembered.
+    // A watch a scan saw removed and then put back reports once again; one whose target is archived or missing stays
+    // remembered.
     const watchedPairs = new Set<string>();
     for (const [id, watcherIds] of watchedBy) {
       for (const watcherId of watcherIds) watchedPairs.add(watchedPair(watcherId, id));

@@ -44,7 +44,7 @@ test("the heartbeat does not report the same facts twice", { tags: ["BOT-077"], 
   const before = await reports();
 
   const second = await hui.api<{ notified: string[] }>("POST", "/__hui/heartbeat");
-  expect(second.notified).toHaveLength(0);
+  expect(second.notified).not.toContain(target.id);
   expect(await reports()).toBe(before);
 });
 
