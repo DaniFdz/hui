@@ -84,6 +84,12 @@ async function centre(d: Director, target: Target) {
   await d.pause(800);
 }
 
+/** Parks the cursor on the header line: a transcript that scrolls under a still cursor slides links beneath it, and a
+ * link's hover card then covers the picture the line is about. */
+async function parkCursor(d: Director) {
+  await d.move({ x: 620, y: 18 });
+}
+
 /** Scrolls a page to an element it has not brought into view yet: a long page, such as Usage, keeps its cards below the
  * fold, where the recorder cannot point at them. The stage shares HUI's origin, so it scrolls HUI's own page. */
 async function reveal(d: Director, selector: string) {
@@ -97,8 +103,7 @@ async function reveal(d: Director, selector: string) {
 }
 
 /** Waits until a target has left the screen: the view removes the working row when a run settles, so its absence is the
- * only signal that nothing more is streaming into the row a line is about to describe. */
-async function gone(d: Director, target: Target, timeout = 60_000) {
+ * only signal that nothing more is streaming into the row a line is about to describe. */async function gone(d: Director, target: Target, timeout = 60_000) {
   const deadline = Date.now() + timeout;
   while (await d.find(target)) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${JSON.stringify(target)} to go`);
@@ -220,14 +225,18 @@ export const scenes: Scene[] = [
       await d.waitFor(card("Search results skeleton", "done"));
       await d.pause(900);
 
-      // The dialog is the picture "in its own worktree" names, so it opens before the line, and the branch it suggests
-      // is filled in by a cut instead of three silent seconds.
+      // The dialog is the picture "in its own worktree" names, so choosing that option and its suggested branch is the
+      // cut: the line starts with the choice made, not with "Current checkout · main" selected under it.
+      await d.cut(async () => {
+        await d.click(card("Add CSV export to the orders page"));
+        await d.waitFor("New worktree");
+        await d.zoom({ css: "dialog" }, 1.3);
+        await d.click("New worktree");
+        await d.waitFor({ contains: "feature/orders-csv-export" });
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Start a backlog item in its own worktree");
-      await d.click(card("Add CSV export to the orders page"));
-      await d.waitFor("New worktree");
-      await d.zoom({ css: "dialog" }, 1.3);
-      await d.click("New worktree");
-      await d.cut(() => d.waitFor({ contains: "feature/orders-csv-export" }));
       await d.pause(1_200);
       await d.say("backlog");
       await d.quiet();
@@ -341,6 +350,9 @@ export const scenes: Scene[] = [
       const preview = { css: ".hui-browser-preview" };
       await d.cut(async () => {
         await send(d, "Check that signup still works on staging");
+        // The transcript scrolls under a still cursor: park it on the header, or a link slides beneath it and opens its
+        // hover card over the picture.
+        await parkCursor(d);
         await d.waitFor(preview, 30_000);
         // The page's own confirmation, which the script quotes only when the browser really got there.
         await d.waitFor({ contains: "We sent a link to dana@acme.dev" }, 40_000);
@@ -671,6 +683,9 @@ export const scenes: Scene[] = [
       });
       await narrate(d, "Done: checks green, #142 merged", "done");
       await d.pause(2_400);
+      // The goal chip sits in the header, under where the panel's close control left the cursor; the closing wide shot
+      // has no pointer on it.
+      await parkCursor(d);
       await d.zoom();
       await d.quiet();
       await d.caption();
@@ -887,8 +902,7 @@ export const scenes: Scene[] = [
         await cameraRested(d);
         await caughtUp(d);
       });
-      await d.caption("The agent decides, and answers");
-      await d.say("answer");
+      // The reviewer's question is on screen; the answer line belongs to the beat below, where the agent has answered it.
       await d.pause(1_800);
       await d.quiet();
       await d.zoom();
@@ -1042,7 +1056,7 @@ export const scenes: Scene[] = [
     ready: { contains: "Add Apple Pay to checkout" },
     storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
     narration: {
-      phone: "And it all works on your phone. Reach your laptop over Tailscale, and your sessions are right there.",
+      phone: "And it all works on your phone. Reach your laptop over your private network, and your sessions are right there.",
       ask: "Check in on an agent from anywhere,",
       board: "or keep an eye on everything in flight, wherever you are.",
     },

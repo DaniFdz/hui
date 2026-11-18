@@ -317,6 +317,9 @@ export class Director {
       this.cutting = false;
       this.#cutMs += Date.now() - started;
       this.cutEnd = this.clock();
+      // The line the cut replaced is finished with its picture: the closing picture of a cut never carries its caption
+      // into the beat that follows.
+      await this.caption();
       await this.takePicture?.();
     }
   }
@@ -369,6 +372,9 @@ async function startChrome(profile: string) {
 /** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264, with the narration and music when
  * there are any. The voice alone also goes to `.voice/<clip>.wav` for the overview. */
 async function encode(frames: { file: string; t: number }[], end: number, list: string, output: string, spoken: { file: string; at: number }[]) {
+  // Frames arrive in delivery order, which a busy renderer can invert: a picture captured earlier may land after a later
+  // one. They are held in capture order, so the clip never shows a stale frame last (a cleared caption, a half zoom).
+  frames = [...frames].sort((a, b) => a.t - b.t);
   const lines = ["ffconcat version 1.0"];
   frames.forEach((frame, index) => {
     lines.push(`file '${frame.file}'`, `duration ${Math.max(0.001, (frames[index + 1]?.t ?? end) - frame.t).toFixed(4)}`);
@@ -410,6 +416,9 @@ function mixWithMusic(voice: string, bed: string, seconds: number): string {
 async function settleStage(director: Director) {
   await director.stage(`(async () => {
     const camera = document.getElementById("camera");
+    // A class toggled just before this call has not started its transition yet, so it would not be in getAnimations():
+    // let a frame paint first, or the closing picture holds a half-cleared caption.
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     await Promise.all([...document.getAnimations(), ...camera.getAnimations()].map((animation) => animation.finished.catch(() => undefined)));
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 60))));
   })()`);
@@ -457,9 +466,16 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     await director.waitFor(scene.ready ?? "Settings", 60_000);
     // Only on the operator's explicit --accept-vscode-license: HUI runs code serve-web only after that acceptance.
     if (scene.vscode) await api("POST", "/__hui/vscode-server", { action: "accept-license" });
+    // A machine whose managed download cannot run (NixOS: a dynamically linked x64 server) films the editor through a
+    // server that does: --vscode-path points HUI's configured provider at it instead of installing the managed one.
+    if (scene.vscode && vscodePath) {
+      const settings = await api("GET", "/__hui/settings");
+      Object.assign(settings["vscode"], { enabled: true, executable: vscodePath, provider: "configured" });
+      await api("PUT", "/__hui/settings", settings);
+    }
     // A machine without VS Code offers HUI's managed openvscode-server in the pane's chooser; installing it here, before
     // the clip, keeps the chooser out of the beat that films the editor. It downloads into this run's temporary HUI state.
-    if (scene.vscode) {
+    if (scene.vscode && !vscodePath) {
       const deadline = Date.now() + 10 * 60_000;
       for (;;) {
         const status = await api("GET", "/__hui/vscode-server");
@@ -531,12 +547,14 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     // The closing picture lands right after the last word: a longer hold here is added to every clip's tail. The camera
     // and the caption settle first, so the end frame is the one the scene set, not a half-done zoom-out.
     await settleStage(director);
-    // Take the closing picture deliberately: the screencast may not have drawn the zoom-out and the cleared caption yet,
-    // and this is the frame the end of the clip holds.
-    await director.takePicture();
-    await sleep(100);
-    end = director.clock();
+    // Stop the screencast before the closing picture: a frame it captured before the caption cleared can arrive after
+    // that picture, and the frames are encoded in arrival order, so it would be the one the clip's tail holds.
     await director.send("Page.stopScreencast");
+    await director.takePicture();
+    // Hold the closing picture long enough to be seen: the clip ends on the wide page with no caption, not on the frame
+    // before it with a second of dead air.
+    await sleep(650);
+    end = director.clock();
     await Promise.all(writes);
   } catch (error) {
     recording = false;
@@ -628,6 +646,12 @@ const option = (name: string) => { const index = args.indexOf(name); return inde
 const out = resolve(option("--out") ?? join(tmpdir(), "hui-demo-videos"));
 const keep = args.includes("--keep");
 const acceptVscodeLicense = args.includes("--accept-vscode-license");
+// An existing openvscode-server for the Work pane's editor beat, instead of HUI's managed download (which needs nix-ld on NixOS).
+const vscodePath = option("--vscode-path");
+if (vscodePath && !vscodePath.startsWith("/")) throw new Error("--vscode-path takes an absolute path to an openvscode-server binary.");
+// A resumed run keeps the chapter numbers its clips would have had in the whole set.
+const chapterStart = Number(option("--chapter-start") ?? "1");
+if (!Number.isInteger(chapterStart) || chapterStart < 1) throw new Error("--chapter-start takes a whole number from 1.");
 // --voice <model>/<voice> narrates through VoiceStudio (VOICESTUDIO_URL, default its local port), e.g. mlx-audio/af_heart.
 const voiceModel = option("--voice");
 if (voiceModel && !/^[^/]+\/[^/]+$/u.test(voiceModel)) throw new Error("--voice takes <model>/<voice>, for example mlx-audio/af_heart.");
@@ -643,7 +667,7 @@ if (needsLicense.length && !acceptVscodeLicense) {
   throw new Error(`${needsLicense.join(", ")} opens VS Code through Microsoft's code serve-web. Pass --accept-vscode-license to accept the VS Code Server license (https://aka.ms/vscode-server-license) for the demo HUI, or leave the clip out.`);
 }
 await mkdir(out, { recursive: true });
-for (const [index, scene] of selected.entries()) await record(scene, index + 1, out, await narrate(scene));
+for (const [index, scene] of selected.entries()) await record(scene, chapterStart + index, out, await narrate(scene));
 // Several clips also make an overview: every clip for the README, a release's new ones for its notes.
 if (selected.length > 1) {
   overview(out, selected.map((scene) => scene.name));
