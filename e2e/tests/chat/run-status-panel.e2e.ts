@@ -1,6 +1,6 @@
-/** The chat header's Run status panel: the pill morphs into it and back from one pinned top-right corner, the head reads
- * the same state as the pill, and a wide window's automatic open, Close run status, Escape and an outside click own it
- * (CHAT-090). */
+/** The chat header's Run status panel: it stays shut through every run until the operator opens it, their open and close
+ * outlive runs, and the pill morphs into it and back from one pinned top-right corner while the head reads the same state
+ * as the pill (CHAT-090). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
@@ -29,7 +29,7 @@ const CLOSE = ".chat-run-status__collapse";
 /** A section's own title, the rows' left padding the head's title has to line up with. */
 const SECTION_TITLE = `${PANEL} .chat-run-status__section-title`;
 
-test("Run status opens by itself while a run works, and its chevron folds it back", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Run status stays shut through a run until the operator opens it, and then holds", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
   // HUI writes the plan with the utility model; this instance points it at the fixture.
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
@@ -42,16 +42,18 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
   const idle = screen.getByLabel("Session status: Idle");
-  // A wide window opens the panel by itself while a turn streams; sent from the keyboard, so the composer keeps the
-  // focus that automatic open must not steal.
+  /** The panel's own close, the chevron in its head: one press of it is the operator's close. */
+  const close = () => screen.getByLabel("Close run status");
+  // A held turn: its tool call keeps the run streaming until `hui.provider.release()`. It starts only from an idle
+  // session, because a send during a run would steer that run instead of starting the next one.
   const hold = async () => {
     await message.fill(heldEcho);
     await message.press("Enter");
     await hui.provider.held();
   };
 
-  // The first turn writes the plan that keeps the trigger alive. Wait for it to settle before reading the panel: a wide
-  // window has that panel open while a run streams, so a closed panel is only provable once the run is over.
+  // The first turn writes the plan that keeps the trigger alive, and the run leaves the panel shut: nothing a send does
+  // opens it.
   await message.fill("E2E_PROGRESS");
   await send.tap();
   await expect(transcript.getByText("Working through the fixture.")).toBeVisible();
@@ -60,13 +62,26 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   await expect(popover).toBeHidden();
   await expect(trigger).not.toBeExpanded();
 
-  // The next turn holds the provider, and the pill morphs into the panel it opens: the head reads the same state as the
-  // trigger — mark, word and count — so one control visibly becomes the other. The panel's settled top-right corner is
-  // the pill's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
-  // trigger keeps its box as the anchor and the aria-expanded, word and summary it gives back on close.
+  // The next turn holds the provider, and the run streams with the pill drawn for all of it: still shut, and the send
+  // opened nothing. Sent from the keyboard, so the textarea is where the caret comes back once the post lands — HUI
+  // disables the composer while a send posts, and nothing else would give it back — while the panel's own state, hidden
+  // and collapsed, is what says nothing was pushed over the composer.
   await hold();
-  await expect(popover).toBeVisible();
   await expect(message).toBeFocused();
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).not.toBeExpanded();
+  await expect(popover).toBeHidden();
+  // The send landed: the composer took the prompt and emptied itself, and it is usable again.
+  await expect(message).toHaveValue("");
+  await expect(message).toBeEnabled();
+
+  // The operator's own press is what opens it, and the pill morphs into the panel it opens: the head reads the same state
+  // as the trigger — mark, word and count — so one control visibly becomes the other. The panel's settled top-right corner
+  // is the pill's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
+  // trigger keeps its box as the anchor and the aria-expanded, word and summary it gives back on close.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, 1 of 2 steps done$/u);
   // One box: the trigger keeps its box and its aria-expanded as the anchor, but the pill is not painted under or above
@@ -75,16 +90,14 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   await expect(popover.getByText("Working", { exact: true })).toBeVisible();
   await expect(popover.getByText("1/2", { exact: true })).toBeVisible();
 
-  // Escape closes it. The panel auto-opened onto the composer's focus and the pill is not painted, so a hidden trigger
-  // cannot take the focus back: the operator's caret stays in the composer, which is also where Escape must not reach
-  // the pane's Stop.
-  await message.press("Escape");
-  await expect(popover).toBeHidden();
+  // Escape closes it, and the focus the show moved into the panel comes back to the pill that anchors it once the box has
+  // drawn itself back. The pill paints again, still reading the running state it carried into the panel.
+  await close().press("Escape");
   await expect(trigger).not.toBeExpanded();
-  await expect(message).toBeFocused();
-  // The pill paints again once the close has landed, still reading the running state it carried into the panel.
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveText("Working 1/2");
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
 
   // That press closed the panel and stopped nothing: the provider is still holding the turn, so Escape never reached
   // the pane's Stop. The status word alone cannot say so, because a stopped run whose provider is still held keeps
@@ -92,27 +105,62 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
   await expect(screen.getByRole("button", "Stop")).toBeEnabled();
 
-  // The operator's close holds for the run it was made in, and the next run starts from the default again.
+  // The operator's close holds past the run it was made in: the panel stays shut when that run is released, and when the
+  // run after it starts — which hands the composer its caret back again, since that send started in it too.
   await hui.provider.release();
   await expect(idle).toBeVisible();
   await expect(popover).toBeHidden();
-
-  // The next run opens the panel by itself and closes it when it settles, with no press from the operator. That close is
-  // HUI's own, so the run after it opens the panel again instead of finding the panel shut by a choice nobody made.
   await hold();
-  await expect(popover).toBeVisible();
-  await hui.provider.release();
-  await expect(idle).toBeVisible();
+  await expect(message).toBeFocused();
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
 
-  await hold();
+  // A press elsewhere in the app is the operator's outside-click close.
+  await trigger.tap();
   await expect(popover).toBeVisible();
+  await message.tap();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeVisible();
+  await expect(trigger).not.toBeExpanded();
+
+  // An operator's open is theirs too: no run opens or shuts it, so it outlives the run it was made in and stays out
+  // through the next one as well.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
+  await expect(trigger).toBeExpanded();
+  await hui.provider.release();
+  await expect(idle).toBeVisible();
+  await expect(popover).toBeVisible();
+  await expect(trigger).not.toBeVisible();
+  await hold();
+  await expect(popover.getByText("Working", { exact: true })).toBeVisible();
+  await expect(popover).toBeVisible();
+
+  // Close run status folds it back into the pill and gives the focus back to the trigger, and that close holds into the
+  // run after it too: the one this ends is released first, so the next turn is a run of its own.
+  await close().tap();
+  await expect(trigger).not.toBeExpanded();
+  await expect(trigger).toBeVisible();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await hui.provider.release();
+  await expect(idle).toBeVisible();
+  await hold();
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).not.toBeExpanded();
+  await expect(popover).toBeHidden();
 
   // One control: a closed panel's pill opens it, and the panel's own chevron closes it, with Escape and an outside click
   // as the other ways out. Each direction draws one painted card — the panel itself — whose width, height and corner grow
   // out of the trigger's own box, read here from the frames the browser drew. The pill is not painted in any of them: the
   // panel's head is the converted pill, and the chevron it turns into is the close. Close run status starts the fold, and
   // its first frame is already on the pinned corner.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
+  await expect(trigger).toBeExpanded();
   const chrome = await hui.cardChrome(PANEL);
   expect(chrome?.wrapper).not.toBeNull();
   expect(chrome?.wrapper?.background, "Web Awesome's shadow body paints no card of its own").toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/u);
@@ -202,7 +250,9 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   await expect(popover.getByText("Working", { exact: true })).toHaveCount(1);
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
-  await screen.getByLabel("Close run status").tap();
+  await close().tap();
+  await expect(trigger).not.toBeExpanded();
+  await expect(trigger).toBeVisible();
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
 
@@ -216,22 +266,31 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   await send.tap();
   await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
   await expect(trigger).toHaveAccessibleName(/^Run status: Waiting for your answer, 1 of 2 steps done$/u);
+  await expect(trigger).toBeVisible();
+  await expect(popover).toBeHidden();
   await expect.poll(async () => {
     const label = await hui.textOverflow(LABEL);
     return label ? label.scrollWidth - label.clientWidth : Number.NaN;
   }).toBeLessThanOrEqual(1);
 
-  // The panel the waiting run opened repeats that phrase in its head, in the pill's own type, and the head must not
-  // clip its copy either: it is the only place the state is written while the panel is out.
+  // The panel the operator opens on that same state repeats the phrase in its head, in the pill's own type, and the head
+  // must not clip its copy either: it is the only place the state is written while the panel is out.
+  await trigger.tap();
   await expect(popover).toBeVisible();
   await expect.poll(async () => {
     const head = await hui.textOverflow(HEAD_LABEL);
     return head ? head.scrollWidth - head.clientWidth : Number.NaN;
   }).toBeLessThanOrEqual(1);
 
-  // A phone spends the pill's words on its accessible name and keeps the mark and the count, so one header row reads
-  // the state without wrapping (the labels are the view's own media queries, not this test's).
+  // A resize is not a close: the operator's open survives the phone's narrower window, and the panel is still out. Their
+  // own close paints the pill again, where a phone keeps only its mark and the count on one header row and the words move
+  // into the accessible name (the labels are the view's own media queries, not this test's).
   await hui.phoneScreen();
+  await expect(popover).toBeVisible();
+  await close().tap();
+  await expect(trigger).not.toBeExpanded();
+  await expect(trigger).toBeVisible();
+  await expect(popover).toBeHidden();
   await expect.poll(() => hui.drawn(LABEL)).toBe(false);
   await expect.poll(() => hui.drawn(`${TRIGGER} .chat-run-status__mark`)).toBe(true);
   await expect(trigger.getByText("1/2", { exact: true })).toBeVisible();

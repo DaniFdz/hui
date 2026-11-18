@@ -12,8 +12,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   const popover = screen.getByLabel("Run status");
   const plan = screen.getByTestId("task-progress");
   const steps = plan.getByLabel("Task progress steps");
-  // A wide window opens the popover itself while the turn streams; the shared helper presses the one toggle only when
-  // the panel has settled closed.
+  // No run opens the popover: the shared helper presses the pill the turn leaves in the header.
   const openPanel = () => openRunStatus(screen);
   // The plan starts folded on a phone and on a wide window only when every step is done or the setting asks for it.
   const openPlan = async () => {
@@ -30,8 +29,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await message.fill("E2E_PROGRESS");
   await send.tap();
 
-  // The plan lives in the popover and starts open on a wide window: the title, the count, the utility model's note and
-  // each step's state.
+  // The plan lives in the popover: the title, the count, the utility model's note and each step's state.
   await expect(trigger).toHaveAccessibleName(/^Run status:/u);
   await openPanel();
   // Close run status is the operator's close on a phone too, and it gives focus back to the trigger.

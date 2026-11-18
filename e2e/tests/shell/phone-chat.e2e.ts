@@ -60,5 +60,8 @@ test(
     await expect(steps).toBeHidden();
     await screen.getByText("1 of 2", { visible: true }).tap();
     await expect(steps.getByText("Read fixture")).toBeVisible();
+    // The tap that opens the drawer also dismisses the panel sitting over the header row.
+    await screen.getByRole("button", "Open navigation").tap();
+    await expect(popover).toBeHidden();
   },
 );

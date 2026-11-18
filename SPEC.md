@@ -1951,15 +1951,13 @@ aria-expanded back when the pill paints again.
 Escape or an outside click closes it too. A window
 that asks for reduced motion gets no morph and opens and closes at once, and
 only a real open or close animates: a streamed frame that changes the plan or
-the helpers never restarts it. On a wide window it opens by itself while a run
-streams, so the run's state is readable without a press, and closes again when
-that run ends; the operator's own open holds until they close it, because a run
+the helpers never restarts it. The panel opens only when the operator opens it,
+on wide windows and phones alike: a run — including one a send starts — leaves it
+closed and never opens it, and while the control is present its pill stays the only
+surface for the whole run; an operator's open holds across runs until they close
+it, and their close holds until they open it again, so no run
 the conversation starts on its own — a watcher settling, a helper finishing —
-must never shut the panel they are reading, while their own close lasts that
-run and the next run starts from the default. A reload forgets both, so the
-wide window's default applies again:
-open while the run still streams, closed once it has settled. A phone keeps it
-collapsed until the operator opens it.
+opens or shuts the panel. A reload starts closed.
 The popover holds **Goal** (the objective, its status note, when it was set, its
 automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
 steps and summary), **Helpers** (the latest batch, its counts, one dot per child
@@ -1976,26 +1974,28 @@ the conversation. None of those
 surfaces draws above the composer or in the transcript; a helper or watcher that
 settles still writes its own transcript event.
 
-### Run status opens by itself on a wide window (2026-11-15)
+### Run status opens only when the operator opens it (2026-11-17)
 
-On a wide window the chat header has room for the popover beside the
-conversation, and the question it answers — what is this run doing? — is the one
-the operator looks for while it works, so it opens as soon as a run streams. On
-a phone the same panel would cover the conversation it describes, so it waits
-for the operator there; that is the phone's own limit, not a second behaviour.
-The panel follows the run, but the operator is not pulled along with it: an
-explicit open is theirs until they close it, so a run the conversation starts on
-its own cannot shut the panel they are reading, and an explicit close answers the
-run it was made in and is cleared by the next one. Neither choice is stored, past
-that run or a reload: a stored one would hide a run's panel or reopen one the
-operator already shut, so an arrival re-reads the window and the run instead of a
-preference. One control opens and closes it: a closed panel's pill opens it, and
-the chevron in the open panel's head closes it, with focus returning to the
-trigger. Because the pill becomes the panel, the head carries the state word and
-count the pill showed — in the panel's own left-aligned title line, written once
-the box has arrived rather than gliding with the growth — and the pill itself is
-not drawn while the panel is out, whichever way it opened, so the state is read
-once on screen.
+The panel never opens by itself: a run, including the one a message send
+starts, leaves it closed and never opens it, on a wide window and on a phone
+alike; while the control is present — the conversation has a goal, a plan, a
+helper batch or a watcher — its pill stays the only surface for the whole run.
+The operator's words were "Posting a message opens the
+working popover automatically, I don't want that", and a popover that arrives
+with a send takes the screen and the focus the operator did not ask it to. So the
+open state is one boolean the operator writes: Web Awesome's own show and hide
+record it, nothing derives it from a run or a window, and their open and close
+alike outlive the run they were made in. An operator's open holds across later
+runs until they close it — a run the conversation starts on its own cannot shut
+the panel they are reading — and their close holds until they open it again. A
+reload starts closed. This supersedes the 2026-11-15 wide-window default, which
+opened the panel as soon as a run streamed; the rest of that decision stands: one
+control opens and closes it — a closed panel's pill opens it, and the chevron in
+the open panel's head closes it, with focus returning to the trigger — and because
+the pill becomes the panel, the head carries the state word and count the pill
+showed, in the panel's own left-aligned title line, written once the box has
+arrived rather than gliding with the growth, with the pill itself not drawn while
+the panel is out, so the state is read once on screen.
 
 ## Goals
 

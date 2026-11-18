@@ -42,6 +42,7 @@ import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
+import { composerFocusAfterSend, type ComposerFocusOwner } from "../lib/chat/composer-focus.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
@@ -114,6 +115,9 @@ export const QUESTION_FOCUS_SELECTOR = '.session-question-card :is([role="radio"
 const sendLongPressTimers = new WeakMap<HTMLElement, number>();
 const consumedSendLongPresses = new WeakSet<HTMLElement>();
 const composerDragDepth = new WeakMap<HTMLElement, number>();
+/** The chat composer's send, recorded where it started and closed out by the render that enables the textarea again. */
+type ComposerSendFocus = { fromComposer: boolean; control: Element | null; sending: boolean };
+const composerSendFocus = new WeakMap<HTMLTextAreaElement, ComposerSendFocus>();
 
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
@@ -1530,7 +1534,50 @@ function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: Pro
   // still needs to be told what to do with it.
   const hasImage = props.attachments.some((item) => item.kind === "image");
   if (!text && !hasImage) return;
+  // Where the send started, for the caret's way back once the post is over (see `syncComposerFocus`): a keyboard send
+  // leaves the caret in the composer, and the disabled composer the post sets takes it away. `sending` is the render
+  // edge's, so a send only records the owner here.
+  if (input instanceof HTMLTextAreaElement) {
+    const active = document.activeElement;
+    const fromComposer = active instanceof Element && form.contains(active);
+    const entry = composerSendFocus.get(input) ?? { fromComposer, control: null, sending: false };
+    entry.fromComposer = fromComposer;
+    entry.control = fromComposer ? active : null;
+    composerSendFocus.set(input, entry);
+  }
   props.onSendPrompt(text, props.attachments, mode);
+}
+
+/**
+ * Gives the chat composer its caret back after a send that started in it: the post disables the textarea, which leaves
+ * the page with no focus, so the render that enables it again puts the operator back where they were typing. It never
+ * takes the focus from a control the operator moved to while the send posted, and it never opens or closes the Run
+ * status panel. The ref runs before this render has committed the textarea's enabled state, so the check waits for the
+ * commit instead of reading a stale `disabled`.
+ */
+function syncComposerFocus(textarea: HTMLTextAreaElement, sending: boolean): void {
+  const entry = composerSendFocus.get(textarea) ?? { fromComposer: false, control: null, sending };
+  composerSendFocus.set(textarea, entry);
+  if (sending) {
+    entry.sending = true;
+    return;
+  }
+  if (!entry.sending) return;
+  const { fromComposer, control } = entry;
+  entry.fromComposer = false;
+  entry.control = null;
+  entry.sending = false;
+  if (!fromComposer) return;
+  queueMicrotask(() => {
+    if (!textarea.isConnected || textarea.disabled) return;
+    const active = document.activeElement;
+    const owner: ComposerFocusOwner = active === null || active === document.body
+      ? "body"
+      : active === control ? "send-control" : "elsewhere";
+    if (!composerFocusAfterSend({ fromComposer, owner })) return;
+    textarea.focus({ preventScroll: true });
+    syncComposerTextarea(textarea);
+  });
 }
 
 function onPromptKeydown(props: HomeProps) {
@@ -1774,6 +1821,9 @@ function renderComposer(props: HomeProps) {
         <div class="agent-chat__composer-input-row">
           <div class="agent-chat__composer-combobox">
             <textarea
+              ${ref((element) => {
+                if (element instanceof HTMLTextAreaElement) syncComposerFocus(element, props.sending);
+              })}
               name="text"
               rows="1"
               dir="auto"
@@ -2515,7 +2565,6 @@ function renderHeader(props: HomeProps, session: SessionView) {
             waiting: Boolean(props.question),
             sending: props.sending,
             connectionLive: props.connection === "live",
-            wide: !props.mobileNavLayout,
             goalPanel: props.goalPanel,
             collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
             onGoalChange: props.onGoalChange,

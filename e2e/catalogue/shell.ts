@@ -494,7 +494,7 @@ const cases: UseCase[] = [
     id: "SHELL-047",
     title: "Use a phone's chat without a second header row",
     behaviour:
-      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers, and the header's rightmost Run status trigger keeps only its mark and count. A phone never opens the Run status popover by itself: the trigger opens it, the Plan starts folded to its current step and count, opening the plan shows its steps, and Close run status closes the panel and returns focus to the trigger.",
+      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers, and the header's rightmost Run status trigger keeps only its mark and count. Like every window, a phone's Run status popover opens only when the operator presses that trigger: the Plan starts folded to its current step and count, opening the plan shows its steps, and Close run status closes the panel and returns focus to the trigger. A tap on the header's navigation control dismisses the open panel in the same press that opens the drawer.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",

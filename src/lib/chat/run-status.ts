@@ -3,6 +3,8 @@
  * its Task progress plan and the latest batch of helpers, the numbers the
  * trigger and its popover print, and whether that popover is open. The view in
  * `views/chat/run-status.ts` owns the markup and the app owns the state behind it.
+ * The popover opens only when the operator opens it: a run never opens or closes
+ * it, and neither does the width of the window.
  */
 import type { ProgressCard, ProgressStep, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import type { Watcher } from "../../api/watchers.ts";
@@ -72,24 +74,17 @@ export function goalSectionStatus(model: Pick<RunStatusModel, "label">, goal: Se
 }
 
 /**
- * The Run status popover across renders. On a wide window it opens by itself while a run streams; the operator's own
- * open or close is a `choice` that belongs to them: an open holds until they close the panel, because a run the
- * conversation starts on its own (a watcher settling, a helper finishing) must not shut the panel they are reading,
- * while a close answers the run it was made in and is cleared by the next one. A reload starts from the default too, so
- * it never reopens a panel the operator closed.
+ * Whether the Run status popover is out, which is exactly what the operator last chose: the panel opens only on their
+ * own press and closes only on their own close (the chevron, Escape, an outside click, or the phone header's
+ * session-list control). A run never opens or closes it — not the first one, not one the conversation starts on its own
+ * when a watcher settles or a helper finishes, and not a render or a window width either — so an open holds across runs
+ * until they close it, and a close holds until they open it again. A reload starts closed.
  */
-export type RunStatusPanelState = { running: boolean; choice: boolean | undefined };
+export type RunStatusPanelState = { open: boolean };
 
-/** The state after a render, with the operator's open kept and their close cleared when the next run starts. */
-export function runStatusPanel(previous: RunStatusPanelState | undefined, input: { running: boolean }): RunStatusPanelState {
-  if (!previous) return { running: input.running, choice: undefined };
-  const started = input.running && !previous.running;
-  return { running: input.running, choice: started && previous.choice === false ? undefined : previous.choice };
-}
-
-/** Whether the popover is open: the operator's choice wins, else a wide window opens it while a run streams. */
-export function runStatusPanelOpen(state: RunStatusPanelState, input: { running: boolean; wide: boolean }): boolean {
-  return state.choice ?? (input.wide && input.running);
+/** Whether the popover is open: the operator's own last choice, and nothing else. */
+export function runStatusPanelOpen(state: RunStatusPanelState): boolean {
+  return state.open;
 }
 
 /**
@@ -101,9 +96,9 @@ export function runStatusTriggerPainted(open: boolean): boolean {
   return !open;
 }
 
-/** Records the operator's own open or close. */
-export function runStatusPanelChosen(state: RunStatusPanelState, open: boolean): RunStatusPanelState {
-  return { running: state.running, choice: open };
+/** Records the operator's own open or close: the state's only writer. */
+export function runStatusPanelChosen(open: boolean): RunStatusPanelState {
+  return { open };
 }
 
 /** A box the morph reads once: the trigger's or the panel's, in viewport pixels. */

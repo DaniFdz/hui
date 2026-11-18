@@ -183,7 +183,7 @@ test("a watcher keeps its real state across a gateway restart and a dead one say
   const watchers = await openSettledWatchers(hui, screen, "Wait for a review");
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await hui.prompt(session, start({ purpose: "Wait for the reboot", command: "kill -9 $$" }));
-  // The second turn's run closed the panel it opened by itself; the rows are read through the operator's open again.
+  // The second turn's run never touched the panel; the reopened rows are read through the operator's own open again.
   const reboot = await openSettledWatchers(hui, screen, "Wait for the reboot Dead");
   await expect(reboot.getByText("1 running", { exact: true })).toBeVisible();
   await expect.poll(async () => hui.textOf(reboot), { timeout: 90_000 }).toContain("Wait for the reboot Dead");

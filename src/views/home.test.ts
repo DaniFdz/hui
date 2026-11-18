@@ -306,6 +306,18 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
 });
 
+test("only the operator's press opens the Run status popover", () => {
+  const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
+  // The only path that opens the popover is Web Awesome's own response to a press on its trigger: the view writes no
+  // `open`, calls no `show()`, and the `<wa-popover>` tag binds no `open`, so a future programmatic open has to fail here
+  // and in CHAT-090.
+  assert.doesNotMatch(view, /\.open\s*=\s*true/u);
+  assert.doesNotMatch(view, /\.show\(\)/u);
+  const popover = view.match(/<wa-popover\b[^>]*>/u)?.[0];
+  assert.ok(popover, "the view draws the popover");
+  assert.doesNotMatch(popover, /\bopen\b/u, `the popover tag binds no open: ${popover}`);
+});
+
 test("model and thinking reuse one exclusive composer picker pattern", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
