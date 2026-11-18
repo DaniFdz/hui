@@ -450,7 +450,12 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       frames.push({ file, t: director.clock() });
       writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
     });
-    await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
+    // The screencast can open on the stage's paint from before HUI loaded, so the clip would start on HUI's boot splash.
+    // Hold a cut until the loaded app has painted, and the first recorded frame is the page the clip opens on.
+    await director.cut(async () => {
+      await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
+      await director.stage(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 400))))`);
+    });
     await director.pause(300);
     await director.stage(`stage.chip(${chapter}, ${JSON.stringify(scene.chapter)})`);
     await director.pause(700);
@@ -460,7 +465,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
     });
     await director.quiet();
-    await director.pause(1_200);
+    await director.pause(900);
     // A screencast frame is stamped when it arrives, not when it was painted, so the next frame after the scene's
     // closing zoom-out and caption clear can still carry the old picture. Take that last picture deliberately and
     // hold it, instead of racing a frame that may be dropped once the screencast stops.

@@ -107,6 +107,51 @@ async function send(d: Director, prompt: string) {
   if (await d.find({ css: ".chat-scroll-to-bottom[data-visible='true']" })) await d.click({ label: "Scroll to latest" });
 }
 
+/** Sets a caption exactly when its line begins: the previous line ends, the caption lands, then this line starts. Without
+ * this, a caption set before `say` waits for the last line changes up to a line and a half before its own voice. */
+async function narrate(d: Director, caption: string, key: string) {
+  await d.quiet();
+  await d.caption(caption);
+  await d.say(key);
+}
+
+/** Parks the cursor over the window's chrome, off the page: a hover there leaves the content, so no tooltip is left over
+ * the beat being filmed. */
+async function park(d: Director) {
+  await d.move({ x: -40, y: -20 });
+  await d.pause(400);
+}
+
+/** Opens the chat's Run status panel when the run left it shut. The trigger keeps its box as the panel's anchor, so the
+ * collapse control is what tells whether the panel is out. */
+async function openRunStatus(d: Director) {
+  await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+  if (!(await d.find({ css: ".chat-run-status__collapse" }))) await d.click({ css: ".chat-run-status__trigger" });
+  await d.waitFor({ css: ".chat-run-status__panel" }, 10_000);
+}
+
+/** Closes the Run status panel: a card in the transcript behind it would lose its right side. */
+async function closeRunStatus(d: Director) {
+  if (!(await d.find({ css: ".chat-run-status__collapse" }))) return;
+  await d.click({ css: ".chat-run-status__collapse" });
+  await d.pause(500);
+}
+
+/** Opens a finished batch's folded helper rows, so their names and states are on screen. */
+async function unfoldHelpers(d: Director) {
+  if (await d.find({ css: ".chat-run-status__success:not([open]) > summary" })) {
+    await d.click({ css: ".chat-run-status__success:not([open]) > summary" });
+    await d.pause(300);
+  }
+}
+
+/** Dismisses HUI's operation toast when it is up: its message would otherwise sit over the content the beat shows. */
+async function dismissNote(d: Director, text: string) {
+  if (!(await d.find({ css: ".app-toast.chat-operation-toast", contains: text }))) return;
+  await d.click({ css: ".app-toast.chat-operation-toast .app-toast__dismiss" });
+  await d.pause(300);
+}
+
 export const scenes: Scene[] = [
   {
     name: "kanban",
@@ -265,35 +310,40 @@ export const scenes: Scene[] = [
       usage: "And Usage adds the sessions up: what a recorded call costs on average, the share the cache served, and what each session spent.",
     },
     async run({ director: d }) {
-      await d.caption("What this context carries");
-      await d.say("context");
+      await narrate(d, "What this context carries", "context");
       await d.click({ css: ".context-ring" });
       await d.waitFor({ css: ".context-usage__breakdown" });
       // The split by system prompt, tool definitions and conversation, with the session's own spend below it.
       await d.zoom({ css: ".context-usage__popover" }, 1.7);
       await d.pause(2_400);
-      await d.caption("…and what its calls cost");
-      await d.say("total");
-      // A session total exists once the conversation's ledger has a recorded call; its figures sit under the split.
-      await d.zoom({ css: ".context-usage__stats" }, 2.1);
+      await narrate(d, "…and what its calls cost", "total");
+      // A session total exists once the conversation's ledger has a recorded call; its figures sit under the split. The
+      // popover's header stays whole at the popover's own factor, where 2.1 cut its left edge.
+      await d.zoom({ css: ".context-usage__stats" }, 1.7);
       await d.pause(2_200);
       await d.zoom();
 
-      await d.caption("Cost and cache, across sessions");
-      await d.say("usage");
+      // The Usage page is navigating while the previous line finishes, then the caption lands on the loaded page: it must
+      // not play over the session page, whose context popover is stale once the view has moved on.
+      await d.quiet();
       await d.click(link("Usage"));
+      await d.waitFor({ css: "[data-testid='usage-report'][aria-busy='false']" }, 30_000);
       await d.waitFor({ css: "[data-testid='usage-totals']" }, 30_000);
       await reveal(d, ".usage-summary-grid");
-      await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.6);
+      await narrate(d, "Cost and cache, across sessions", "usage");
+      // The line names the average cost first, then the cache share, then each session: its beats follow in that order.
+      // A card's own factor keeps the Usage overview heading and the Errors card beside it whole.
+      await d.pause(1_400);
+      await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.4);
       await d.pause(1_600);
-      await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.6);
+      await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.4);
       await d.pause(1_800);
       await d.zoom();
 
-      await d.caption("…and each session's own spend");
       await reveal(d, "[data-testid='usage-session-row']");
-      await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.5);
-      await d.pause(2_400);
+      await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.4);
+      // The last line ends near the end of this hold: no long music-only tail after it.
+      await d.pause(800);
       await d.zoom();
       await d.caption();
     },
@@ -382,69 +432,93 @@ export const scenes: Scene[] = [
       report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
-      goal: "Give the conversation a goal, and it keeps going on its own until the objective is done.",
+      goal: "Give the conversation a goal, and it keeps going on its own, ten turns at a time, until the objective is done.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
     },
     async run({ director: d }) {
-      await d.caption("Ask for a review that splits three ways");
-      await d.say("ask");
+      await narrate(d, "Ask for a review that splits three ways", "ask");
       await d.click({ label: "New session in PAYMENTS" });
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("Run status tracks every helper");
-      await d.say("children");
-      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
-      // The helpers' run leaves the panel shut, so the operator presses the pill in the header to open it.
-      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+
+      // The helpers' run leaves the panel shut; open it and wait for the rows before the line names them.
+      await openRunStatus(d);
+      await unfoldHelpers(d);
+      await narrate(d, "Run status tracks every helper", "children");
+      await unfoldHelpers(d);
       await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
       await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
-      await d.caption("…and the agent sums them up");
-      await d.say("report");
-      await d.waitFor({ contains: "All three reviews are in" }, 40_000);
+      // The summary is a chat row behind the panel; close it so the finished table's right side is not covered.
+      await closeRunStatus(d);
+
+      // The streamed table must be complete before its line starts: no half-drawn verdict under the caption.
+      await d.waitFor({ contains: "I'd fix the ownership check before merging." }, 40_000);
+      await narrate(d, "…and the agent sums them up", "report");
+      await d.zoom({ css: "[data-testid='message-row']", contains: "All three reviews are in" }, 1.3);
       await d.pause(2_200);
-      await d.caption("Give it a goal, and it keeps going");
-      await d.say("goal");
+      await d.zoom();
+
+      // The goal is set before its line, so the panel and its pause note are what the line describes.
       await d.click({ placeholder: "Send a message…" });
       await d.type("/goal get the ownership check in and #142 merged");
       await d.press("Enter");
-      // The goal lives in the Run status panel now: the pill names it, and the panel the operator opened holds it.
-      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+      await openRunStatus(d);
       await d.waitFor({ css: ".chat-run-status__objective" }, 20_000);
+      // HUI's own note floats over the transcript; dismiss it and park the cursor off the page before the goal beat.
+      await dismissNote(d, "Goal set.");
+      await park(d);
+      await narrate(d, "Give it a goal, and it keeps going", "goal");
       await d.zoom({ css: ".chat-run-status__section[aria-labelledby$='goal-title']" }, 1.7);
       await d.pause(2_400);
       await d.zoom();
-      await d.caption("Open any helper to see its work");
-      await d.say("open");
-      // A finished batch folds its rows behind Helpers, so the operator opens it before picking one.
-      if (await d.find({ css: ".chat-run-status__success:not([open]) > summary" })) await d.click({ css: ".chat-run-status__success:not([open]) > summary" });
-      await d.click({ css: ".chat-run-status__helper", contains: "Security review" });
-      await d.waitFor({ contains: "1 blocking issue" });
+
+      // Open a helper only once its pane shows what it did; a header with an empty body is not the beat.
+      await unfoldHelpers(d);
+      const helper = { css: ".chat-run-status__helper", contains: "Security review" };
+      await d.waitFor(helper, 20_000);
+      await centre(d, helper);
+      await d.click(helper);
+      await d.waitFor({ css: ".session-history-action[aria-label='Open parent']" }, 20_000);
+      await d.waitFor({ contains: "1 blocking issue" }, 30_000);
+      await narrate(d, "Open any helper to see its work", "open");
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
-      await d.caption("Its task names the session that sent it");
-      await d.say("parent");
-      await d.zoom({ css: ".chat-group--peer" }, 1.5);
+
+      // Its task names the parent session: scroll the task row in, then name the sender under the line.
+      const task = { css: ".chat-group--peer", contains: "Security review of PR #142" };
+      await d.waitFor(task, 20_000);
+      await centre(d, task);
+      await narrate(d, "Its task names the session that sent it", "parent");
+      await d.zoom(task, 1.5);
       await d.pause(2_000);
       await d.zoom();
       await d.click({ css: ".chat-sender-link", text: "Review PR #142 in parallel" });
-      await d.caption("Watchers wait on CI for you");
-      await d.say("watcher");
+
+      // The watcher row lives below the goal and helpers in the panel: scroll it into the panel before its line.
       await send(d, "Fix the ownership check, then merge once CI is green");
-      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
-      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
-      await d.waitFor({ css: ".chat-watcher" }, 30_000);
-      await d.zoom({ css: ".chat-watcher" }, 1.4);
+      await openRunStatus(d);
+      const watcher = { css: ".chat-watcher", contains: "Merge #142 when CI is green" };
+      await d.waitFor(watcher, 30_000);
+      await centre(d, watcher);
+      await narrate(d, "Watchers wait on CI for you", "watcher");
+      await d.zoom(watcher, 1.4);
       await d.pause(1_500);
       // HUI checks on watchers every 10 s; skip to the moment CI is green.
       await d.cut(() => d.waitFor({ contains: "CI green, merged #142" }, 30_000));
-      await d.pause(1_200);
-      // A settled watcher folds its last event onto what it reported, so the outcome stays readable.
-      await d.zoom({ css: ".chat-watcher", last: true }, 1.5);
-      await d.pause(2_400);
+      await d.pause(600);
+      // A settled watcher writes its own event into the conversation, where the open panel would cover its right side.
+      // Wait for that card and its Done chip, close the panel, then frame the card whole.
+      const event = { css: ".chat-group--watcher-event", contains: "Watcher finished: Merge #142 when CI is green" };
+      await d.waitFor(event, 20_000);
+      await d.waitFor({ css: ".chat-group--watcher-event .chat-subagents__snippet", contains: "Done" }, 20_000);
+      await closeRunStatus(d);
+      await centre(d, event);
+      await d.zoom(event, 1.4);
+      await d.pause(2_000);
       await d.zoom();
       await d.caption();
     },
@@ -661,29 +735,36 @@ export const scenes: Scene[] = [
     ready: { css: "#launch-prompt", value: "Look this post in Instagram" },
     narration: {
       share: "Share a post to H U I from your phone, and H U I opens a new session with the link already in the composer.",
-      project: "Pick the project it belongs to, and send it. Nothing has to be pasted in.",
+      project: "Tap plus beside the project it belongs to, and send it. Nothing has to be pasted in.",
       answer: "The agent reads the code the post is about, and comes back with the next step.",
     },
     async run({ director: d }) {
-      await d.caption("A shared post becomes a session");
-      await d.say("share");
+      await narrate(d, "A shared post becomes a session", "share");
       await d.zoom({ css: "#launch-prompt" }, 1.35);
       await d.pause(2_400);
       await d.zoom();
 
-      await d.caption("Pick its project, and send");
-      await d.say("project");
-      // The drawer's group action puts the session in the project the post is about, and keeps the shared text.
+      await narrate(d, "Tap + beside its project", "project");
+      // The drawer's group action puts the session in the project the post is about, and keeps the shared text. The
+      // plus is the control beside STOREFRONT; the caption and line name it instead of the icon-only button.
       await d.click({ label: "Open navigation" });
-      await d.pause(700);
+      await d.waitFor({ css: ".sidebar[data-open='true']" }, 10_000);
+      await d.pause(600);
+      await d.move({ label: "New session in STOREFRONT" });
+      await d.pause(500);
       await d.click({ label: "New session in STOREFRONT" });
-      await d.waitFor({ css: "#launch-cwd", value: "storefront" });
-      await d.pause(700);
+      // The seeded workspace's raw temporary path must not reach the picture: skip the page's first paint and frame the
+      // send action, where the group and the composer are on screen and the project path above them is out of frame.
+      await d.cut(async () => {
+        await d.waitFor({ css: "#launch-cwd", value: "storefront" }, 20_000);
+        await d.zoom({ label: "Start session" }, 1.7);
+      });
       await d.click({ label: "Start session" });
+      await d.zoom();
 
-      await d.caption("The agent reads the code");
-      await d.say("answer");
+      // The agent's answer is on screen before its line starts, not a blank composer under it.
       await d.waitFor({ contains: "currency formatter" }, 40_000);
+      await narrate(d, "The agent reads the code", "answer");
       await d.zoom({ contains: "currency formatter", last: true }, 1.4);
       await d.pause(2_200);
       await d.zoom();
