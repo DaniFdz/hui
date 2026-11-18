@@ -34,9 +34,9 @@ const VOICE_GAIN_DB = 3;
 const MUSIC_GAIN_DB = -17;
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
-/** Visible text, an aria-label, a placeholder or a CSS selector, searched through shadow roots and same-origin frames
- * (such as the VS Code view's). */
-export type Target = string | { text?: string; contains?: string; label?: string; placeholder?: string; css?: string; nth?: number; last?: boolean };
+/** Visible text, an aria-label, a placeholder, a typed value or a CSS selector, searched through shadow roots and
+ * same-origin frames (such as the VS Code view's). */
+export type Target = string | { text?: string; contains?: string; label?: string; placeholder?: string; value?: string; css?: string; nth?: number; last?: boolean };
 type Box = { x: number; y: number; width: number; height: number };
 type Line = { file: string; seconds: number };
 
@@ -67,6 +67,8 @@ const FIND = `(target) => {
     (!target.css || element.matches(target.css)) &&
     (!target.label || norm(element.getAttribute("aria-label")) === target.label) &&
     (!target.placeholder || element.getAttribute("placeholder") === target.placeholder) &&
+    // A field's value is its state, not its text: a composer seeded from a share has no text content.
+    (!target.value || String(element.value ?? "").includes(target.value)) &&
     (!target.text || text(element) === target.text) &&
     (!target.contains || text(element).includes(target.contains)) && visible(element));
   if (!target.css) found = found.filter((element) => !found.some((other) => other !== element && element.contains(other)));

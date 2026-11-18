@@ -84,6 +84,18 @@ async function centre(d: Director, target: Target) {
   await d.pause(800);
 }
 
+/** Scrolls a page to an element it has not brought into view yet: a long page, such as Usage, keeps its cards below the
+ * fold, where the recorder cannot point at them. The stage shares HUI's origin, so it scrolls HUI's own page. */
+async function reveal(d: Director, selector: string) {
+  const found = await d.stage<boolean>(`(() => {
+    const page = document.getElementById("app").contentDocument.querySelector(${JSON.stringify(selector)});
+    page?.scrollIntoView({ block: "center" });
+    return Boolean(page);
+  })()`);
+  if (!found) throw new Error(`The page has no ${selector}`);
+  await d.pause(700);
+}
+
 /** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one names the steer and queue shortcuts). */
 async function send(d: Director, prompt: string) {
   await d.click({ placeholder: "Send a message…" });
@@ -114,8 +126,8 @@ export const scenes: Scene[] = [
     async run({ director: d }) {
       await d.caption("One page shows what is in flight");
       await d.say("dashboard");
-      await d.move({ css: "[data-testid='dashboard-needs-you']" });
-      await d.zoom({ css: "[data-testid='dashboard-needs-you']" }, 1.4);
+      await d.move({ css: "[data-testid='dashboard-stats']" });
+      await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.4);
       await d.pause(2_000);
       await d.zoom();
       await d.click(link("Kanban"));
@@ -156,7 +168,10 @@ export const scenes: Scene[] = [
 
       await d.caption("HUI keeps a task progress card");
       await d.say("progress");
-      await d.waitFor({ css: "[data-testid='task-progress']" }, 60_000);
+      // The plan is the Run status panel's now: the pill counts its steps, and the operator opens the panel.
+      await d.waitFor({ css: ".chat-run-status__trigger" }, 60_000);
+      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+      await d.waitFor({ css: "[data-testid='task-progress']" }, 20_000);
       await d.pause(600);
       await d.zoom({ css: "[data-testid='task-progress']" }, 1.45);
       await d.pause(2_400);
@@ -234,6 +249,51 @@ export const scenes: Scene[] = [
       await centre(d, { css: ".datadog-embed__image" });
       await d.zoom({ css: ".datadog-embed" }, 1.3);
       await d.pause(2_600);
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "cost",
+    chapter: "Cost and context",
+    viewport: [1280, 720],
+    path: "/sessions/demo-11",
+    ready: { contains: "It drifted" },
+    narration: {
+      context: "Every conversation shows what its context carries: the system prompt, the tool definitions, and the conversation itself.",
+      total: "The same meter says what every model call in the session has cost so far.",
+      usage: "And Usage adds the sessions up: what a recorded call costs on average, the share the cache served, and what each session spent.",
+    },
+    async run({ director: d }) {
+      await d.caption("What this context carries");
+      await d.say("context");
+      await d.click({ css: ".context-ring" });
+      await d.waitFor({ css: ".context-usage__breakdown" });
+      // The split by system prompt, tool definitions and conversation, with the session's own spend below it.
+      await d.zoom({ css: ".context-usage__popover" }, 1.7);
+      await d.pause(2_400);
+      await d.caption("…and what its calls cost");
+      await d.say("total");
+      // A session total exists once the conversation's ledger has a recorded call; its figures sit under the split.
+      await d.zoom({ css: ".context-usage__stats" }, 2.1);
+      await d.pause(2_200);
+      await d.zoom();
+
+      await d.caption("Cost and cache, across sessions");
+      await d.say("usage");
+      await d.click(link("Usage"));
+      await d.waitFor({ css: "[data-testid='usage-totals']" }, 30_000);
+      await reveal(d, ".usage-summary-grid");
+      await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.6);
+      await d.pause(1_600);
+      await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("…and each session's own spend");
+      await reveal(d, "[data-testid='usage-session-row']");
+      await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.5);
+      await d.pause(2_400);
       await d.zoom();
       await d.caption();
     },
@@ -350,8 +410,10 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "Send a message…" });
       await d.type("/goal get the ownership check in and #142 merged");
       await d.press("Enter");
-      await d.waitFor({ css: ".agent-chat__goal" }, 20_000);
-      await d.zoom({ css: ".agent-chat__goal" }, 1.6);
+      // The goal lives in the Run status panel now: the pill names it, and the panel the operator opened holds it.
+      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+      await d.waitFor({ css: ".chat-run-status__objective" }, 20_000);
+      await d.zoom({ css: ".chat-run-status__section[aria-labelledby$='goal-title']" }, 1.7);
       await d.pause(2_400);
       await d.zoom();
       await d.caption("Open any helper to see its work");
@@ -585,6 +647,44 @@ export const scenes: Scene[] = [
     },
   },
   {
+    name: "share",
+    chapter: "From a phone share",
+    device: "phone",
+    // What a phone's Share sheet opens: the shared link is already in HUI's new session composer.
+    path: `/new-session?share=${encodeURIComponent("https://www.instagram.com/reel/C9xK2mPq/")}`,
+    ready: { css: "#launch-prompt", value: "Look this post in Instagram" },
+    narration: {
+      share: "Share a post to H U I from your phone, and H U I opens a new session with the link already in the composer.",
+      project: "Pick the project it belongs to, and send it. Nothing has to be pasted in.",
+      answer: "The agent reads the code the post is about, and comes back with the next step.",
+    },
+    async run({ director: d }) {
+      await d.caption("A shared post becomes a session");
+      await d.say("share");
+      await d.zoom({ css: "#launch-prompt" }, 1.35);
+      await d.pause(2_400);
+      await d.zoom();
+
+      await d.caption("Pick its project, and send");
+      await d.say("project");
+      // The drawer's group action puts the session in the project the post is about, and keeps the shared text.
+      await d.click({ label: "Open navigation" });
+      await d.pause(700);
+      await d.click({ label: "New session in STOREFRONT" });
+      await d.waitFor({ css: "#launch-cwd", value: "storefront" });
+      await d.pause(700);
+      await d.click({ label: "Start session" });
+
+      await d.caption("The agent reads the code");
+      await d.say("answer");
+      await d.waitFor({ contains: "currency formatter" }, 40_000);
+      await d.zoom({ contains: "currency formatter", last: true }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
     name: "phone",
     chapter: "On your phone",
     device: "phone",
@@ -617,7 +717,7 @@ export const scenes: Scene[] = [
       await d.click(link("Dashboard"));
       await d.waitFor({ contains: "The sessions in flight" });
       await d.pause(900);
-      await d.zoom({ css: "[data-testid='dashboard-needs-you']" }, 1.35);
+      await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.35);
       await d.pause(1_800);
       await d.zoom();
       await d.pause(1_400);
