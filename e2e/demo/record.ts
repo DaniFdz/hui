@@ -300,6 +300,9 @@ export class Director {
 
   /** Recording time in seconds, which stands still during a cut. */
   clock = () => (Date.now() - this.#cutMs) / 1000;
+  /** A screencast frame's capture time (TimeSinceEpoch, seconds) in recording time. Stamping frames on arrival made
+   * the picture trail the voice by however long the busy renderer took to deliver them. */
+  at = (stamp: number) => (stamp > 1e11 ? stamp / 1000 : stamp) - this.#cutMs / 1000;
   cutting = false;
   #cutMs = 0;
 
@@ -447,7 +450,10 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       void cdp.send("Page.screencastFrameAck", { sessionId: event.params["sessionId"] }, sessionId).catch(() => undefined);
       if (director.cutting || !recording) return;
       const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
-      frames.push({ file, t: director.clock() });
+      const stamp = Number((event.params["metadata"] as Record<string, unknown> | undefined)?.["timestamp"]);
+      const at = Number.isFinite(stamp) ? director.at(stamp) : director.clock();
+      // Frames are cut to the next one's time: a stamp that steps back would give a negative hold.
+      frames.push({ file, t: Math.max(frames.at(-1)?.t ?? at, at) });
       writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
     });
     // The screencast can open on the stage's paint from before HUI loaded, so the clip would start on HUI's boot splash.
@@ -455,6 +461,9 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     await director.cut(async () => {
       await director.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: STAGE.width, maxHeight: STAGE.height, everyNthFrame: 1 });
       await director.stage(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 400))))`);
+      // The sidebar being ready does not mean the conversation has arrived: the clip opens on the loaded page, never
+      // on the transcript skeleton and its "Reconnecting…" note.
+      for (const deadline = Date.now() + 5_000; Date.now() < deadline && await director.find("Loading the conversation…");) await sleep(100);
     });
     await director.pause(300);
     await director.stage(`stage.chip(${chapter}, ${JSON.stringify(scene.chapter)})`);
@@ -472,7 +481,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92 });
     const closing = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
     await writeFile(closing, Buffer.from(data, "base64"));
-    frames.push({ file: closing, t: director.clock() });
+    frames.push({ file: closing, t: Math.max(frames.at(-1)?.t ?? 0, director.clock()) });
     await sleep(400);
     end = director.clock();
     await director.send("Page.stopScreencast");
