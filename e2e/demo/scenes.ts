@@ -343,8 +343,8 @@ export const scenes: Scene[] = [
       await d.pause(800);
       await reveal(d, "[data-testid='usage-session-row']");
       await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.4);
-      // The last line ends under this hold: the clip ends within about a second and a half of the voice.
-      await d.pause(1_200);
+      // The last line ends under this hold: the clip ends within about two seconds of the voice.
+      await d.pause(600);
       await d.zoom();
       await d.caption();
     },
