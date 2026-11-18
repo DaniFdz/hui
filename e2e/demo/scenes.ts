@@ -418,6 +418,8 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.caption("Open any helper to see its work");
       await d.say("open");
+      // A finished batch folds its rows behind Helpers, so the operator opens it before picking one.
+      if (await d.find({ css: ".chat-run-status__success:not([open]) > summary" })) await d.click({ css: ".chat-run-status__success:not([open]) > summary" });
       await d.click({ css: ".chat-run-status__helper", contains: "Security review" });
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
@@ -570,6 +572,10 @@ export const scenes: Scene[] = [
       await d.pause(1_800);
       await d.zoom();
       await d.click({ css: "#sidebar-tab-sessions" });
+      // The sidebar lists the group it scrolled to last; searching brings the session to the top, where the click is
+      // reliable while the list re-renders.
+      await d.click({ placeholder: "Search sessions" });
+      await d.type("Retry-safe");
       await d.click({ css: "a", contains: "Retry-safe webhooks" });
       await d.waitFor({ contains: "Tests cover duplicates" });
 
