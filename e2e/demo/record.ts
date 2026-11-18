@@ -581,8 +581,9 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
 function overview(out: string, names: string[]) {
   const FADE = 0.5;
   const files = names.map((name) => join(out, `${name}.mp4`));
-  const seconds = files.map((file) => Number(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v", "-show_entries", "stream=duration", "-of", "csv=p=0", file], { encoding: "utf8" })));
+  const seconds = files.map((file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" })));
   const total = seconds.reduce((sum, value) => sum + value, 0) - FADE * (files.length - 1);
+  if (!Number.isFinite(total) || total <= 0) throw new Error(`The clip durations are not readable: ${seconds.join(", ")}`);
   const audio = Boolean(voiceModel || music);
   // Each voice is cut to its clip's video, so the crossfades line up.
   let filter = audio ? seconds.map((value, index) => `[${files.length + index}:a]apad=whole_dur=${value},atrim=duration=${value}[stem${index}];`).join("") : "";
@@ -670,6 +671,11 @@ await mkdir(out, { recursive: true });
 for (const [index, scene] of selected.entries()) await record(scene, chapterStart + index, out, await narrate(scene));
 // Several clips also make an overview: every clip for the README, a release's new ones for its notes.
 if (selected.length > 1) {
-  overview(out, selected.map((scene) => scene.name));
-  process.stdout.write(`${join(out, "overview.mp4")}\n`);
+  // The clips are the deliverable; a failed join of the overview does not discard them.
+  try {
+    overview(out, selected.map((scene) => scene.name));
+    process.stdout.write(`${join(out, "overview.mp4")}\n`);
+  } catch (error) {
+    process.stderr.write(`overview.mp4 was not written: ${(error as Error).message}\n`);
+  }
 }
