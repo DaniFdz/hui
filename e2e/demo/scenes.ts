@@ -754,10 +754,11 @@ export const scenes: Scene[] = [
       await d.pause(500);
       await d.click({ label: "New session in STOREFRONT" });
       // The seeded workspace's raw temporary path must not reach the picture: skip the page's first paint and frame the
-      // send action, where the group and the composer are on screen and the project path above them is out of frame.
+      // send action at 2.2, where the group and the full-width composer are on screen and the project path above them is
+      // out of the vertical frame (the stage centres the phone's whole width at that factor).
       await d.cut(async () => {
         await d.waitFor({ css: "#launch-cwd", value: "storefront" }, 20_000);
-        await d.zoom({ label: "Start session" }, 1.7);
+        await d.zoom({ label: "Start session" }, 2.2);
       });
       await d.click({ label: "Start session" });
       await d.zoom();
