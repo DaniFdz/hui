@@ -96,6 +96,34 @@ async function reveal(d: Director, selector: string) {
   await d.pause(700);
 }
 
+/** Waits until a target has left the screen: the view removes the working row when a run settles, so its absence is the
+ * only signal that nothing more is streaming into the row a line is about to describe. */
+async function gone(d: Director, target: Target, timeout = 60_000) {
+  const deadline = Date.now() + timeout;
+  while (await d.find(target)) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${JSON.stringify(target)} to go`);
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
+/** Waits for the screen to catch up with the DOM. The stage and HUI share a renderer, so a streamed row can be whole
+ * where `find` reads it while the compositor still shows the half-drawn one; a capture makes the renderer draw the
+ * settled state, which is the picture the cut then lands on. */
+async function caughtUp(d: Director) {
+  await d.send("Page.captureScreenshot", { format: "jpeg", quality: 20 });
+}
+
+/** Waits until the camera has finished moving, so a cut can end on the frame it framed: the stage's zoom runs 700 ms,
+ * and the frames before it lands still hold what the move was leaving behind. */
+async function cameraRested(d: Director) {
+  await d.stage(`(() => {
+    const camera = document.getElementById("camera");
+    void getComputedStyle(camera).transform;
+    return Promise.all(camera.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+  })()`);
+  await d.stage(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))`);
+}
+
 /** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one names the steer and queue shortcuts). */
 async function send(d: Director, prompt: string) {
   await d.click({ placeholder: "Send a message…" });
@@ -314,38 +342,41 @@ export const scenes: Scene[] = [
       await narrate(d, "What this context carries", "context");
       await d.click({ css: ".context-ring" });
       await d.waitFor({ css: ".context-usage__breakdown" });
-      // The split by system prompt, tool definitions and conversation, with the session's own spend below it.
-      await d.zoom({ css: ".context-usage__popover" }, 1.7);
+      // The popover hangs under the composer, so at 1.7 the camera is already pinned to the window's bottom edge and a
+      // move onto the total below the split frames the same pixels. At 1.5 the whole popover fits and the move is a real
+      // one: the split by system prompt, tool definitions and conversation, then the session's own spend under it.
+      await d.zoom({ css: ".context-usage__popover" }, 1.5);
       await d.pause(2_400);
       await narrate(d, "…and what its calls cost", "total");
-      // A session total exists once the conversation's ledger has a recorded call; its figures sit under the split. The
-      // popover's header stays whole at the popover's own factor, where 2.1 cut its left edge.
-      await d.zoom({ css: ".context-usage__stats" }, 1.7);
-      await d.pause(2_200);
+      // The same meter counts the session's calls below the split, so the camera moves onto that block under the line.
+      await d.zoom({ css: ".context-usage__stats" }, 2.2);
+      await d.pause(2_000);
       await d.zoom();
 
-      // The Usage page is navigating while the previous line finishes, then the caption lands on the loaded page: it must
-      // not play over the session page, whose context popover is stale once the view has moved on.
+      // The Usage page's report takes a few seconds to arrive. The click on its link and that wait are a cut: the line
+      // that reads the page then starts on the loaded page, instead of over four seconds of the session page standing
+      // still while the cursor glides and Usage loads.
       await d.quiet();
-      await d.click(link("Usage"));
-      await d.waitFor({ css: "[data-testid='usage-report'][aria-busy='false']" }, 30_000);
-      await d.waitFor({ css: "[data-testid='usage-totals']" }, 30_000);
-      await reveal(d, ".usage-summary-grid");
+      await d.cut(async () => {
+        await d.click(link("Usage"));
+        await d.waitFor({ css: "[data-testid='usage-report'][aria-busy='false']" }, 30_000);
+        await d.waitFor({ css: "[data-testid='usage-totals']" }, 30_000);
+        await reveal(d, ".usage-summary-grid");
+        await caughtUp(d);
+      });
       await narrate(d, "Cost and cache, across sessions", "usage");
       // The line names the average cost first, then the cache share, then each session: its beats follow in that order.
       // A card's own factor keeps the Usage overview heading and the Errors card beside it whole.
-      await d.pause(1_400);
+      await d.pause(700);
       await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.4);
       await d.pause(1_600);
       await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.4);
-      // The line is about six seconds long, and its last clause names the sessions: reveal them while the camera still
-      // holds the cache card, instead of adding a zoom-out before the reveal.
-      await d.pause(800);
-      await reveal(d, "[data-testid='usage-session-row']");
-      await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.4);
-      // The last line ends under this hold: the clip ends within about two seconds of the voice.
-      await d.pause(600);
+      // The last clause names the sessions: back the camera out and scroll them in under the wide page, which is also
+      // the frame the clip ends on, so the last words need no zoom-out after them.
+      await d.pause(1_000);
       await d.zoom();
+      await reveal(d, "[data-testid='usage-session-row']");
+      await d.quiet();
       await d.caption();
     },
   },
@@ -435,6 +466,7 @@ export const scenes: Scene[] = [
       parent: "Its task shows the session that sent it. Click the name to go back.",
       goal: "Give the conversation a goal, and it keeps going on its own, ten turns at a time, until the objective is done.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
+      done: "The checks passed, the watcher merged, and it says Done in the chat.",
     },
     async run({ director: d }) {
       await narrate(d, "Ask for a review that splits three ways", "ask");
@@ -452,29 +484,40 @@ export const scenes: Scene[] = [
       await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
-      // The summary is a chat row behind the panel; close it so the finished table's right side is not covered.
-      await closeRunStatus(d);
 
-      // The streamed table must be complete before its line starts: no half-drawn verdict under the caption.
-      await d.waitFor({ contains: "I'd fix the ownership check before merging." }, 40_000);
+      // The summary streams into a chat row behind the panel, and its line reads the finished verdict table. The panel
+      // closing, the run settling and the table painting are one cut, so the line starts on the whole table instead of
+      // over a half-drawn verdict with a Working… row under it.
+      await d.quiet();
+      await d.cut(async () => {
+        // The panel would cover the table's right side.
+        await closeRunStatus(d);
+        await d.waitFor({ contains: "I'd fix the ownership check before merging." }, 40_000);
+        await gone(d, { css: ".chat-group--working" }, 40_000);
+        await centre(d, { css: "[data-testid='message-row']", contains: "All three reviews are in" });
+        await caughtUp(d);
+      });
       await narrate(d, "…and the agent sums them up", "report");
       await d.zoom({ css: "[data-testid='message-row']", contains: "All three reviews are in" }, 1.3);
       await d.pause(2_200);
       await d.zoom();
 
-      // The goal is set before its line, so the panel and its pause note are what the line describes.
+      // The goal is given as its line starts: the command lands in the composer under "give the conversation a goal",
+      // and the panel it opens carries the rest of the line. Typing it out first left fifteen seconds of silence here.
       await d.click({ placeholder: "Send a message…" });
-      await d.type("/goal get the ownership check in and #142 merged");
+      const typing = d.type("/goal get the ownership check in and #142 merged");
+      await d.caption("Give it a goal, and it keeps going");
+      await d.say("goal");
+      await typing;
       await d.press("Enter");
       // HUI's own note floats over the header; it is an outside click for the panel's popover, so dismiss it before the
-      // panel opens. Then the panel and its pause note are what the line describes.
+      // panel opens. Then the panel and its pause note are what the rest of the line describes.
       await d.waitFor({ css: ".app-toast.chat-operation-toast .app-toast__dismiss" }, 10_000);
       await dismissNote(d, "Goal set.");
       await openRunStatus(d);
       await d.waitFor({ css: ".chat-run-status__objective" }, 20_000);
-      // Park the cursor over the chrome, off the page, before the goal beat: no tooltip is left over the content.
+      // Park the cursor over the chrome, off the page, before the plan is framed: no tooltip is left over it.
       await park(d);
-      await narrate(d, "Give it a goal, and it keeps going", "goal");
       await d.zoom({ css: ".chat-run-status__section[aria-labelledby$='goal-title']" }, 1.7);
       await d.pause(2_400);
       await d.zoom();
@@ -512,31 +555,40 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.click(sender);
 
-      // The watcher row lives below the goal and helpers in the panel: scroll it into the panel before its line.
-      await send(d, "Fix the ownership check, then merge once CI is green");
-      await openRunStatus(d);
+      // The watcher row lives below the goal and helpers in the panel. The prompt that starts it and its run are a cut:
+      // typing them out and waiting for the row added thirteen silent seconds to the clip before the watcher's line.
       const watcher = { css: ".chat-watcher", contains: "Merge #142 when CI is green" };
-      await d.waitFor(watcher, 30_000);
-      await centre(d, watcher);
+      await d.cut(async () => {
+        await send(d, "Fix the ownership check, then merge once CI is green");
+        await openRunStatus(d);
+        await d.waitFor(watcher, 30_000);
+        await centre(d, watcher);
+        await cameraRested(d);
+      });
       await narrate(d, "Watchers wait on CI for you", "watcher");
       await d.zoom(watcher, 1.4);
       await d.pause(1_500);
-      // HUI checks on watchers every 10 s; skip to the moment CI is green.
-      await d.cut(() => d.waitFor({ contains: "CI green, merged #142" }, 30_000));
-      await d.pause(600);
-      // A settled watcher writes its own event into the conversation, where the open panel would cover its right side.
-      // Wait for that card and its Done chip, close the panel, then frame the card whole.
+      // HUI checks on watchers every 10 s, so the checks go green a while after the line. That wait and the reframe are
+      // a cut: the closing line starts on the framed Done card, not six seconds after the last word.
+      await d.quiet();
       const event = { css: ".chat-group--watcher-event", contains: "Watcher finished: Merge #142 when CI is green" };
-      await d.waitFor(event, 20_000);
-      await d.waitFor({ css: ".chat-group--watcher-event .chat-subagents__snippet", contains: "Done" }, 20_000);
-      // The close control is in the panel's head, above the zoomed watcher row: back the camera out first, or the tap lands
-      // outside the frame and the panel stays over the card.
+      await d.cut(async () => {
+        await d.waitFor({ contains: "CI green, merged #142" }, 30_000);
+        // A settled watcher writes its own event into the conversation, where the open panel would cover its right side.
+        await d.waitFor(event, 20_000);
+        await d.waitFor({ css: ".chat-group--watcher-event .chat-subagents__snippet", contains: "Done" }, 20_000);
+        // The close control is in the panel's head, above the zoomed watcher row: back the camera out first, or the tap
+        // lands outside the frame and the panel stays over the card.
+        await d.zoom();
+        await closeRunStatus(d);
+        await centre(d, event);
+        await d.zoom(event, 1.4);
+        await caughtUp(d);
+      });
+      await narrate(d, "Done: checks green, #142 merged", "done");
+      await d.pause(2_400);
       await d.zoom();
-      await closeRunStatus(d);
-      await centre(d, event);
-      await d.zoom(event, 1.4);
-      await d.pause(2_000);
-      await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },
@@ -770,22 +822,34 @@ export const scenes: Scene[] = [
       await d.move({ label: "New session in STOREFRONT" });
       await d.pause(500);
       await d.click({ label: "New session in STOREFRONT" });
-      // The seeded workspace's raw temporary path must not reach the picture: skip the page's first paint and frame the
-      // send action at 2.2, where the group and the full-width composer are on screen and the project path above them is
-      // out of the vertical frame (the stage centres the phone's whole width at that factor).
+      // The new session screen replaces the drawer, so the tap's caption goes with it: the next one names the send.
+      // The seeded workspace's raw temporary path sits just above the composer; the camera takes the send row and the
+      // shared text below it, where the path is out of the shot, and the cut ends once the move has finished, because
+      // the frames before it lands still hold the path in frame.
       await d.cut(async () => {
         await d.waitFor({ css: "#launch-cwd", value: "storefront" }, 20_000);
-        await d.zoom({ label: "Start session" }, 2.2);
+        const send = await d.waitFor({ label: "Start session" }, 20_000);
+        await d.zoom({ x: send.x + send.width / 2, y: send.y + send.height / 2 + 34 }, 2.2);
+        await cameraRested(d);
       });
+      await d.caption("Send it, nothing to paste");
       await d.click({ label: "Start session" });
-      await d.zoom();
-
-      // The agent's answer is on screen before its line starts, not a blank composer under it.
-      await d.waitFor({ contains: "currency formatter" }, 40_000);
+      // The running session is a new beat with no line of its own; the send's caption ends with it here rather than
+      // staying up over the answer.
+      await d.caption();
+      // The answer is on screen whole before its line: the settle and the wait are a cut, so the line does not start
+      // over a half-drawn reply and a Working… row.
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Want me to start?" }, 40_000);
+        await gone(d, { css: ".chat-group--working" }, 40_000);
+        await centre(d, { contains: "Want me to start?", last: true });
+        await caughtUp(d);
+      });
       await narrate(d, "The agent reads the code", "answer");
-      await d.zoom({ contains: "currency formatter", last: true }, 1.4);
+      await d.zoom({ contains: "Want me to start?", last: true }, 1.4);
       await d.pause(2_200);
       await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },

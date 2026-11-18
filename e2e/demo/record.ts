@@ -7,7 +7,7 @@
  *
  *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--voice <model>/<voice>] [--music <file>] [--accept-vscode-license] [--keep]
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { once } from "node:events";
@@ -315,8 +315,16 @@ export class Director {
     } finally {
       this.cutting = false;
       this.#cutMs += Date.now() - started;
+      this.cutEnd = this.clock();
+      await this.takePicture?.();
     }
   }
+  /** Recording time at which the last cut ended. A screencast frame captured before it, but delivered after the cut,
+   * still shows the picture the cut replaced (the loading skeleton, the page before a zoom); the recorder drops it. */
+  cutEnd = 0;
+  /** Takes the picture the clip holds from a cut's end. The screencast draws at about one frame a second while HUI
+   * streams into a 4K transcript, so without it the beat after a cut would open on the picture the cut replaced. */
+  takePicture?: () => Promise<void>;
 }
 
 /** A fresh isolated HUI with the scripted demo model, from the launcher; `stop` also removes its temporary folders. */
@@ -452,10 +460,21 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
       const stamp = Number((event.params["metadata"] as Record<string, unknown> | undefined)?.["timestamp"]);
       const at = Number.isFinite(stamp) ? director.at(stamp) : director.clock();
+      // A frame captured during a cut is the picture the cut replaced; it arrives late, when the cut is already over.
+      if (at < director.cutEnd) return;
       // Frames are cut to the next one's time: a stamp that steps back would give a negative hold.
       frames.push({ file, t: Math.max(frames.at(-1)?.t ?? at, at) });
       writes.push(writeFile(file, Buffer.from(String(event.params["data"]), "base64")));
     });
+    // A cut lands on a picture taken when it ends, so the clip jumps to the new beat instead of holding the old one for
+    // however long the next screencast frame takes.
+    director.takePicture = async () => {
+      if (!recording) return;
+      const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
+      const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92 });
+      frames.push({ file, t: Math.max(frames.at(-1)?.t ?? 0, director.clock()) });
+      await writeFile(file, Buffer.from(data, "base64"));
+    };
     // The screencast can open on the stage's paint from before HUI loaded, so the clip would start on HUI's boot splash.
     // Hold a cut until the loaded app has painted, and the first recorded frame is the page the clip opens on.
     await director.cut(async () => {
@@ -475,13 +494,9 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     });
     await director.quiet();
     await director.pause(900);
-    // A screencast frame is stamped when it arrives, not when it was painted, so the next frame after the scene's
-    // closing zoom-out and caption clear can still carry the old picture. Take that last picture deliberately and
-    // hold it, instead of racing a frame that may be dropped once the screencast stops.
-    const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92 });
-    const closing = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
-    await writeFile(closing, Buffer.from(data, "base64"));
-    frames.push({ file: closing, t: Math.max(frames.at(-1)?.t ?? 0, director.clock()) });
+    // Take the closing picture deliberately: the screencast may not have drawn the zoom-out and the cleared caption yet,
+    // and this is the frame the end of the clip holds.
+    await director.takePicture();
     await sleep(400);
     end = director.clock();
     await director.send("Page.stopScreencast");
@@ -554,9 +569,21 @@ async function narrate(scene: Scene): Promise<Map<string, Line> | undefined> {
       if (!response.ok || !response.headers.get("content-type")?.startsWith("audio/")) throw new Error(`VoiceStudio could not say "${text}": ${response.status} ${await response.text()}`);
       await writeFile(file, Buffer.from(await response.arrayBuffer()));
     }
-    lines.set(key, { file, seconds: Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" })) });
+    lines.set(key, { file, seconds: spokenSeconds(file, Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }))) });
   }
   return lines;
+}
+
+/** How long a line speaks. VoiceStudio pads the end of a sentence with up to a second of silence, and a clip's closing
+ * hold is measured from the voice: counting that padding as speaking time held the final frame long after the last word. */
+function spokenSeconds(file: string, duration: number): number {
+  const { stderr } = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "silencedetect=noise=-45dB:d=0.15", "-f", "null", "-"], { encoding: "utf8" });
+  const events = [...(stderr ?? "").matchAll(/silence_(start|end): ([\d.]+)/gu)].map((match) => ({ event: match[1], at: Number(match[2]) }));
+  const last = events.at(-1);
+  // The detector closes a silence that runs to the end of the file at the file's end, so either shape is the padding
+  // after the last word; a silence that closed earlier is a pause inside the sentence, which the voice speaks over.
+  const start = last?.event === "start" ? last.at : last?.event === "end" && duration - last.at < 0.05 ? events.at(-2)?.at : undefined;
+  return start !== undefined && duration - start > 0.1 ? start : duration;
 }
 
 const args = process.argv.slice(2);
