@@ -134,7 +134,8 @@ async function openRunStatus(d: Director) {
 async function closeRunStatus(d: Director) {
   if (!(await d.find({ css: ".chat-run-status__collapse" }))) return;
   await d.click({ css: ".chat-run-status__collapse" });
-  await d.pause(500);
+  await d.waitFor({ css: ".chat-run-status__trigger[aria-expanded='false']" }, 10_000);
+  await d.pause(400);
 }
 
 /** Opens a finished batch's folded helper rows, so their names and states are on screen. */
@@ -465,38 +466,51 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "Send a message…" });
       await d.type("/goal get the ownership check in and #142 merged");
       await d.press("Enter");
+      // HUI's own note floats over the header; it is an outside click for the panel's popover, so dismiss it before the
+      // panel opens. Then the panel and its pause note are what the line describes.
+      await d.waitFor({ css: ".app-toast.chat-operation-toast .app-toast__dismiss" }, 10_000);
+      await dismissNote(d, "Goal set.");
       await openRunStatus(d);
       await d.waitFor({ css: ".chat-run-status__objective" }, 20_000);
-      // HUI's own note floats over the transcript; dismiss it and park the cursor off the page before the goal beat.
-      await dismissNote(d, "Goal set.");
+      // Park the cursor over the chrome, off the page, before the goal beat: no tooltip is left over the content.
       await park(d);
       await narrate(d, "Give it a goal, and it keeps going", "goal");
       await d.zoom({ css: ".chat-run-status__section[aria-labelledby$='goal-title']" }, 1.7);
       await d.pause(2_400);
       await d.zoom();
 
-      // Open a helper only once its pane shows what it did; a header with an empty body is not the beat.
+      // Open a helper only once its pane shows what it did; a header with an empty body is not the beat. The pane's load
+      // is a cut: the goal's line stays on the panel, then the opened helper arrives with its work already on screen.
       await unfoldHelpers(d);
       const helper = { css: ".chat-run-status__helper", contains: "Security review" };
       await d.waitFor(helper, 20_000);
       await centre(d, helper);
-      await d.click(helper);
-      await d.waitFor({ css: ".session-history-action[aria-label='Open parent']" }, 20_000);
-      await d.waitFor({ contains: "1 blocking issue" }, 30_000);
       await narrate(d, "Open any helper to see its work", "open");
+      await d.cut(async () => {
+        await d.click(helper);
+        await d.waitFor({ css: ".session-history-action[aria-label='Open parent']" }, 20_000);
+        await d.waitFor({ contains: "1 blocking issue" }, 30_000);
+      });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
 
-      // Its task names the parent session: scroll the task row in, then name the sender under the line.
+      // Its task names the parent session: its sender line loads after the task, so wait for that line itself before the
+      // caption, then scroll the task row in and name the sender under the line.
       const task = { css: ".chat-group--peer", contains: "Security review of PR #142" };
       await d.waitFor(task, 20_000);
+      const sender = { css: ".chat-sender-link", text: "Review PR #142 in parallel" };
+      await d.waitFor(sender, 20_000);
       await centre(d, task);
+      // The sender footer is a hover/focus detail: it is in the DOM but transparent until the row is hovered, so the
+      // cursor reveals it before the line that names it and keeps it up while the task is framed.
+      await d.move(task);
+      await d.pause(400);
       await narrate(d, "Its task names the session that sent it", "parent");
       await d.zoom(task, 1.5);
       await d.pause(2_000);
       await d.zoom();
-      await d.click({ css: ".chat-sender-link", text: "Review PR #142 in parallel" });
+      await d.click(sender);
 
       // The watcher row lives below the goal and helpers in the panel: scroll it into the panel before its line.
       await send(d, "Fix the ownership check, then merge once CI is green");
@@ -515,6 +529,9 @@ export const scenes: Scene[] = [
       const event = { css: ".chat-group--watcher-event", contains: "Watcher finished: Merge #142 when CI is green" };
       await d.waitFor(event, 20_000);
       await d.waitFor({ css: ".chat-group--watcher-event .chat-subagents__snippet", contains: "Done" }, 20_000);
+      // The close control is in the panel's head, above the zoomed watcher row: back the camera out first, or the tap lands
+      // outside the frame and the panel stays over the card.
+      await d.zoom();
       await closeRunStatus(d);
       await centre(d, event);
       await d.zoom(event, 1.4);
