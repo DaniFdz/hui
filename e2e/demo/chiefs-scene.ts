@@ -303,7 +303,7 @@ export const chiefsScene: Scene = {
     chief: "Then it gets a Chief of Staff, with the group's project as its context.",
     delegate: "Give it the outcome, not the steps. It writes each brief, and starts the sessions itself.",
     sessions: "Three sessions, three worktrees. Each does its part, and the group shows where it stands.",
-    watch: "The group holds them all, in the sidebar. Open any one to see what it was asked.",
+    watch: "The group holds them all, in the sidebar. Open any session to see what it was asked.",
   },
   /** A new group's directory has to be a real Git project before the New group dialog can offer its Environment. Its
    * path is short enough to type: the demo workspace is /tmp/acme-XXXX. */
