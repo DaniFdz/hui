@@ -338,13 +338,13 @@ export const scenes: Scene[] = [
       await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.4);
       await d.pause(1_600);
       await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.4);
-      await d.pause(1_800);
-      await d.zoom();
-
+      // The line is about six seconds long, and its last clause names the sessions: reveal them while the camera still
+      // holds the cache card, instead of adding a zoom-out before the reveal.
+      await d.pause(800);
       await reveal(d, "[data-testid='usage-session-row']");
       await d.zoom({ css: "[data-testid='usage-session-row']" }, 1.4);
-      // The last line ends near the end of this hold: no long music-only tail after it.
-      await d.pause(800);
+      // The last line ends under this hold: the clip ends within about a second and a half of the voice.
+      await d.pause(1_200);
       await d.zoom();
       await d.caption();
     },
