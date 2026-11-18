@@ -290,7 +290,8 @@ export class Director {
     if (!line) throw new Error(`The scene has no narration line "${key}".`);
     await this.quiet();
     this.spoken.push({ file: line.file, at: this.clock() });
-    this.#speakingUntil = this.clock() + line.seconds + 0.3;
+    // A line reads finished a moment after its last word; `line.seconds` already excludes the voice's own tail.
+    this.#speakingUntil = this.clock() + line.seconds + 0.15;
   }
 
   /** Waits until the narrator has finished speaking, in recording time: a cut does not shorten a line. */
@@ -404,6 +405,16 @@ function mixWithMusic(voice: string, bed: string, seconds: number): string {
     + `[ducked][speech]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95`;
 }
 
+/** Waits for the stage's camera move and the caption's fade to finish. A scene's closing zoom-out starts when its last
+ * word ends, and the closing picture is taken right after it: without this the clip ends mid-move, on a zoomed frame. */
+async function settleStage(director: Director) {
+  await director.stage(`(async () => {
+    const camera = document.getElementById("camera");
+    await Promise.all([...document.getAnimations(), ...camera.getAnimations()].map((animation) => animation.finished.catch(() => undefined)));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 60))));
+  })()`);
+}
+
 async function record(scene: Scene, chapter: number, out: string, voice?: Map<string, Line>) {
   const work = await mkdtemp(join(tmpdir(), `hui-demo-${scene.name}-`));
   const frames: { file: string; t: number }[] = [];
@@ -446,6 +457,22 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     await director.waitFor(scene.ready ?? "Settings", 60_000);
     // Only on the operator's explicit --accept-vscode-license: HUI runs code serve-web only after that acceptance.
     if (scene.vscode) await api("POST", "/__hui/vscode-server", { action: "accept-license" });
+    // A machine without VS Code offers HUI's managed openvscode-server in the pane's chooser; installing it here, before
+    // the clip, keeps the chooser out of the beat that films the editor. It downloads into this run's temporary HUI state.
+    if (scene.vscode) {
+      const deadline = Date.now() + 10 * 60_000;
+      for (;;) {
+        const status = await api("GET", "/__hui/vscode-server");
+        if (!status.setup?.install || status.install?.installed) break;
+        if (status.install?.error) throw new Error(`The VS Code server install failed: ${status.install.error}`);
+        if (!status.install?.task) await api("POST", "/__hui/vscode-server", { action: "install" });
+        if (Date.now() > deadline) throw new Error("The VS Code server install did not finish in ten minutes.");
+        const task = status.install?.task as { received?: number; total?: number } | undefined;
+        process.stderr.write(`\rvscode server install: ${task?.total ? Math.round(((task.received ?? 0) / task.total) * 100) : 0}%`);
+        await sleep(1_000);
+      }
+      process.stderr.write("\n");
+    }
     // Before recording starts: the clip opens on the loaded app.
     await scene.setup?.(context);
     director.voice = voice;
@@ -453,10 +480,13 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
 
     const framesDir = join(work, "frames");
     await mkdir(framesDir, { recursive: true });
+    // A picture taken here is on its way to the frame list while the screencast keeps delivering; a frame that arrives
+    // meanwhile would take the same index and overwrite it.
+    let takingPicture = false;
     cdp.on((event) => {
       if (event.method !== "Page.screencastFrame" || event.sessionId !== sessionId) return;
       void cdp.send("Page.screencastFrameAck", { sessionId: event.params["sessionId"] }, sessionId).catch(() => undefined);
-      if (director.cutting || !recording) return;
+      if (director.cutting || takingPicture || !recording) return;
       const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
       const stamp = Number((event.params["metadata"] as Record<string, unknown> | undefined)?.["timestamp"]);
       const at = Number.isFinite(stamp) ? director.at(stamp) : director.clock();
@@ -469,11 +499,16 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     // A cut lands on a picture taken when it ends, so the clip jumps to the new beat instead of holding the old one for
     // however long the next screencast frame takes.
     director.takePicture = async () => {
-      if (!recording) return;
-      const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
-      const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92 });
-      frames.push({ file, t: Math.max(frames.at(-1)?.t ?? 0, director.clock()) });
-      await writeFile(file, Buffer.from(data, "base64"));
+      if (!recording || takingPicture) return;
+      takingPicture = true;
+      try {
+        const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
+        const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 85 });
+        frames.push({ file, t: Math.max(frames.at(-1)?.t ?? 0, director.clock()) });
+        await writeFile(file, Buffer.from(data, "base64"));
+      } finally {
+        takingPicture = false;
+      }
     };
     // The screencast can open on the stage's paint from before HUI loaded, so the clip would start on HUI's boot splash.
     // Hold a cut until the loaded app has painted, and the first recorded frame is the page the clip opens on.
@@ -493,11 +528,13 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       throw new Error(`${scene.name} failed; its screen is in ${join(out, `${scene.name}-failed.png`)}`, { cause: error });
     });
     await director.quiet();
-    await director.pause(900);
+    // The closing picture lands right after the last word: a longer hold here is added to every clip's tail. The camera
+    // and the caption settle first, so the end frame is the one the scene set, not a half-done zoom-out.
+    await settleStage(director);
     // Take the closing picture deliberately: the screencast may not have drawn the zoom-out and the cleared caption yet,
     // and this is the frame the end of the clip holds.
     await director.takePicture();
-    await sleep(400);
+    await sleep(100);
     end = director.clock();
     await director.send("Page.stopScreencast");
     await Promise.all(writes);

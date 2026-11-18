@@ -203,6 +203,7 @@ export const scenes: Scene[] = [
       await d.move({ css: "[data-testid='dashboard-stats']" });
       await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.4);
       await d.pause(2_000);
+      await d.quiet();
       await d.zoom();
       await d.click(link("Kanban"));
       await d.waitFor({ contains: "Drag a backlog item" });
@@ -211,57 +212,81 @@ export const scenes: Scene[] = [
       await d.move(card("Apple Pay at checkout"));
       await d.pause(1_600);
 
+      // The drag plays at 1.0: under the stage's zoom Chrome draws the dragged card twice, at two scales.
       await d.caption("Drag a card when the work moves on");
       await d.say("drag");
-      await d.zoom({ css: ".kanban-cell--testing", nth: 0 }, 1.35);
+      await d.quiet();
       await d.drag({ css: ".kanban-card", contains: "Search results skeleton" }, { css: ".kanban-cell--done", nth: 0 });
       await d.waitFor(card("Search results skeleton", "done"));
-      await d.pause(700);
-      await d.zoom();
+      await d.pause(900);
 
+      // The dialog is the picture "in its own worktree" names, so it opens before the line, and the branch it suggests
+      // is filled in by a cut instead of three silent seconds.
       await d.caption("Start a backlog item in its own worktree");
-      await d.say("backlog");
       await d.click(card("Add CSV export to the orders page"));
       await d.waitFor("New worktree");
       await d.zoom({ css: "dialog" }, 1.3);
       await d.click("New worktree");
       await d.cut(() => d.waitFor({ contains: "feature/orders-csv-export" }));
       await d.pause(1_200);
-      await d.click({ css: "button", text: "Start session" });
-      await d.zoom();
-      await d.waitFor(card("Add CSV export to the orders page", "investigation"));
-      await d.pause(800);
+      await d.say("backlog");
+      await d.quiet();
 
+      // Starting the session, the card it puts on the board and the session it opens are the wait: the line that reads
+      // the new session starts on it, framed on its own work instead of a slice of the sidebar.
+      const started = card("Add CSV export to the orders page", "investigation");
+      const tests = { css: "[data-testid='message-row']", contains: "node --test" };
+      await d.cut(async () => {
+        await d.click({ css: "button", text: "Start session" });
+        await d.zoom();
+        await d.waitFor(started, 40_000);
+        await d.click(started);
+        await d.waitFor(tests, 60_000);
+        await centre(d, tests);
+        await d.zoom(tests, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent gets to work right away");
       await d.say("work");
-      await d.click(card("Add CSV export to the orders page", "investigation"));
-      await d.zoom({ x: 860, y: 430 }, 1.3);
-      await d.waitFor({ contains: "node --test" }, 30_000);
-      await d.pause(1_800);
+      await d.pause(1_400);
+      await d.quiet();
       await d.zoom();
 
+      // The plan is the Run status panel's now: the pill counts its steps, and the operator opens the panel. Opening it
+      // and waiting for the card are a cut, so the line starts with the progress card on screen.
+      const progress = { css: "[data-testid='task-progress']" };
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-run-status__trigger" }, 60_000);
+        if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+        await d.waitFor(progress, 20_000);
+        await d.pause(600);
+        await d.zoom(progress, 1.45);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("HUI keeps a task progress card");
       await d.say("progress");
-      // The plan is the Run status panel's now: the pill counts its steps, and the operator opens the panel.
-      await d.waitFor({ css: ".chat-run-status__trigger" }, 60_000);
-      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
-      await d.waitFor({ css: "[data-testid='task-progress']" }, 20_000);
-      await d.pause(600);
-      await d.zoom({ css: "[data-testid='task-progress']" }, 1.45);
       await d.pause(2_400);
+      await d.quiet();
       await d.zoom();
 
+      // Telling the session that CI passed, the agent moving its card and the board showing it are a cut: the closing
+      // line reads the moved card, and the clip ends on the wide board it was moved on.
+      const moved = card("Apple Pay at checkout", "testing");
+      await d.cut(async () => {
+        await d.click(link("Apple Pay at checkout"));
+        await send(d, "CI passed on Apple Pay. Move it to review.");
+        await d.waitFor({ contains: "moved this card to" }, 30_000);
+        await d.click(link("Kanban"));
+        await d.waitFor(moved, 30_000);
+        await centre(d, moved);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Agents report their own stage");
       await d.say("stage");
-      await d.click(link("Apple Pay at checkout"));
-      await send(d, "CI passed on Apple Pay. Move it to review.");
-      await d.waitFor({ contains: "moved this card to" }, 30_000);
-      await d.pause(800);
-      await d.click(link("Kanban"));
-      await d.waitFor(card("Apple Pay at checkout", "testing"));
-      await d.zoom(card("Apple Pay at checkout", "testing"), 1.4);
-      await d.pause(2_000);
-      await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },
@@ -286,43 +311,75 @@ export const scenes: Scene[] = [
     async run({ director: d }) {
       await d.caption("Ask for a chart");
       await d.say("chart");
-      await d.click({ label: "New session in STOREFRONT" });
-      await d.click({ placeholder: "What should this session work on?" });
-      await d.type("Chart this week's build times from ci/build-times.csv");
-      await d.press("Enter");
+      await d.quiet();
+      // The typed request and the drawn widget are the wait: the widget's own line starts once it is on screen, not over
+      // an empty card.
+      const widget = { css: ".hui-widget-card__frame" };
+      await d.cut(async () => {
+        await d.click({ label: "New session in STOREFRONT" });
+        await d.click({ placeholder: "What should this session work on?" });
+        await d.type("Chart this week's build times from ci/build-times.csv");
+        await d.press("Enter");
+        await d.waitFor({ contains: "Toggle the series" }, 30_000);
+        await d.zoom(widget, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("…and get an interactive widget, on your theme");
       await d.say("widget");
-      await d.waitFor({ contains: "Toggle the series" }, 30_000);
-      await d.zoom({ css: ".hui-widget-card__frame" }, 1.3);
       // The widget runs in its own sandboxed frame; its toggle sits at the top left.
-      const widget = await d.waitFor({ css: ".hui-widget-card__frame" });
-      await d.click({ x: widget.x + 130, y: widget.y + 24 });
+      const frame = await d.waitFor(widget);
+      await d.click({ x: frame.x + 130, y: frame.y + 24 });
       await d.pause(1_600);
-      await d.click({ x: widget.x + 40, y: widget.y + 24 });
+      await d.click({ x: frame.x + 40, y: frame.y + 24 });
       await d.pause(900);
+      await d.quiet();
       await d.zoom();
 
+      // Sending the browser task, the page it drives and the confirmation that it really got there are a cut: the line
+      // starts on the live page, filled in.
+      const preview = { css: ".hui-browser-preview" };
+      await d.cut(async () => {
+        await send(d, "Check that signup still works on staging");
+        await d.waitFor(preview, 30_000);
+        // The page's own confirmation, which the script quotes only when the browser really got there.
+        await d.waitFor({ contains: "We sent a link to dana@acme.dev" }, 40_000);
+        await d.zoom(preview, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("It drives a real browser, live in the chat");
       await d.say("browser");
-      await send(d, "Check that signup still works on staging");
-      await d.waitFor({ css: ".hui-browser-preview" }, 30_000);
-      await d.zoom({ css: ".hui-browser-preview" }, 1.35);
-      // The page's own confirmation, which the script quotes only when the browser really got there.
-      await d.waitFor({ contains: "We sent a link to dana@acme.dev" }, 40_000);
       await d.pause(600);
+      await d.quiet();
       await d.zoom();
+
+      // The cards sit below the fold: scrolling to the pull request and framing it is the cut before the line about them.
+      const pull = { css: ".github-embed" };
+      await d.cut(async () => {
+        await centre(d, pull);
+        await d.zoom(pull, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Links unfurl into cards");
       await d.say("cards");
-      await centre(d, { css: ".github-embed" });
-      await d.zoom({ css: ".github-embed" }, 1.35);
-      await d.pause(2_200);
-      await d.zoom();
+      await d.pause(1_200);
+      await d.quiet();
+
+      const datadog = { css: ".datadog-embed" };
+      await d.cut(async () => {
+        await d.zoom();
+        // The card lands under the others, once its graph has loaded.
+        await centre(d, { css: ".datadog-embed__image" });
+        await d.zoom(datadog, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Datadog graphs, from your orgs");
       await d.say("datadog");
-      // The card lands under the others, once its graph has loaded.
-      await centre(d, { css: ".datadog-embed__image" });
-      await d.zoom({ css: ".datadog-embed" }, 1.3);
-      await d.pause(2_600);
+      // The closing line reads the graph; the camera comes back to the wide page under it, so the clip ends clean.
+      await d.quiet();
       await d.zoom();
       await d.caption();
     },
@@ -394,13 +451,18 @@ export const scenes: Scene[] = [
       vscode: "or open the whole project in V S Code, without leaving the browser.",
     },
     async run({ director: d }) {
+      // A fresh profile opens the conversation with its Work pane on the rail, where only Show Work pane exists. The pane
+      // and its terminal are open before the line that names them.
+      await d.cut(async () => {
+        if (await d.find({ label: "Show Work pane" })) await d.click({ label: "Show Work pane" });
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:terminal']" });
+        await d.waitFor({ contains: "Shared · Connected" });
+        await d.waitFor({ css: ".hui-terminal-surface" });
+        await caughtUp(d);
+      });
       await d.caption("Every conversation has a Work pane");
       await d.say("terminal");
-      // A fresh profile opens the conversation with its Work pane on the rail, where only Show Work pane exists.
-      if (await d.find({ label: "Show Work pane" })) await d.click({ label: "Show Work pane" });
-      await d.click({ label: "Open Work view" });
-      await d.click({ css: ".work-pane__menu-item[value='launch:terminal']" });
-      await d.waitFor({ contains: "Shared · Connected" });
       const terminal = await d.waitFor({ css: ".hui-terminal-surface" });
       // The prompt and output sit at the top of the terminal.
       const output = { x: terminal.x + terminal.width / 2, y: terminal.y + 150 };
@@ -409,46 +471,68 @@ export const scenes: Scene[] = [
       await d.type("git status --short && git log --oneline -1", { terminal: true });
       await d.press("Enter");
       await d.pause(1_400);
+      await d.quiet();
       await d.zoom();
 
+      // The agent's turn ends with the tests passing in the same terminal, and that is the picture its line describes.
+      await d.cut(async () => {
+        await send(d, "Go ahead, and run the tests in my terminal");
+        await d.waitFor({ contains: "3 tests pass in your terminal" }, 40_000);
+        await d.zoom(output, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent can type in your terminal too");
       await d.say("agent");
-      await send(d, "Go ahead, and run the tests in my terminal");
-      await d.zoom(output, 1.5);
-      await d.waitFor({ contains: "3 tests pass in your terminal" }, 40_000);
       await d.pause(1_200);
+      await d.quiet();
       await d.zoom();
 
+      // Opening the diff, its file and the side-by-side view is the wait, not the beat: the line starts on the change.
+      await d.cut(async () => {
+        await d.click({ label: "Maximize Work pane" });
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:diff']" });
+        await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
+        await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
+        await d.waitFor({ contains: "formatTotal(order.total" });
+        await d.zoom({ css: ".hui-diff-main" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Every change, in the Diff view");
       await d.say("diff");
-      await d.click({ label: "Maximize Work pane" });
-      await d.click({ label: "Open Work view" });
-      await d.click({ css: ".work-pane__menu-item[value='launch:diff']" });
-      await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
-      await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
-      await d.waitFor({ contains: "formatTotal(order.total" });
-      await d.zoom({ css: ".hui-diff-main" }, 1.4);
       await d.pause(2_200);
-      await d.zoom();
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.zoom();
+        await d.click({ css: ".hui-diff-main__open" });
+        await d.waitFor({ css: ".hui-files-editor" });
+        await d.pause(1_800);
+        await caughtUp(d);
+      });
       await d.caption("Open a file in Files");
       await d.say("files");
-      await d.click({ css: ".hui-diff-main__open" });
-      await d.waitFor({ css: ".hui-files-editor" });
-      await d.pause(1_800);
+      await d.pause(1_200);
+      await d.quiet();
 
+      // VS Code's server starts (and is already installed before this run); the clip skips the wait.
+      await d.cut(async () => {
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:vscode']" });
+        await d.waitFor({ css: "[aria-label^='Source Control']" }, 300_000);
+        await d.pause(800);
+        await d.click({ css: "[aria-label^='Source Control']" });
+        await d.click({ css: ".monaco-list-row", contains: "orders-page.js" });
+        await d.pause(1_000);
+        await d.zoom({ css: ".monaco-workbench" }, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("…or the whole project in VS Code");
       await d.say("vscode");
-      await d.click({ label: "Open Work view" });
-      await d.click({ css: ".work-pane__menu-item[value='launch:vscode']" });
-      // VS Code's server starts (and downloads its build the first time); the clip skips the wait.
-      await d.cut(() => d.waitFor({ css: "[aria-label^='Source Control']" }, 300_000));
-      await d.pause(800);
-      await d.click({ css: "[aria-label^='Source Control']" });
-      await d.click({ css: ".monaco-list-row", contains: "orders-page.js" });
-      await d.pause(1_000);
-      await d.zoom({ css: ".monaco-workbench" }, 1.3);
-      await d.pause(2_400);
+      await d.quiet();
       await d.zoom();
       await d.caption();
     },
@@ -620,61 +704,108 @@ export const scenes: Scene[] = [
       await d.waitFor("Owl");
       await d.zoom({ css: ".bot-roster" }, 1.8);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-      await d.click({ css: ".bot-row__name", text: "Scout" });
+
+      // Scout's chat with the routine already set up is the picture the line names: the request and its answer are a cut.
+      await d.cut(async () => {
+        await d.click({ css: ".bot-row__name", text: "Scout" });
+        await send(d, "Every weekday at 9, post a digest of open PRs and today's rollouts");
+        await d.waitFor({ contains: "runs every weekday at 9:00" }, 30_000);
+        await caughtUp(d);
+      });
       await d.caption("They schedule their own routines");
       await d.say("routine");
-      await send(d, "Every weekday at 9, post a digest of open PRs and today's rollouts");
-      await d.waitFor({ contains: "runs every weekday at 9:00" }, 30_000);
-      await d.pause(1_000);
+      await d.pause(1_400);
+      await d.quiet();
+
+      // Running the routine and waiting for the digest it writes are the cut before its line.
+      await d.cut(async () => {
+        await d.click({ css: ".bot-overview__name", text: "Morning digest" });
+        await d.click({ label: "Run now: Morning digest" });
+        await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
+        await d.zoom({ contains: "Priya owns the rollback", last: true }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Run one now, and it remembers what you told it");
       await d.say("run");
-      await d.click({ css: ".bot-overview__name", text: "Morning digest" });
-      await d.click({ label: "Run now: Morning digest" });
-      await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
-      await d.zoom({ contains: "Priya owns the rollback" , last: true }, 1.4);
-      await d.pause(2_200);
+      await d.pause(1_600);
+      await d.quiet();
       await d.zoom();
+
+      // The panel catches up with the routine a moment after the chat: the line waits for the routine row it points at.
+      await d.cut(async () => {
+        await d.click({ label: "Back to Scout" });
+        await d.click({ label: "Expand the panel" });
+        await d.waitFor({ css: "section[aria-labelledby$='overview-routines']", contains: "Morning digest" }, 20_000);
+        await d.zoom({ css: ".bot-overview" }, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Its panel shows what it does, and expands");
       await d.say("panel");
-      await d.click({ label: "Back to Scout" });
-      await d.click({ label: "Expand the panel" });
-      await d.pause(800);
-      await d.zoom({ css: ".bot-overview" }, 1.3);
-      await d.pause(2_400);
-      await d.zoom();
+      await d.pause(2_000);
+      await d.quiet();
       await d.click({ label: "Show the chat beside the panel" });
+
+      // Sending the tagged message, the handoff row it writes and Scout's answer are the wait: the line starts on the
+      // handoff card, not on a composer still being typed into.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-sessions" });
+        await d.click({ css: "a", contains: "Apple Pay at checkout" });
+        await d.waitFor({ contains: "merchant validation endpoint next" });
+        await send(d, "@scout make sure Apple Pay is on Monday's rollout");
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Agents hand bots work with an @");
       await d.say("handoff");
-      await d.click({ css: "#sidebar-tab-sessions" });
-      await d.click({ css: "a", contains: "Apple Pay at checkout" });
-      await d.waitFor({ contains: "merchant validation endpoint next" });
-      await send(d, "@scout make sure Apple Pay is on Monday's rollout");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
-      await d.pause(1_800);
+      await d.pause(1_600);
+      await d.quiet();
       await d.zoom();
+
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer" }, 30_000);
+        await d.zoom({ css: ".chat-group--peer" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Scout answers in the agent's chat");
       await d.say("reply");
-      await d.waitFor({ css: ".chat-group--peer" }, 30_000);
-      await d.zoom({ css: ".chat-group--peer" }, 1.5);
       await d.pause(2_200);
+      await d.quiet();
       await d.zoom();
+
+      // The click opens Scout's side of the conversation; its line reads the chat it opened, so the click comes first.
+      await d.cut(async () => {
+        await d.click({ css: ".chat-sender-link", text: "Scout" });
+        await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
+        await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Click a name to open that chat");
       await d.say("follow");
-      await d.click({ css: ".chat-sender-link", text: "Scout" });
-      await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
-      await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
       await d.pause(2_200);
+      await d.quiet();
       await d.zoom();
+
+      // Usage takes a moment to load: the closing line starts on the report, not on the chat it is leaving.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-sessions" });
+        await d.click(link("Usage"));
+        await d.waitFor({ css: "[data-testid='usage-models']" }, 30_000);
+        await d.pause(1_000);
+        await d.zoom({ css: "[data-testid='usage-models']" }, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("See what all of it costs");
       await d.say("usage");
-      await d.click({ css: "#sidebar-tab-sessions" });
-      await d.click(link("Usage"));
-      await d.waitFor({ css: "[data-testid='usage-models']" }, 30_000);
-      await d.pause(1_000);
-      await d.zoom({ css: "[data-testid='usage-models']" }, 1.35);
-      await d.pause(2_200);
+      await d.quiet();
       await d.zoom();
       await d.caption();
     },
@@ -707,90 +838,140 @@ export const scenes: Scene[] = [
       follow: "Click a name to see the other side of the conversation.",
     },
     async run({ director: d, api }) {
+      // The roster the line names is on screen before it speaks: the tabs and the roster are the cut before the first line.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-bots" });
+        await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
+        await d.zoom({ css: ".bot-roster" }, 1.8);
+      });
       await d.caption("Bots work with agents, and with each other");
       await d.say("team");
-      await d.click({ css: "#sidebar-tab-bots" });
-      await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
-      await d.zoom({ css: ".bot-roster" }, 1.8);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-      await d.click({ css: "#sidebar-tab-sessions" });
-      // The sidebar lists the group it scrolled to last; searching brings the session to the top, where the click is
-      // reliable while the list re-renders.
-      await d.click({ placeholder: "Search sessions" });
-      await d.type("Retry-safe");
-      await d.click({ css: "a", contains: "Retry-safe webhooks" });
-      await d.waitFor({ contains: "Tests cover duplicates" });
 
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-sessions" });
+        // The sidebar lists the group it scrolled to last; searching brings the session to the top, where the click is
+        // reliable while the list re-renders.
+        await d.click({ placeholder: "Search sessions" });
+        await d.type("Retry-safe");
+        await d.click({ css: "a", contains: "Retry-safe webhooks" });
+        await d.waitFor({ contains: "Tests cover duplicates" });
+        await caughtUp(d);
+      });
       await d.caption("An agent hands its PR to Piper");
       await d.say("handoff");
-      await send(d, "Open the PR, and ask @piper to watch it until it merges");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await centre(d, { css: ".chat-handoff" });
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
-      await d.pause(1_800);
-      await d.zoom();
+      await d.pause(1_200);
+      await d.quiet();
 
+      // The agent tags Piper and the handoff row it writes is the picture the line describes, so both are the cut.
+      await d.cut(async () => {
+        await send(d, "Open the PR, and ask @piper to watch it until it merges");
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await centre(d, { css: ".chat-handoff" });
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Piper brings the reviewer's question back");
       await d.say("question");
-      await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
-      await d.pause(2_200);
+      await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent decides, and answers");
       await d.say("answer");
-      await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
-      await centre(d, { css: ".chat-handoff", last: true });
-      await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
+        await centre(d, { css: ".chat-handoff", last: true });
+        await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("The agent decides, and answers");
+      await d.say("answer");
+      await d.pause(1_800);
+      await d.quiet();
+      await d.zoom();
+
+      // Owl's trigger is what the line names, so the navigation to it comes first.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-bots" });
+        await d.click({ css: ".bot-row__name", text: "Owl" });
+        await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
+        await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Triggers wake a bot");
       await d.say("trigger");
-      await d.click({ css: "#sidebar-tab-bots" });
-      await d.click({ css: ".bot-row__name", text: "Owl" });
-      await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
-      await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-
-      await d.caption("A page wakes Owl");
+      await d.cut(async () => {
+        await api("POST", pagesHook, { events: [{
+          id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
+          details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
+        }] });
+        await d.waitFor({ contains: "Investigate this page" }, 15_000);
+        await d.zoom({ contains: "Investigate this page" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("A page comes in, and Owl digs in");
       await d.say("page");
-      await api("POST", pagesHook, { events: [{
-        id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
-        details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
-      }] });
-      await d.waitFor({ contains: "Investigate this page" }, 15_000);
-      await d.zoom({ contains: "Investigate this page" }, 1.4);
-      await d.pause(1_800);
-      await d.zoom();
+      await d.pause(1_400);
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await centre(d, { css: ".chat-handoff" });
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Owl hands the revert to Piper");
       await d.say("bots");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await centre(d, { css: ".chat-handoff" });
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Piper reverts it, and reports back");
       await d.say("reverted");
-      await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
       await d.pause(1_800);
-      await d.zoom();
-      await d.waitFor({ contains: "Closing the page" }, 30_000);
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Closing the page" }, 30_000);
+        await d.click({ css: ".chat-sender-link", text: "Piper" });
+        await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Click a name to open that chat");
       await d.say("follow");
-      await d.click({ css: ".chat-sender-link", text: "Piper" });
-      await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
-      await d.pause(2_200);
+      await d.quiet();
       await d.zoom();
       await d.caption();
     },
@@ -868,28 +1049,43 @@ export const scenes: Scene[] = [
     async run({ director: d }) {
       await d.caption("HUI works on your phone too");
       await d.say("phone");
-      await d.pause(2_000);
+      // The next caption lands when this line has finished, not a line and a half early, and the cut carries none.
+      await d.quiet();
+      await d.caption();
+
+      // Typing, sending and the reply are the cut: the next line reads the answer the session came back with, not a
+      // composer still being typed into.
+      await d.cut(async () => {
+        await d.click({ placeholder: "Send a message…" });
+        await d.type("Quick status on Apple Pay?");
+        // On a touch screen Return adds a line; the send button sends.
+        await d.click({ label: "Send message" });
+        await d.waitFor({ contains: "Want me to open the pull request?" }, 30_000);
+        await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Check in from anywhere");
       await d.say("ask");
-      await d.click({ placeholder: "Send a message…" });
-      await d.type("Quick status on Apple Pay?");
-      // On a touch screen Return adds a line; the send button sends.
-      await d.click({ label: "Send message" });
-      await d.waitFor({ contains: "Want me to open the pull request?" }, 30_000);
-      await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
-      await d.pause(1_600);
+      await d.quiet();
       await d.zoom();
+      await d.caption();
+
+      // The Dashboard is what "everything in flight" names: the drawer, the navigation and its load are the cut.
+      await d.cut(async () => {
+        await d.click({ label: "Open navigation" });
+        await d.pause(900);
+        await d.click(link("Dashboard"));
+        await d.waitFor({ contains: "The sessions in flight" });
+        await d.pause(900);
+        await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Everything in flight, in your pocket");
       await d.say("board");
-      await d.click({ label: "Open navigation" });
-      await d.pause(900);
-      await d.click(link("Dashboard"));
-      await d.waitFor({ contains: "The sessions in flight" });
-      await d.pause(900);
-      await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.35);
-      await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-      await d.pause(1_400);
       await d.caption();
     },
   },
