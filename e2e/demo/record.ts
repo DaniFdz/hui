@@ -373,7 +373,9 @@ async function encode(frames: { file: string; t: number }[], end: number, list: 
   const stem = join(dirname(output), ".voice", `${basename(output, ".mp4")}.wav`);
   const mix = join(dirname(list), "mix.wav");
   await mkdir(dirname(stem), { recursive: true });
-  const placed = spoken.map((line, index) => `[${index}:a]adelay=${Math.round((line.at - start) * 1_000)}:all=1[line${index}]`);
+  // A line can start before the first captured frame (the launch is slower than the voice), and adelay refuses a
+  // negative delay; such a line simply starts at the top of the clip.
+  const placed = spoken.map((line, index) => `[${index}:a]adelay=${Math.max(0, Math.round((line.at - start) * 1_000))}:all=1[line${index}]`);
   const voiceTrack = spoken.length
     ? `${placed.join(";")};${spoken.map((_, index) => `[line${index}]`).join("")}amix=inputs=${spoken.length}:normalize=0,volume=${VOICE_GAIN_DB}dB,aresample=48000,aformat=channel_layouts=stereo,apad`
     : "anullsrc=r=48000:cl=stereo";
@@ -459,6 +461,14 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
     });
     await director.quiet();
     await director.pause(1_200);
+    // A screencast frame is stamped when it arrives, not when it was painted, so the next frame after the scene's
+    // closing zoom-out and caption clear can still carry the old picture. Take that last picture deliberately and
+    // hold it, instead of racing a frame that may be dropped once the screencast stops.
+    const { data } = await director.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92 });
+    const closing = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`);
+    await writeFile(closing, Buffer.from(data, "base64"));
+    frames.push({ file: closing, t: director.clock() });
+    await sleep(400);
     end = director.clock();
     await director.send("Page.stopScreencast");
     await Promise.all(writes);
