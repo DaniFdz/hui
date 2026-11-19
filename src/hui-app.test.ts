@@ -5,6 +5,7 @@ import type { RuntimeCompaction, RuntimeQuestion, SessionGroup, SessionView } fr
 import type { PowerStatus } from "./api/schema/power.ts";
 import type { ComposerController } from "./controllers/composer-controller.ts";
 import type { ConversationController } from "./controllers/conversation-controller.ts";
+import type { LaunchController } from "./controllers/launch-controller.ts";
 import type { SessionsController } from "./controllers/sessions-controller.ts";
 import type { SettingsController } from "./controllers/settings-controller.ts";
 import type { WorkLayoutController } from "./controllers/work-layout-controller.ts";
@@ -13,7 +14,7 @@ import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "./lib/composer/drafts.ts
 import { HUI_PAGES } from "./lib/pages.ts";
 import type { NavigationTarget } from "./lib/navigation.ts";
 import { sessionPanes, singleSessionLayout, splitSessionPane, type SessionPane } from "./lib/session/multiplexer.ts";
-import type { HomeProps } from "./views/home.ts";
+import type { HomeProps, LaunchIntent } from "./views/home.ts";
 import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { closeDrawerOnEscape } from "./views/shell.ts";
 import { HuiApp } from "./hui-app.ts";
@@ -21,6 +22,7 @@ import { HuiApp } from "./hui-app.ts";
 const api = vi.hoisted(() => ({ calls: [] as unknown[][] }));
 const textarea = vi.hoisted(() => ({ calls: [] as string[] }));
 const powerApi = vi.hoisted(() => ({ lidAwake: [] as boolean[] }));
+const launchApi = vi.hoisted(() => ({ created: [] as Record<string, unknown>[], checkouts: [] as ((checkout: unknown) => void)[] }));
 
 vi.mock("./api/sessions.ts", async (importOriginal) => ({
   ...await importOriginal<typeof import("./api/sessions.ts")>(),
@@ -32,6 +34,12 @@ vi.mock("./api/sessions.ts", async (importOriginal) => ({
     api.calls.push(["resumeSession", ...args]);
     return new Promise(() => {});
   },
+  createSession: async (input: Record<string, unknown>) => {
+    launchApi.created.push(input);
+    // A worktree session is unlisted until the gateway makes its checkout, which keeps the follow-up in memory.
+    return { id: "s-new", status: "idle", creating: { label: "Creating the checkout" } } as unknown as SessionView;
+  },
+  loadGitCheckout: () => new Promise((resolve) => launchApi.checkouts.push(resolve)),
 }));
 
 vi.mock("./lib/composer/textarea.ts", async (importOriginal) => ({
@@ -69,6 +77,9 @@ type Shell = {
   control: SettingsController;
   sessions: SessionsController;
   work: WorkLayoutController;
+  launcher: LaunchController;
+  launching: boolean;
+  requestLaunch: (intent: LaunchIntent, form: HTMLFormElement) => void;
   connectedCallback: () => void;
   scheduleUpdate: () => void;
   updated: (changed: Map<string, unknown>) => void;
@@ -96,6 +107,8 @@ type Shell = {
 };
 
 const shell = () => new HuiApp() as unknown as Shell;
+/** Lets every promise chain already queued run, without waiting on a wall-clock delay. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const session = (id: string, extra: Partial<SessionView> = {}) => ({ id, title: "Build", status: "idle", ...extra }) as SessionView;
 const pane = { id: "pane-1", sessionId: "s1" };
 const presented = { active: true, visible: true, narrow: false, split: true };
@@ -130,6 +143,8 @@ beforeEach(() => {
   api.calls = [];
   textarea.calls = [];
   powerApi.lidAwake = [];
+  launchApi.created = [];
+  launchApi.checkouts = [];
   vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [] });
   vi.stubGlobal("HTMLDialogElement", class {});
 });
@@ -276,6 +291,46 @@ test("a shared link seeds New Session once and leaves the address canonical", ()
   const reseeded = calls.filter(({ seed }) => seed !== undefined);
   assert.deepEqual(reseeded, [{ key: NEW_SESSION_DRAFT_KEY, seed: shared }], "the share reaches the composer once");
   assert.deepEqual(calls.map(({ key }) => key), [NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY]);
+});
+
+test("a launch submitted while the folder is inspected starts once the inspection answers", async () => {
+  // Start session stays enabled while the folder's checkout is still being inspected, and the submit used to be
+  // dropped in that window: the session never started. It waits for the inspection and starts with its answer.
+  const app = shell();
+  const internals = app as unknown as Record<string, unknown>;
+  app.renderRoot = { querySelector: () => null };
+  internals["refreshSessions"] = async () => {};
+  internals["navigate"] = () => {};
+  internals["withSessionPane"] = async () => {};
+  app.launcher.open({ label: "repo", cwd: "/repo", workspaceMode: "worktree", baseRef: "release", sessions: [] } as unknown as SessionGroup);
+  app.launcher.requestCheckout("/repo");
+  assert.equal(app.launcher.checkoutLoading, true, "the folder's checkout is being inspected");
+  const form = { isConnected: true } as unknown as HTMLFormElement;
+  app.requestLaunch({ cwd: "/repo", prompt: "go" }, form);
+  app.updated(new Map());
+  assert.deepEqual(launchApi.created, [], "the inspection is still running, so nothing starts yet");
+
+  launchApi.checkouts[0]!({ available: true, headBranch: "main", defaultBranch: "main", branches: ["main", "release"] });
+  await settle();
+  assert.equal(app.launcher.checkoutLoading, false);
+  app.updated(new Map());
+  assert.deepEqual(
+    launchApi.created,
+    [{ cwd: "/repo", thinking: "medium", worktree: true, baseRef: "release", initialPrompt: "go" }],
+    "the submit starts with the checkout the inspection answered",
+  );
+  await settle();
+  assert.equal(app.launching, false, "the started launch settled before the next submit");
+
+  // The folder changed under a pending submit: it named /repo, and the inspection that answered was /elsewhere's.
+  app.launcher.requestCheckout("/elsewhere");
+  app.requestLaunch({ cwd: "/repo", prompt: "go" }, form);
+  app.updated(new Map());
+  assert.equal(launchApi.created.length, 1, "the second inspection is still running");
+  launchApi.checkouts[1]!({ available: true, headBranch: "main", defaultBranch: "main", branches: ["main"] });
+  await settle();
+  app.updated(new Map());
+  assert.equal(launchApi.created.length, 1, "a submit for a folder that is no longer inspected is dropped");
 });
 
 test("a session's address focuses the pane that already shows it instead of giving the focused pane a second view", () => {
