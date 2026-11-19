@@ -1,4 +1,5 @@
 /** The demo clips, in overview order. Prompts match the scripted model in provider.ts. */
+import { chiefsScene } from "./chiefs-scene.ts";
 import type { Director, Target } from "./record.ts";
 
 /** `providerUrl`: the scripted model's server, which also serves the demo's pages and the Datadog graph. */
@@ -1103,4 +1104,5 @@ export const scenes: Scene[] = [
       await d.caption();
     },
   },
+  chiefsScene,
 ];
