@@ -457,10 +457,11 @@ export const heartbeat = createHeartbeat({
     }
     return undefined;
   },
-  // A chief's chat may be asleep or busy: the bots' delivery opens it, and queues behind a running turn.
+  // A chief's chat may be asleep or busy: the bots' delivery opens it, and a busy one refuses the report instead of
+  // queueing it, so the heartbeat keeps it pending and sends it when that chat's turn ends.
   notify: async (id, text) => {
     const chief = await bots.botForSession(id);
-    if (chief) await bots.send(chief.id, { text });
+    if (chief) await bots.send(chief.id, { text, whenBusy: "refuse" });
     else await liveSessions.prompt(id, text);
   },
   bots: () => botRegistry.list(),
@@ -481,6 +482,14 @@ liveSessions.watchRunEnds(({ id, failed }) => {
     if (!watching) recordDiagnosticEvent({ area: "session", level: "warning", action: "autonomous_chief_full", summary: `The chief already watches ${WATCH_LIMIT} sessions, so this autonomous session reports to no one`, sessionId: id });
   }, (error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "autonomous_report_failed", summary: "HUI could not report an autonomous session to its chief",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
+/** A watcher's chat finishing a turn flushes what its heartbeat report was refused for; nothing pending reads nothing.
+ * It never starts a scan by itself. */
+liveSessions.watchRunEnds(({ id }) => {
+  void heartbeat.watcherIdle(id).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "heartbeat_flush_failed", summary: "HUI could not deliver a heartbeat report a busy chat refused",
     detail: error instanceof Error ? error.message : String(error), sessionId: id,
   }));
 });

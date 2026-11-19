@@ -7,8 +7,12 @@
  * back to Supervised takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and the
  * run-end scan never report one change twice; a report also goes out only when the facts it depends on change (status,
  * stage, goal status and objective, the Autonomous flag and the last reply). Those fingerprints live in memory, so a
- * restart reports a live watched session once more. Also removes the Heartbeat routines a previous build provisioned in
- * bot chats.
+ * restart reports a live watched session once more. A report is never queued behind a turn in the watcher's chat: a busy
+ * chat refuses it, nothing is queued, and the pair stays pending, so it is recomputed from the newest facts and
+ * delivered when that chat's turn ends, with the 15-minute scan as the fallback. One watcher takes at most one report
+ * per scan, so a chat whose turn settles at once is never told twice; the rest waits for its next run end, and a watcher
+ * stays pending only while a report it is owed has not gone out. Also removes the Heartbeat routines a previous build
+ * provisioned in bot chats.
  */
 import { createHash } from "node:crypto";
 import type { AutomationService, AutomationTask } from "./automation.ts";
@@ -136,31 +140,62 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
 export function createHeartbeat(deps: HeartbeatDeps) {
   // What each watcher was last told, in memory only: a restart reports a live watched session once more.
   const reported = new Map<string, string>();
+  // Watchers a report is still owed to, because a busy chat refused it or a scan left the rest of its pairs for later:
+  // a run end of that chat flushes it, a scan retries it, and a scan that finds nothing undelivered clears it.
+  const pending = new Set<string>();
   let previousScan: Promise<unknown> = Promise.resolve();
 
   function scan(): Promise<HeartbeatOutcome> {
-    const run = previousScan.then(scanOnce, scanOnce);
+    const run = previousScan.then(() => scanOnce(), () => scanOnce());
     previousScan = run.catch(() => undefined);
     return run;
   }
 
-  async function scanOnce(): Promise<HeartbeatOutcome> {
+  /** A watcher's chat finished a turn: flush the report it is owed, recomputed from the facts as they are now. A
+   * watcher with nothing pending is left alone, so a run end on its own never reads the registry. Serialized on the
+   * same chain as `scan`, so a tick and a flush never interleave. */
+  function watcherIdle(watcherId: string): Promise<void> {
+    if (!pending.has(watcherId)) return Promise.resolve();
+    const run = previousScan.then(() => flush(watcherId), () => flush(watcherId));
+    previousScan = run.catch(() => undefined);
+    return run;
+  }
+
+  async function flush(watcherId: string): Promise<void> {
+    // A scan queued ahead of this flush may have delivered the report already.
+    if (!pending.has(watcherId)) return;
+    await scanOnce(watcherId);
+  }
+
+  /** One scan; with `onlyWatcherId`, only that watcher's pairs, for a flush of what its chat is owed. */
+  async function scanOnce(onlyWatcherId?: string): Promise<HeartbeatOutcome> {
     const records = await deps.records();
     const byId = new Map(records.map((record) => [record.id, record]));
     const watchedBy = new Map<string, string[]>();
+    const watching = new Set<string>();
     for (const watcher of records) {
       if (watcher.archived) continue;
-      for (const id of watcher.watches ?? []) watchedBy.set(id, [...(watchedBy.get(id) ?? []), watcher.id]);
+      for (const id of watcher.watches ?? []) {
+        watchedBy.set(id, [...(watchedBy.get(id) ?? []), watcher.id]);
+        watching.add(watcher.id);
+      }
     }
     // A watch a scan saw removed and then put back reports once again; one whose target is archived or missing stays
-    // remembered.
+    // remembered. A watcher whose watch list is gone stops being pending here too.
     const watchedPairs = new Set<string>();
     for (const [id, watcherIds] of watchedBy) {
       for (const watcherId of watcherIds) watchedPairs.add(watchedPair(watcherId, id));
     }
     for (const key of reported.keys()) if (!watchedPairs.has(key)) reported.delete(key);
+    for (const watcherId of pending) if (!watching.has(watcherId)) pending.delete(watcherId);
     const notified: string[] = [];
+    // The watchers this scan already gave a report to, and the ones a report is still owed to: a refusal, or a pair
+    // left for later because its watcher was served already. Both stay pending until that report goes out.
+    const handled = new Set<string>();
+    const deferred = new Set<string>();
     for (const [id, watcherIds] of watchedBy) {
+      const targets = onlyWatcherId === undefined ? watcherIds : watcherIds.filter((watcherId) => watcherId === onlyWatcherId);
+      if (!targets.length) continue;
       const target = byId.get(id);
       if (!target || target.archived || target.bot || !deps.isLive(id)) continue;
       const status = deps.status(id);
@@ -189,18 +224,40 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         last: last?.trim() ?? "",
       });
       let sent = false;
-      for (const watcherId of watcherIds) {
+      for (const watcherId of targets) {
         const key = watchedPair(watcherId, id);
         if (reported.get(key) === facts) continue;
+        // A watcher's chat takes one report per scan: whether it was just served, or its report was refused and nothing
+        // more can land, every later pair waits. The skipped pair records no fingerprint, so the flush at that chat's
+        // next run end sends it recomputed from the facts then.
+        if (handled.has(watcherId)) {
+          deferred.add(watcherId);
+          pending.add(watcherId);
+          continue;
+        }
+        // Pending from before this scan awaits the delivery, so a run end of that chat arriving while the scan waits on
+        // it still chains a flush on this same scan, since a turn the delivery starts can end before `notify` resolves.
+        // The reconciliation below clears it again unless this scan left the watcher owed a report.
+        pending.add(watcherId);
         try {
           await deps.notify(watcherId, message);
           reported.set(key, facts);
+          handled.add(watcherId);
           sent = true;
         } catch {
-          // A busy watcher stays unsent here and is retried on the next scan.
+          // A busy watcher chat refuses the report instead of queueing it: no fingerprint is recorded, so the next scan
+          // or the flush at its next run end recomputes it from the facts then.
+          handled.add(watcherId);
+          deferred.add(watcherId);
         }
       }
       if (sent) notified.push(id);
+    }
+    // Reconcile every watcher this scan looked at: it is pending only while a report it is owed did not go out here, so
+    // a watcher whose undelivered pair is gone stops reading the registry at its chat's run ends.
+    const considered = onlyWatcherId === undefined ? [...watching, ...pending] : [onlyWatcherId];
+    for (const watcherId of considered) {
+      if (!deferred.has(watcherId)) pending.delete(watcherId);
     }
     return { notified };
   }
@@ -244,7 +301,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
     });
   }
 
-  return { scan, supervise, release };
+  return { scan, supervise, release, watcherIdle };
 }
 
 /** Removes only the routines HUI itself provisioned in #482; a routine with any other description is untouched. */

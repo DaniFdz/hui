@@ -2372,7 +2372,7 @@ Query `id=&n=`.
 ### `POST /__hui/heartbeat`
 
 200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per report's facts: its status, stage, goal status and objective, Autonomous flag and last reply. A session not open in this gateway is skipped; the facts are remembered in memory only, so a restart reports a live watched session once more, and a worker's sessions are reported once when they open after that restart; an idle session whose watchers or subagents still work is not reported until they wake it, unless its last reply ends on a question; a session waiting on a question card is reported with a line saying only the operator can answer it there; and a session a Chief of Staff started, running Autonomous, is reported as `Autonomous session "<title>"`, whatever its
-goal's status. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep and waits behind a running turn. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
+goal's status. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep; a busy chat is never queued into, so the report is refused, nothing is queued and no fingerprint is recorded, and it goes out recomputed, once, when that chat's turn ends or at the next scan. One scan sends one watcher at most one report: every other target it owes that chat waits, on the facts as they are when it goes out, for that chat's next run end or the next scan, so `notified` lists only the targets a report actually went out for in that run. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
 
@@ -4093,8 +4093,10 @@ Chief of Staff of its group, else the Chief of Staff of no group (not an archive
 the session keeps it. Each time a run such a session ends, HUI makes that chief watch it if none does and runs the
 gateway heartbeat at once, so the stop reaches the chief's chat as `[routine: Heartbeat] Autonomous session "<title>"
 is …` with the last reply (its start and end when it is long) and a line telling the chief to approve or correct the
-plan, clear the blocker or settle the report with `sessions_send` and `timeoutSeconds` 0, queued behind a running
-turn. A session the operator started is not given to a chief: its stops are reported in its own chat, with the
+plan, clear the blocker or settle the report with `sessions_send` and `timeoutSeconds` 0. A chief chat that is busy
+is never queued into: the report is refused, nothing is queued and no fingerprint is recorded, and it goes out
+recomputed, once, when that chat's turn ends or at the next tick. A session the operator started is not given to a
+chief: its stops are reported in its own chat, with the
 desktop notification HUI sends when one of its runs ends. Not reported at once: a stop while the session's subagents
 or watchers still work and its reply does not end on a question (they wake it), a run the operator stopped and a run
 that failed (it retries or shows its error; a chief that already watches the session sees it at the next tick). When

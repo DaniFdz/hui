@@ -979,9 +979,10 @@ export class BotService {
   /**
    * Delivers an operator's message. Without `wait`: `sent` (prompted) or
    * `queued` (a follow-up, or steering when requested). With it: the outcome of the run that answers it,
-   * `needs-input` as soon as that run asks a question, or `timeout`.
+   * `needs-input` as soon as that run asks a question, or `timeout`. `whenBusy: "refuse"` never queues: a chat that is
+   * not idle rejects with `SessionBusyError`, so a report that must not wait behind a turn is simply refused.
    */
-  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[]; whenBusy?: "followUp" | "steer" }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
+  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[]; whenBusy?: "followUp" | "steer" | "refuse" }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before messaging it.`);
     const record = await this.#sessionOf(bot);
@@ -1553,14 +1554,15 @@ export class BotService {
 
   /** A prompt while idle, else a follow-up or requested steering; with `wait`, also the outcome of the run that answers it. Every bot turn
    * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), and so does a
-   * bot's reply to a session. */
+   * bot's reply to a session. `whenBusy: "refuse"` answers a chat that is not idle with `SessionBusyError` and queues
+   * nothing, not even when another prompt wins the idle moment it waited on. */
   async #deliver(
     record: SessionRecord,
     text: string,
     attachments: readonly PromptAttachment[] | undefined,
     wait?: WaitOptions,
     promptOptions?: RuntimePromptOptions,
-    whenBusy: "followUp" | "steer" = "followUp",
+    whenBusy: "followUp" | "steer" | "refuse" = "followUp",
   ): Promise<{ status: "sent" | "queued"; outcome?: Promise<BotReply> }> {
     await this.#open(record);
     if (wait?.signal?.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
@@ -1575,11 +1577,12 @@ export class BotService {
           await this.#sessions.prompt(record.id, text, files, text, promptOptions);
           return { status: "sent", ...(watch ? { outcome: watch.outcome } : {}) };
         } catch (error) {
-          // Another prompt won the idle moment: queue behind it instead.
-          if (!(error instanceof SessionBusyError) || this.#sessions.status(record.id) === "idle") throw error;
+          // Another prompt won the idle moment: queue behind it instead, unless the caller refuses a busy chat.
+          if (!(error instanceof SessionBusyError) || this.#sessions.status(record.id) === "idle" || whenBusy === "refuse") throw error;
           watch?.queueing();
         }
       }
+      if (whenBusy === "refuse") throw new SessionBusyError("That chat is already working on a prompt.");
       if (whenBusy === "steer") {
         await this.#sessions.steer(record.id, text, files);
         watch?.queued(undefined);

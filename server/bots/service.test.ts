@@ -19,7 +19,7 @@ import type { SecretQuestion } from "../agent-tools/secret-requests.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
-const { LiveSessions } = await import("../sessions/live-sessions.ts");
+const { LiveSessions, SessionBusyError } = await import("../sessions/live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./service.ts");
 const { BotMemoryUnavailableError } = await import("./memory.ts");
@@ -1144,6 +1144,47 @@ test("messages prompt an idle bot, queue behind a busy one, and a wait reports t
   assert.deepEqual(await slow, { status: "timeout" }, "a wait ends; the turn goes on");
   assert.equal(h.sessions.status(bot.sessionId), "running");
   chat.answer("finally");
+});
+
+test("a message told to refuse a busy chat rejects and queues nothing", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  await h.service.send(bot.id, { text: "busy work" });
+  await assert.rejects(
+    h.service.send(bot.id, { text: "heartbeat report", whenBusy: "refuse" }),
+    (error: unknown) => error instanceof SessionBusyError,
+    "a refusal, not a follow-up",
+  );
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], [], "nothing waits behind the running turn");
+
+  chat.answer("busy work done");
+  await waitFor(() => h.sessions.status(bot.sessionId) === "idle" ? true : undefined, "the chat to settle");
+  assert.deepEqual(chat.prompts, ["busy work"], "the refused message never becomes a turn");
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], []);
+});
+
+test("an idle chat takes a message told to refuse a busy one", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  assert.deepEqual(await h.service.send(bot.id, { text: "first report", whenBusy: "refuse" }), { status: "sent" });
+  assert.deepEqual(chat.prompts, ["first report"]);
+});
+
+test("only an explicit refusal rejects a busy chat: the default stays a follow-up", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  await h.service.send(bot.id, { text: "busy work" });
+  assert.deepEqual(await h.service.send(bot.id, { text: "queued message" }), { status: "queued" });
+  await queueHolds(h, bot.sessionId, 1);
+  const prompted = chat.nextPrompt();
+  chat.answer("busy work done");
+  assert.equal(await prompted, "queued message");
 });
 
 test("a routine is marked as one, queues behind a busy bot and completes with the turn that answers it", async (t) => {
