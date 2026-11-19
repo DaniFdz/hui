@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { readFileSync, readdirSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import type { BrowserSettings } from "../hui-settings.ts";
 import { resolveBrowserExecutable } from "./executable.ts";
-import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
+import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserPendingImport, type BrowserViewFrame } from "./manager.ts";
+import { BrowserStateFile } from "./mirror.ts";
+import { EMPTY_BROWSER_STATE, type BrowserState, type StoredCookie } from "./state.ts";
 import type { BrowserViewAction, BrowserViewState } from "../api/browser.ts";
 
 /** The page's own text, without the boundary markers a tool result wraps it in. */
@@ -1643,4 +1646,422 @@ test("an annotated screenshot numbers the latest snapshot's refs and leaves the 
     call({ action: "screenshot", annotate: true, ref: first }),
     /annotate labels the viewport or a full page; capture one element without it\./u,
   );
+});
+
+// ── Imported cookies ────────────────────────────────────────────────────────
+
+/** One cookie of the login the fixture page checks. */
+const sessionCookie = (domain: string, value: string, options: { at?: number; expires?: number } = {}): StoredCookie => ({
+  name: "session", value, domain, path: "/", at: options.at ?? Date.now(),
+  ...(options.expires === undefined ? {} : { expires: options.expires }),
+});
+
+/** A page whose title the request's own Cookie header decides, so a snapshot proves what the browser sent. */
+async function cookieFixture(title: (header: string) => string): Promise<{ origin: string; close: () => void }> {
+  const server = createServer((request, response) => {
+    const page = title(request.headers.cookie ?? "");
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>${page}</title><h1>${page}</h1>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return { origin: `http://127.0.0.1:${address.port}`, close: () => { server.close(); } };
+}
+
+/** A page whose title says whether the request carried the imported cookie, so a snapshot proves the login. */
+async function signInFixture(): Promise<{ origin: string; close: () => void }> {
+  return cookieFixture((header) => (header.split(/;\s*/u).includes("session=abc123") ? "signed in" : "signed out"));
+}
+
+/** A page whose title is the `session` cookie it was sent, so a snapshot proves which value a launch seeded. */
+async function sessionValueFixture(): Promise<{ origin: string; close: () => void }> {
+  return cookieFixture((header) => `session=${/(?:^|;\s*)session=([^;]*)/u.exec(header)?.[1] ?? "none"}`);
+}
+
+/** One kind of call a pending import answers. */
+type PendingCall = "read" | "write" | "remove";
+
+/** A pending import held in memory instead of a file, with each kind of call a test can hold, so two of the manager's
+ * transactions can be interleaved exactly where a file would let them. A read snapshots the document when it is
+ * called, as reading a file sees what is there when the read starts. */
+class GatedPending implements BrowserPendingImport {
+  state: BrowserState = EMPTY_BROWSER_STATE;
+  /** The calls made, in order. */
+  readonly calls: PendingCall[] = [];
+  readonly #gates = new Map<PendingCall, Promise<void>>();
+  readonly #released = new Map<PendingCall, () => void>();
+
+  /** Holds that kind of call until `release`. */
+  hold(kind: PendingCall): void {
+    this.#gates.set(kind, new Promise((resolve) => { this.#released.set(kind, resolve); }));
+  }
+
+  release(kind: PendingCall): void {
+    this.#gates.delete(kind);
+    this.#released.get(kind)?.();
+    this.#released.delete(kind);
+  }
+
+  async #pass(kind: PendingCall): Promise<void> {
+    this.calls.push(kind);
+    const gate = this.#gates.get(kind);
+    if (gate) await gate;
+  }
+
+  async read(): Promise<BrowserState> {
+    const snapshot = structuredClone(this.state);
+    await this.#pass("read");
+    return snapshot;
+  }
+
+  async write(state: BrowserState): Promise<void> {
+    await this.#pass("write");
+    this.state = structuredClone(state);
+  }
+
+  async remove(): Promise<void> {
+    await this.#pass("remove");
+    this.state = EMPTY_BROWSER_STATE;
+  }
+}
+
+const pendingImportPath = (dir: string): string => join(dir, "browser", "pending-import.json");
+const exists = async (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
+
+/** Kills the browser behind a profile the way an operator's cleanup script would, synchronously: its exit is not
+ * processed until the caller yields, so a call started right after meets a live instance whose pipe is gone. */
+function killBrowser(profileDir: string): void {
+  const needle = `--user-data-dir=${profileDir}`;
+  let pids: string[];
+  try {
+    pids = readdirSync("/proc").filter((name) => /^\d+$/u.test(name));
+  } catch {
+    // No procfs (macOS): the same kill through the operator's own tool.
+    execFileSync("pkill", ["-9", "-f", `user-data-dir=${profileDir}`]);
+    return;
+  }
+  for (const pid of pids) {
+    let cmdline: string;
+    try {
+      cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    } catch {
+      continue; // one that exited between the listing and the read, or another user's
+    }
+    if (!cmdline.split("\0").includes(needle)) continue;
+    try {
+      process.kill(Number(pid), "SIGKILL");
+    } catch {
+      // it exited first
+    }
+  }
+}
+
+test("an import while the browser is stopped is parked in its own private file, on top of what waits there", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-parked-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, probe: noBrowser, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  assert.equal(await browser.importCookies([sessionCookie("a.test", "one", { at: 1_000 })]), "next-start");
+  assert.equal((await stat(path)).mode & 0o777, 0o600, "the file holds live cookies: only the operator reads it");
+  assert.equal(await browser.importCookies([sessionCookie("b.test", "two", { at: 2_000 })]), "next-start");
+  assert.deepEqual(
+    (await pending.read()).cookies.map((cookie) => `${cookie.domain}=${cookie.value}`).sort(),
+    ["a.test=one", "b.test=two"],
+    "an import adds to what already waits instead of replacing it",
+  );
+
+  // The same identity again replaces the parked value rather than parking a second entry.
+  assert.equal(await browser.importCookies([sessionCookie("a.test", "newer", { at: 3_000 })]), "next-start");
+  const parked = (await pending.read()).cookies;
+  assert.deepEqual(parked.filter((cookie) => cookie.domain === "a.test").map((cookie) => cookie.value), ["newer"]);
+  assert.equal(parked.length, 2);
+
+  await assert.rejects(browser.importCookies([]), /There is no cookie to import/u);
+});
+
+test("two imports started together both wait in the pending import", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-together-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const pending = new GatedPending();
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, probe: noBrowser, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  // Both calls read the document before either writes it, the interleaving two imports of one file always get.
+  pending.hold("read");
+  const first = browser.importCookies([sessionCookie("a.test", "one", { at: 1_000 })]);
+  const second = browser.importCookies([sessionCookie("b.test", "two", { at: 2_000 })]);
+  pending.release("read");
+  assert.deepEqual(await Promise.all([first, second]), ["next-start", "next-start"]);
+  assert.deepEqual(pending.calls, ["read", "write", "read", "write"], "one transaction at a time: the second reads what the first wrote");
+  assert.deepEqual(
+    pending.state.cookies.map((cookie) => `${cookie.domain}=${cookie.value}`).sort(),
+    ["a.test=one", "b.test=two"],
+    "neither import loses the other's cookie",
+  );
+});
+
+test("cookies parked while it was stopped are in the next launch, and the file is gone", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-seed-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await signInFixture();
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  let captured: BrowserState | undefined;
+  const browser = new ManagedBrowser({
+    profileDir: join(dir, "profile"), readSettings: async () => settings, pending,
+    mirror: { read: async () => EMPTY_BROWSER_STATE, write: (state) => { captured = state; } },
+  });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  assert.equal(await browser.importCookies([sessionCookie("127.0.0.1", "abc123")]), "next-start");
+  assert.equal(await exists(path), true);
+
+  assert.match((await call({ action: "open", url: `${fixture.origin}/` })).text, /Tab t1 · signed in/u);
+  assert.equal(await exists(path), false, "the browser took the import, so the file is gone");
+
+  // The import is part of this profile's state, so a capture hands it to the mirror like any other cookie.
+  await eventually(async () => captured, (state) => Boolean(state?.cookies.some((cookie) => cookie.value === "abc123")));
+  assert.equal(captured?.cookies.find((cookie) => cookie.domain === "127.0.0.1")?.value, "abc123");
+});
+
+test("an import that expired while it waited is never set, and its file is removed", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-expired-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await signInFixture();
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  await pending.merge({ cookies: [sessionCookie("127.0.0.1", "abc123", { expires: Math.floor(Date.now() / 1_000) - 60 })], origins: [] });
+  const opened = await browser.tool("alpha", { action: "open", url: `${fixture.origin}/` }, { cwd: dir });
+  assert.match(opened.text, /Tab t1 · signed out/u);
+  assert.equal(await exists(path), false, "an expired import has nothing left to keep");
+  assert.match((await browser.tool("alpha", { action: "storage" }, { cwd: dir })).text, /No cookies for 127\.0\.0\.1/u, "the expired cookie never reached the jar");
+});
+
+test("an import into the running browser signs the next tab in and leaves nothing parked", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-live-ok-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await signInFixture();
+  const path = pendingImportPath(dir);
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, pending: new BrowserStateFile(path) });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  assert.match((await call({ action: "open", url: `${fixture.origin}/` })).text, /Tab t1 · signed out/u);
+  assert.equal(await browser.importCookies([sessionCookie("127.0.0.1", "abc123")]), "now");
+  assert.equal(await exists(path), false, "a running browser takes the import itself: nothing waits for a start");
+  assert.match((await call({ action: "open", url: `${fixture.origin}/` })).text, /Tab t2 · signed in/u);
+});
+
+test("a live import the browser did not take is never reported as now", {
+  skip: !detected.executable || process.platform === "win32",
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-live-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const profileDir = join(dir, "profile");
+  const fixture = await signInFixture();
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `${fixture.origin}/` });
+
+  // A cookie this browser will not store fails the call instead of reporting a sign-in that did not happen.
+  await assert.rejects(browser.importCookies([sessionCookie("127.0.0.1", "x".repeat(5_000))]), (error: unknown) => {
+    assert.ok(error instanceof BrowserToolError, `raw error escaped: ${String(error)}`);
+    assert.equal(error.status, 502);
+    assert.match(error.message, /refused the imported cookies/u);
+    return true;
+  });
+  assert.equal(await exists(path), false, "a refusal is not an import waiting for a start");
+
+  // A browser killed under the call is the one case that waits instead: the import is parked, not lost. The kill is
+  // synchronous, so the exit is not processed yet and the import meets a live instance whose pipe is gone.
+  killBrowser(profileDir);
+  assert.equal(browser.running, true, "the fallback runs against a live instance, not an already forgotten one");
+  assert.equal(await browser.importCookies([sessionCookie("127.0.0.1", "abc123")]), "next-start");
+  assert.deepEqual((await pending.read()).cookies.map((cookie) => cookie.value), ["abc123"]);
+});
+
+test("an import the launch could not apply stays parked until a start takes it", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-unapplied-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await signInFixture();
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // A cookie this browser will not store (past its 4 KiB limit) leaves the file exactly as it was.
+  await pending.merge({ cookies: [sessionCookie("127.0.0.1", "x".repeat(5_000))], origins: [] });
+  await browser.start();
+  assert.equal((await pending.read()).cookies.length, 1, "the import the browser did not take is still parked");
+  assert.match((await call({ action: "open", url: `${fixture.origin}/` })).text, /Tab t1 · signed out/u, "the launch went on anyway");
+
+  // With a cookie the browser takes, the next start applies the import and clears the file.
+  await pending.remove();
+  await pending.merge({ cookies: [sessionCookie("127.0.0.1", "abc123")], origins: [] });
+  await browser.stop();
+  assert.match((await call({ action: "open", url: `${fixture.origin}/` })).text, /Tab t\d+ · signed in/u);
+  assert.equal(await exists(path), false);
+});
+
+test("an import parked while a launch reads the pending import is applied, never removed unapplied", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-seed-race-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await signInFixture();
+  const pending = new GatedPending();
+  let seeding: () => void = () => undefined;
+  const started = new Promise<void>((resolve) => { seeding = resolve; });
+  const browser = new ManagedBrowser({
+    profileDir: join(dir, "profile"),
+    readSettings: async () => settings,
+    pending,
+    // Tells the test where the launch is, before it decides what to push into the profile.
+    mirror: {
+      read: async () => {
+        seeding();
+        return EMPTY_BROWSER_STATE;
+      },
+      write: () => undefined,
+    },
+  });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  // The browser is stopped for this call — no instance and no launch yet — so the import parks. Its write is held
+  // until the launch is reading the pending import; a file whose read and remove are one transaction with that write
+  // leaves the launch one of two ways: it reads this cookie and pushes it, or the import waits for the next start.
+  pending.hold("write");
+  pending.hold("remove");
+  const parking = browser.importCookies([sessionCookie("127.0.0.1", "abc123")]);
+  const launching = browser.start();
+  await started;
+  pending.release("write");
+  assert.equal(await parking, "next-start");
+  pending.release("remove");
+  await launching;
+
+  assert.match(
+    (await browser.tool("alpha", { action: "open", url: `${fixture.origin}/` }, { cwd: dir })).text,
+    /Tab t1 · signed in/u,
+    "the launch read the parked import and pushed it",
+  );
+  assert.deepEqual(pending.state.cookies, [], "the file is gone only after the push resolved");
+});
+
+test("an older parked cookie never overwrites a newer one the mirror holds", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-rotated-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const fixture = await sessionValueFixture();
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const now = Date.now();
+  const browser = new ManagedBrowser({
+    profileDir: join(dir, "profile"), readSettings: async () => settings, pending,
+    // The login was rotated elsewhere after the import was parked: the mirror holds the newer value.
+    mirror: { read: async () => ({ cookies: [sessionCookie("127.0.0.1", "new", { at: now })], origins: [] }), write: () => undefined },
+  });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    fixture.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  await pending.merge({ cookies: [sessionCookie("127.0.0.1", "old", { at: now - 60_000 })], origins: [] });
+
+  const opened = await browser.tool("alpha", { action: "open", url: `${fixture.origin}/` }, { cwd: dir });
+  assert.match(opened.text, /Tab t1 · session=new/u, "one merged set, newest capture per cookie");
+  assert.equal(await exists(path), false, "the window it replaced is gone once the push resolved");
+});
+
+test("an import that would not fit beside the cookies waiting is refused and leaves the file as it was", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-import-capacity-"));
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const path = pendingImportPath(dir);
+  const pending = new BrowserStateFile(path);
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, probe: noBrowser, pending });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const refusal = /^Those cookies do not fit in the browser's pending import\.$/u;
+  const refused = (error: unknown) => {
+    assert.ok(error instanceof BrowserToolError, `raw error escaped: ${String(error)}`);
+    assert.equal(error.status, 409);
+    assert.match(error.message, refusal);
+    return true;
+  };
+
+  assert.equal(await browser.importCookies([sessionCookie("a.test", "kept")]), "next-start");
+  const parked = await readFile(path, "utf8");
+  // Three values of 800 KB are past the 2 MiB a pending document keeps; so is any import whose cookies, with what
+  // waits, would be cut by the 2000-cookie bound a reader applies.
+  const huge = ["b.test", "c.test", "d.test"].map((domain) => sessionCookie(domain, "v".repeat(800_000)));
+  await assert.rejects(browser.importCookies(huge), refused);
+  assert.equal(await readFile(path, "utf8"), parked, "a refused import never touches the waiting file");
+  const many = Array.from({ length: 2_000 }, (_, index) => sessionCookie(`many${index}.test`, "v"));
+  await assert.rejects(browser.importCookies(many), refused);
+  assert.equal(await readFile(path, "utf8"), parked);
+
+  // A refusal settles the transaction instead of wedging the queue: the next import still waits for a start.
+  assert.equal(await browser.importCookies([sessionCookie("e.test", "small")]), "next-start");
+  assert.deepEqual((await pending.read()).cookies.map((cookie) => cookie.domain).sort(), ["a.test", "e.test"]);
 });

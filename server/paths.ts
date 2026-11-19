@@ -46,6 +46,10 @@ export const WORKTREES_DIR = join(CONFIG_DIR, "worktrees");
  * logins persist here; it is never the operator's personal browser profile. */
 export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
 
+/** Cookies an import parked while the managed browser was stopped: mode 0600, deleted once the browser has taken
+ * them, and never inside the Chromium profile directory, whose format HUI does not touch. */
+export const BROWSER_PENDING_IMPORT_FILE = join(CONFIG_DIR, "browser", "pending-import.json");
+
 /** The operator's site secrets (mode 0600): values an agent may type into a
  * login form without ever seeing them. Never part of the synced settings file. */
 export const BROWSER_SECRETS_FILE = join(CONFIG_DIR, "browser-secrets.json");

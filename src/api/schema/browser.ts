@@ -2,6 +2,10 @@
 
 export type BrowserControl = { "action": ("start") | ("stop"); };
 
+export type BrowserCookieImport = { "path": string; };
+
+export type BrowserCookieImportReport = { "imported": number; "expired": number; "domains": Array<string>; "applied": ("now") | ("next-start"); "message": string; };
+
 export type BrowserError = { "error": string; };
 
 export type BrowserExecutableView = { "path": string; "name": string; "source": ("configured") | ("detected"); };

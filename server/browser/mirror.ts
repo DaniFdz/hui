@@ -34,10 +34,15 @@ export class BrowserStateFile {
     }
   }
 
+  /** The whole document, in one atomic write: what a transaction that already read and merged it holds. */
+  write(state: BrowserState): Promise<void> {
+    return writeAtomic(this.path, `${JSON.stringify(state)}\n`, 0o600);
+  }
+
   /** Merges what a browser captured and returns the merged document. */
   async merge(state: BrowserState): Promise<BrowserState> {
     const merged = trimBrowserState(mergeBrowserState(await this.read(), state));
-    await writeAtomic(this.path, `${JSON.stringify(merged)}\n`, 0o600);
+    await this.write(merged);
     return merged;
   }
 

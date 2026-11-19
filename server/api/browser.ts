@@ -79,6 +79,17 @@ export type BrowserSecretRemoval = Static<typeof BrowserSecretRemoval>;
 export const BrowserControl = Type.Object({ action: Type.Union([Type.Literal("start"), Type.Literal("stop")]) }, { $id: "BrowserControl" });
 export type BrowserControl = Static<typeof BrowserControl>;
 
+/** The operator's exported login to read: an absolute path to the cookie file, never its contents. */
+export const BrowserCookieImport = Type.Object({ path: Type.String() }, { $id: "BrowserCookieImport" });
+export type BrowserCookieImport = Static<typeof BrowserCookieImport>;
+
+/** What an import did: counts and domains only, so no cookie's name or value can be answered back. */
+export const BrowserCookieImportReport = Type.Object({
+  imported: Type.Number(), expired: Type.Number(), domains: Type.Array(Type.String()),
+  applied: Type.Union([Type.Literal("now"), Type.Literal("next-start")]), message: Type.String(),
+}, { $id: "BrowserCookieImportReport" });
+export type BrowserCookieImportReport = Static<typeof BrowserCookieImportReport>;
+
 export const BrowserViewConnection = Type.Object({ url: Type.String() }, { $id: "BrowserViewConnection" });
 export type BrowserViewConnection = Static<typeof BrowserViewConnection>;
 
@@ -91,6 +102,7 @@ export type BrowserError = Static<typeof BrowserError>;
 export const routeSchemas = [
   { method: "GET", path: "/__hui/browser", response: BrowserStatus },
   { method: "POST", path: "/__hui/browser", request: BrowserControl, response: BrowserStatus },
+  { method: "POST", path: "/__hui/browser/cookies", request: BrowserCookieImport, response: BrowserCookieImportReport },
   { method: "GET", path: "/__hui/browser/secrets", response: BrowserSecrets },
   { method: "POST", path: "/__hui/browser/secrets", request: BrowserSecretInput, response: BrowserSecrets },
   { method: "POST", path: "/__hui/browser/secrets/remove", request: BrowserSecretRemoval, response: BrowserSecrets },

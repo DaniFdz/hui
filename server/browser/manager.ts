@@ -7,7 +7,10 @@
  * that opened them, like shared terminals: a conversation can neither list
  * nor drive another conversation's tabs. With a mirror (`state.ts`), it seeds a
  * launching profile from another machine's cookies and per-origin storage and
- * hands back what it captured, so a login made once works on both.
+ * hands back what it captured, so a login made once works on both. Cookies
+ * imported while it was stopped (`cookie-import.ts`) wait in their own file, in
+ * one transaction at a time, and go into the running browser, or into the next
+ * launch after the mirror's.
  *
  * A `handoff` gives one tab to the operator: the agent waits, the live view
  * forwards their pointer and keys to that tab over the same CDP session, and
@@ -37,7 +40,7 @@ import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
 import { describeDiff, diffSnapshots } from "./diff.ts";
-import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
+import { EMPTY_BROWSER_STATE, isHttpOrigin, MAX_STATE_BYTES, MAX_STATE_COOKIES, mergeBrowserState, sizeOf, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
 export class BrowserToolError extends Error {
   readonly status: number;
@@ -206,11 +209,22 @@ export type BrowserSecretStore = {
   list(): Promise<SiteSecretView[]>;
 };
 
+/** Where an import waits for the browser to start, and what it is read from at launch: cookies the operator
+ * brought in while the managed browser was stopped. The manager runs every transaction on it one at a time, so an
+ * implementation only has to read and write a document. A `BrowserStateFile` satisfies it. */
+export type BrowserPendingImport = {
+  read(): Promise<BrowserState>;
+  /** Replaces the whole document: the caller already read it and merged what it parks. */
+  write(state: BrowserState): Promise<void>;
+  remove(): Promise<void>;
+};
+
 export type ManagedBrowserOptions = {
   profileDir: string;
   readSettings: () => Promise<BrowserSettings>;
   secrets?: BrowserSecretStore;
   mirror?: BrowserStateMirror;
+  pending?: BrowserPendingImport;
   probe?: ExecutableProbe;
   env?: NodeJS.ProcessEnv;
   window?: { width: number; height: number };
@@ -235,6 +249,16 @@ function clip(value: string, maximum: number): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+/** Cookies as the protocol takes them: what only describes this store (`at`) stays behind. */
+function cdpCookies(cookies: StoredCookie[]): Record<string, unknown>[] {
+  return cookies.map(({ at: _captured, ...cookie }) => cookie);
+}
+
+/** An import that waited past its expiry is not sent: the browser would drop it anyway. */
+function expired(cookie: StoredCookie, now: number): boolean {
+  return cookie.expires !== undefined && cookie.expires * 1_000 <= now;
 }
 
 export function browserLaunchArguments(options: {
@@ -679,6 +703,9 @@ export class ManagedBrowser {
   readonly #window: { width: number; height: number };
   readonly #idleTabMs: number;
   readonly #mirror: BrowserStateMirror | undefined;
+  readonly #pending: BrowserPendingImport | undefined;
+  /** Every transaction on the pending import's file, one after another: a read, a merge and a write are one step. */
+  #pendingQueue: Promise<unknown> = Promise.resolve();
   #mirrorTimer: ReturnType<typeof setInterval> | undefined;
   #instance: Instance | undefined;
   #starting: Promise<Instance> | undefined;
@@ -721,6 +748,7 @@ export class ManagedBrowser {
     this.#window = options.window ?? { ...DEFAULT_WINDOW };
     this.#idleTabMs = options.idleTabMs ?? IDLE_TAB_MS;
     this.#mirror = options.mirror;
+    this.#pending = options.pending;
     this.#secrets = options.secrets;
   }
 
@@ -834,6 +862,58 @@ export class ManagedBrowser {
       });
     }
     await this.#stopping;
+  }
+
+  /** Cookies an import brought in: into a running browser now, or kept for the next start. Never `now` for a browser
+   * that did not take them, so a caller cannot report a sign-in that did not happen. */
+  async importCookies(cookies: StoredCookie[]): Promise<"now" | "next-start"> {
+    if (!cookies.length) throw new BrowserToolError("There is no cookie to import.");
+    // A launch or shutdown in flight decides whether there is a browser to take the import; wait for it, as `#ensure` does.
+    for (let attempt = 0; attempt < 3 && (this.#starting || this.#stopping); attempt += 1) {
+      if (this.#starting) await this.#starting.catch(() => undefined);
+      else if (this.#stopping) await this.#stopping.catch(() => undefined);
+    }
+    const instance = this.#instance;
+    if (instance) {
+      try {
+        await instance.connection.send("Storage.setCookies", { cookies: cdpCookies(cookies) }, undefined, 10_000);
+      } catch {
+        // A browser killed under the call keeps the import for the next start; anything else is its own refusal.
+        if (!instance.connection.closed || !this.#pending) {
+          throw new BrowserToolError("The managed browser refused the imported cookies.", 502);
+        }
+        return await this.#parkCookies(cookies);
+      }
+      // Kept in this profile's state, so an existing capture hands the import on like any other cookie.
+      instance.state = mergeBrowserState(instance.state, { cookies, origins: [] });
+      return "now";
+    }
+    return await this.#parkCookies(cookies);
+  }
+
+  /** Keeps an import for the next start, merged onto whatever already waits there. One transaction: the file is read,
+   * the merged document is bounded, and only then written, so a refused import never touches the file. */
+  async #parkCookies(cookies: StoredCookie[]): Promise<"next-start"> {
+    const pending = this.#pending;
+    if (!pending) throw new BrowserToolError("The managed browser cannot keep an import.", 500);
+    await this.#pendingTransaction(async () => {
+      const merged = mergeBrowserState(await pending.read().catch(() => EMPTY_BROWSER_STATE), { cookies, origins: [] });
+      // Past either bound the document would come back cut: `BrowserStateFile.merge` trims it and
+      // `normalizeBrowserState` keeps only the first `MAX_STATE_COOKIES`, both without telling the importer.
+      if (merged.cookies.length > MAX_STATE_COOKIES || sizeOf({ cookies: merged.cookies, origins: [] }) > MAX_STATE_BYTES) {
+        throw new BrowserToolError("Those cookies do not fit in the browser's pending import.", 409);
+      }
+      await pending.write(merged);
+    });
+    return "next-start";
+  }
+
+  /** Runs one pending-file transaction after every one before it: two imports cannot lose each other's cookie, and a
+   * launch cannot remove an import it never read. A refused transaction settles the chain instead of wedging it. */
+  #pendingTransaction<T>(transaction: () => Promise<T>): Promise<T> {
+    const run = this.#pendingQueue.then(transaction);
+    this.#pendingQueue = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   /** A saved mode or executable applies to the next launch; a running browser
@@ -1388,21 +1468,46 @@ export class ManagedBrowser {
 
   // ── Mirrored state ─────────────────────────────────────────────────────────
 
-  /** A launching profile starts from what the mirror holds: every cookie now, each origin's storage when that origin is
-   * first visited. Best effort throughout: a mirror that cannot answer never keeps a page from loading. */
+  /** A launching profile starts from what the mirror holds, then from whatever was imported while this browser was
+   * stopped: every cookie now, each origin's storage when that origin is first visited. The import is merged into the
+   * mirror's cookies by capture time and pushed as one set, so an older parked cookie never overwrites a rotated one
+   * the mirror holds; its file goes only after that push resolved. Best effort throughout: neither store answering
+   * never keeps a page from loading. */
   async #seed(instance: Instance): Promise<void> {
-    if (!this.#mirror) return;
-    const state = await this.#mirror.read().catch(() => EMPTY_BROWSER_STATE);
-    instance.state = state;
-    this.#mirrorTimer ??= setInterval(() => {
-      const running = this.#instance;
-      if (running) for (const tab of this.#tabs.values()) void this.#capture(running, tab);
-    }, MIRROR_CAPTURE_MS);
-    this.#mirrorTimer.unref();
-    if (!state.cookies.length) return;
-    await instance.connection.send("Storage.setCookies", {
-      cookies: state.cookies.map(({ at: _captured, ...cookie }) => cookie),
-    }, undefined, 10_000).catch(() => undefined);
+    if (!this.#mirror && !this.#pending) return;
+    const mirrored = this.#mirror ? await this.#mirror.read().catch(() => EMPTY_BROWSER_STATE) : EMPTY_BROWSER_STATE;
+    if (this.#mirror) {
+      this.#mirrorTimer ??= setInterval(() => {
+        const running = this.#instance;
+        if (running) for (const tab of this.#tabs.values()) void this.#capture(running, tab);
+      }, MIRROR_CAPTURE_MS);
+      this.#mirrorTimer.unref();
+    }
+    const pending = this.#pending;
+    if (!pending) {
+      instance.state = mirrored;
+      if (mirrored.cookies.length) await this.#setCookies(instance, mirrored.cookies);
+      return;
+    }
+    // The whole pending path is one transaction: nothing can park between this read and the remove that follows the
+    // push, so an import either reaches this launch or waits for the next one — it is never deleted unapplied.
+    await this.#pendingTransaction(async () => {
+      const parked = await pending.read().catch(() => EMPTY_BROWSER_STATE);
+      // An import that expired while it waited is done with: nothing to push, and nothing to keep.
+      const imported = parked.cookies.filter((cookie) => !expired(cookie, Date.now()));
+      const merged = mergeBrowserState({ cookies: mirrored.cookies, origins: [] }, { cookies: imported, origins: [] });
+      // What this profile holds: the mirror's state with the import on top, so a capture hands both back.
+      instance.state = { cookies: merged.cookies, origins: mirrored.origins };
+      if (merged.cookies.length && !await this.#setCookies(instance, merged.cookies)) return;
+      await pending.remove().catch(() => undefined);
+    });
+  }
+
+  /** Writes cookies into a launching profile at browser scope; false when the browser did not take them. The file an
+   * import waits in is only removed once this resolved. */
+  async #setCookies(instance: Instance, cookies: StoredCookie[]): Promise<boolean> {
+    return instance.connection.send("Storage.setCookies", { cookies: cdpCookies(cookies) }, undefined, 10_000)
+      .then(() => true, () => false);
   }
 
   /** Writes one origin's stored state into a hidden tab of that origin, before the agent's tab goes there. */
