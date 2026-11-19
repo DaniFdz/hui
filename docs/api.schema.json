@@ -3627,6 +3627,56 @@
         }
       }
     },
+    "BrowserCookieImport": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserCookieImportReport": {
+      "type": "object",
+      "required": [
+        "imported",
+        "expired",
+        "domains",
+        "applied",
+        "message"
+      ],
+      "properties": {
+        "imported": {
+          "type": "number"
+        },
+        "expired": {
+          "type": "number"
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applied": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "now"
+            },
+            {
+              "type": "string",
+              "const": "next-start"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserError": {
       "type": "object",
       "required": [
@@ -15520,6 +15570,8 @@
     ],
     "browser": [
       "BrowserControl",
+      "BrowserCookieImport",
+      "BrowserCookieImportReport",
       "BrowserError",
       "BrowserExecutableView",
       "BrowserHandoff",
@@ -16266,6 +16318,16 @@
       },
       "events": {
         "$ref": "#/$defs/BrowserViewMessage"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/browser/cookies",
+      "request": {
+        "$ref": "#/$defs/BrowserCookieImport"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserCookieImportReport"
       }
     },
     {

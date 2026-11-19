@@ -1,10 +1,11 @@
 /**
- * Browser client for HUI's managed, agent-only browser: its status, start and stop, tab previews and the
- * live-view socket for a conversation's tabs. The gateway owns the browser process; this module only crosses
- * `/__hui/` routes to reach it.
+ * Browser client for HUI's managed, agent-only browser: its status, start and stop, tab previews, the live-view socket
+ * for a conversation's tabs and `POST /__hui/browser/cookies`, which hands the gateway the absolute path of an exported
+ * login and gets back a count of what it read. The gateway owns the browser process and the file; this module only
+ * crosses `/__hui/` routes to reach it, and no cookie name or value comes back.
  */
 import { normalizeBrowserStatus } from "../lib/browser-status.ts";
-import type { BrowserHandoff, BrowserSecretView, BrowserSecrets, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
+import type { BrowserCookieImportReport, BrowserHandoff, BrowserSecretView, BrowserSecrets, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
 import { fetchJson } from "./request.ts";
 
 const BROWSER_URL = "/__hui/browser";
@@ -98,6 +99,21 @@ export async function controlBrowser(action: "start" | "stop"): Promise<BrowserS
     body: JSON.stringify({ action }),
     signal: AbortSignal.timeout(45_000),
   }));
+}
+
+/**
+ * The login another browser exported, read on the gateway's machine from the path given here: a Playwright
+ * `storageState` file or a list of cookies. The report counts what was read and names its domains, and the sentence it
+ * carries is the one to show. Reading a file up to 4 MiB can outlast the default 5-second ceiling, so the caller owns
+ * the whole deadline.
+ */
+export async function importBrowserCookies(path: string): Promise<BrowserCookieImportReport> {
+  return fetchJson<BrowserCookieImportReport>(`${BROWSER_URL}/cookies`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+    signal: AbortSignal.timeout(30_000),
+  });
 }
 
 /** One-use live view of a conversation's tabs: JSON state/actions and binary frames. */

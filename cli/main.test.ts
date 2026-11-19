@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { binding, HELP, parseCli } from "./main.ts";
+import { BROWSER_IMPORT_NEEDS_FILE } from "./commands.ts";
 
 test("CLI parses doctor with only --fix and --json", () => {
   assert.equal(parseCli(["doctor"]).command, "doctor");
@@ -44,6 +45,28 @@ test("CLI parses workers commands, their target and only their own flags", () =>
     ["workers", "remove"], ["workers", "remove", "box", "extra"], ["workers", "list", "box"], ["workers", "remove", "box", "--name", "x"], ["workers", "sync"], ["doctor", "--name", "x"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
+});
+
+test("CLI parses the browser cookie import, its one file unchanged and no other word after browser", () => {
+  const imported = parseCli(["browser", "cookies", "import", "/home/me/exports/state.json"]);
+  assert.equal(imported.command, "browser cookies import");
+  assert.deepEqual(imported.operands, ["/home/me/exports/state.json"]);
+  assert.deepEqual({ ...parseCli(["browser", "cookies", "import", "/home/me/exports/state.json", "--json"]).values }, { json: true });
+  // The path is the operator's, kept exactly as typed: a relative one and `-` are the route's to refuse.
+  for (const path of ["cookies.json", "-", "/home/me/My Cookies.json"]) assert.deepEqual(parseCli(["browser", "cookies", "import", path]).operands, [path], path);
+  assert.equal(parseCli(["browser"]).command, "browser", "browser alone is still the alias of ui");
+  assert.equal(parseCli(["browser", "--no-open"]).values["no-open"], true);
+  for (const [args, message] of [
+    [["browser", "cookies"], "Unknown command. Run hui --help."],
+    [["browser", "cookies", "nope"], "Unknown command. Run hui --help."],
+    [["browser", "nope"], "Unknown command. Run hui --help."],
+    [["browser", "cookies", "import"], BROWSER_IMPORT_NEEDS_FILE],
+    [["browser", "cookies", "import", "a.json", "b.json"], BROWSER_IMPORT_NEEDS_FILE],
+    [["browser", "cookies", "import", "/home/me/state.json", "--no-open"], "--no-open is not valid for browser cookies import."],
+  ] as const) {
+    assert.throws(() => parseCli([...args]), (error: unknown) => error instanceof Error && error.message === message, args.join(" "));
+  }
+  assert.match(HELP, /^ {2}hui browser cookies import <file> \[--json\]$/mu);
 });
 
 test("CLI parses bot commands, accepting bot and bots, with their operands and only their own flags", () => {

@@ -976,6 +976,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "SET-101",
+    title: "Import a login another browser exported",
+    behaviour: "Settings → Tools → Browser has an “Import cookies” row after “Mirror browser state”: its “Cookies file” field takes the absolute path, on the gateway's own machine, of a Playwright `storageState` file or a bare list of cookies, and “Import cookies” hands it to the managed browser. Only the cookies are read — a file's `origins` and every other field are ignored — and the report the row shows counts them without ever naming a value: “imported 1 cookie for 1 domain (0 expired dropped)” and “domains: 127.0.0.1”, with the entries dropped for having expired counted separately. A running browser takes the cookies at once; a stopped one keeps them for its next start, and the report then adds “They apply when the managed browser next starts.”. A relative path, “-”, a directory, a missing file, a file over 4 MiB or a malformed export is refused with that sentence in a red line, and nothing is written.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#post-__huibrowsercookies"],
+    surfaces: ["settings-page:tools", "route:POST /__hui/browser/cookies"],
+    journeys: ["browser-cookie-import"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

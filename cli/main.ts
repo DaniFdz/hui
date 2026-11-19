@@ -1,7 +1,7 @@
 /** The `hui` command line: argument parsing, validation and dispatch. The words and flags it accepts are
  * `cli/commands.ts`; shell completion and its programs are `cli/completion.ts`. Gateway lifecycle and updates run
- * here under the lifecycle lock; worker and bot commands only talk to the running gateway, and the doctor, desktop,
- * update and release logic live in their own modules. */
+ * here under the lifecycle lock; worker, bot and browser-import commands only talk to the running gateway, and the
+ * doctor, desktop, update and release logic live in their own modules. */
 import { execFileSync, spawn } from "node:child_process";
 import { isIP } from "node:net";
 import { join } from "node:path";
@@ -21,7 +21,7 @@ import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../server/bots/voice-lan
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../server/calls-format.ts";
 import { checkTriggerAdd } from "./bot-triggers.ts";
 import { completionCandidates, completionScript, completionShell } from "./completion.ts";
-import { BOT_FIELDS, COMMAND_FLAGS, SCHEDULE_FIELDS } from "./commands.ts";
+import { BOT_FIELDS, BROWSER_IMPORT_NEEDS_FILE, COMMAND_FLAGS, SCHEDULE_FIELDS } from "./commands.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -31,6 +31,7 @@ export const HELP = `Usage:
   hui gateway logs [--lines <number>]
   hui gateway run [--host <IP|tailnet>] [--port <number>] [--allow-host <name>]
   hui ui [--no-open]
+  hui browser cookies import <file> [--json]
   hui desktop
   hui install-app
   hui update [--check] [--json] [--force]
@@ -245,9 +246,13 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const extensions = first === "extension" || first === "extensions";
   const routine = bots && (second === "routine" || second === "routines");
   const trigger = bots && (second === "trigger" || second === "triggers");
+  // `browser` takes one command of its own, the cookie import; every other word after it, or a missing `import`, is
+  // unknown.
+  const cookieImport = first === "browser" && second === "cookies" && extra[0] === "import";
   const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : trigger ? `bot trigger ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
     : schedules ? `schedule ${second ?? "list"}`
     : extensions ? `extension ${second ?? "list"}`
+    : first === "browser" ? (second === undefined ? "browser" : cookieImport ? "browser cookies import" : undefined)
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
   const target = command === "workers edit" || command === "workers remove" ? extra.shift()
@@ -258,18 +263,21 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   }
   if (command === "extension add" && !target) throw new Error("extension add needs a directory: hui extension add <path> [--link].");
   if (command === "extension eject" && !target) throw new Error("extension eject needs an extension id: see hui extension list.");
-  // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
-  const operands = bots || schedules ? extra.splice(0) : [];
+  // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule; the browser
+  // import's, the one file the operator named, which is sent to the gateway exactly as typed.
+  if (cookieImport) extra.shift();
+  const operands = bots || schedules || cookieImport ? extra.splice(0) : [];
   // `hui completion <shell>` takes exactly one shell; every other command's words are checked by the table.
   const completion = first === "completion";
   const shell = completion ? completionShell(extra.length ? undefined : second) : undefined;
-  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !extensions && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && first !== "browser" && !extensions && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
   for (const flag of Object.keys(values)) if (!COMMAND_FLAGS[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
   if (schedules) checkScheduleCommand(command, operands, values);
+  if (cookieImport && operands.length !== 1) throw new Error(BROWSER_IMPORT_NEEDS_FILE);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
     values.host ??= env["HUI_GATEWAY_HOST"];
     values.port ??= env["HUI_GATEWAY_PORT"];
@@ -285,7 +293,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
   if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
   if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
-  return { command, values, ...(target ? { target } : {}), ...(bots || schedules ? { operands } : {}), ...(shell ? { shell } : {}) };
+  return { command, values, ...(target ? { target } : {}), ...(bots || schedules || cookieImport ? { operands } : {}), ...(shell ? { shell } : {}) };
 }
 
 const ISO_HINT = "an ISO date and time, such as 2026-10-06T09:00:00+02:00";
@@ -509,6 +517,13 @@ export async function main(args: string[], installation: Installation): Promise<
   }
   if (command === "gateway status") { const status = await gatewayStatus(); report(status); if (status.status === "unresponsive") process.exitCode = 1; return; }
   if (command === "gateway logs") { process.stdout.write(await gatewayLogs(Number(values.lines ?? 100))); return; }
+  if (command === "browser cookies import") {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const { browserImportCommand } = await import("./browser.ts");
+    process.exitCode = await browserImportCommand(status.url, operands ?? [], values, { out: (text) => { process.stdout.write(text); } });
+    return;
+  }
   if (command === "ui" || command === "browser") {
     const status = await gatewayStatus();
     if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");

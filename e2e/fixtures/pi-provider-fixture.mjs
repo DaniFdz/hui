@@ -114,6 +114,20 @@ const BROWSER_FIXTURE_PAGE = `<!doctype html>
   </script>
 </body>
 </html>`;
+/** For an imported-login check: the request's own `Cookie` header decides the page's text, so an imported cookie the
+ * managed browser sends is the only thing that turns "signed out" into "signed in". The decision is the server's, so the
+ * page never holds a cookie's value and the fixture never echoes one. */
+const COOKIE_FIXTURE_PAGE = (signedIn) => `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI cookie fixture</title>
+  <style>body { margin: 48px; font: 18px/1.5 system-ui, sans-serif; }</style>
+</head>
+<body>
+  <p>${signedIn ? "signed in" : "signed out"}</p>
+</body>
+</html>`;
 /** For a frame check: a same-origin frame and one from another origin, each with a button. */
 const FRAME_FIXTURE_PAGE = (crossOrigin) => `<!doctype html>
 <html lang="en">
@@ -264,6 +278,11 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/browser-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(BROWSER_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-cookie-fixture") {
+    const signedIn = (request.headers.cookie ?? "").split(";").some((pair) => pair.split("=")[0]?.trim() === "hui_import");
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(COOKIE_FIXTURE_PAGE(signedIn));
   }
   if (request.method === "GET" && url.pathname === "/browser-handoff-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

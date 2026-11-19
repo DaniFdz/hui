@@ -20,6 +20,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "bot-triggers": { kind: "world:github" },
   "bots": { kind: "automate" },
   "bots-workers": { kind: "external", reason: "Needs a remote worker reachable over SSH or docker exec." },
+  "browser-cookie-import": { kind: "automate" },
   "browser-tool": { kind: "automate" },
   "chat-composer": { kind: "automate" },
   "chat-file-links": { kind: "automate" },

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import { resolveBrowserExecutable } from "../browser/executable.ts";
-import { BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
+import { BrowserCookieImportReport, BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 
 const detected = await resolveBrowserExecutable("");
@@ -95,6 +95,83 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   assert.equal((await api("/__hui/browser", { method: "POST", body: JSON.stringify({ action: "start" }) })).status, 409);
   await saveBrowser({ enabled: true });
 
+  // Importing a login the operator exported: the file is read by absolute path, and the answer is counts and domains.
+  const cookies = async (init: RequestInit = {}) => {
+    const response = await fetch(`${origin}/__hui/browser/cookies`, { ...init, headers: { "x-hui": "1", "content-type": "application/json", ...init.headers } });
+    const text = await response.text();
+    return { status: response.status, text, body: JSON.parse(text) as Record<string, any> };
+  };
+  const importFile = (path: unknown) => cookies({ method: "POST", body: JSON.stringify({ path }) });
+  const cookieDir = join(dir, "cookies");
+  await mkdir(cookieDir, { recursive: true });
+  const missingFile = join(cookieDir, "missing.json");
+  const oversizedFile = join(cookieDir, "oversized.json");
+  await writeFile(oversizedFile, "x".repeat(4 * 1024 * 1024 + 1));
+  // Exactly at the bound is read and handed to the parser, so the size gate is a limit and not a cutoff.
+  const boundaryFile = join(cookieDir, "boundary.json");
+  await writeFile(boundaryFile, "x".repeat(4 * 1024 * 1024));
+  const pathRefusals: Array<[string, unknown, string]> = [
+    ["a relative path", "cookies/login.json", "Give an absolute path to the cookie file."],
+    ["a dash", "-", "Give an absolute path to the cookie file."],
+    ["a path with a NUL", `${cookieDir}/\u0000.json`, "Give an absolute path to the cookie file."],
+    ["a path that is not a string", 42, "Give an absolute path to the cookie file."],
+    ["a directory", cookieDir, "No readable file at that path."],
+    ["a missing file", missingFile, "No readable file at that path."],
+    ["a file one byte over 4 MiB", oversizedFile, "That file is larger than 4 MiB."],
+    ["a file of exactly 4 MiB", boundaryFile, "That file is not valid JSON."],
+  ];
+  for (const [label, path, message] of pathRefusals) {
+    const refused = await importFile(path);
+    assert.equal(refused.status, 400, label);
+    assert.equal(refused.body["error"], message, label);
+  }
+  assert.equal((await cookies()).status, 405, "a cookie import is a POST");
+  // A body that is not JSON is refused without repeating any of it — a cookie value sits in the same file as the path.
+  const fragment = `fragment-${crypto.randomUUID()}`;
+  const malformed = await cookies({ method: "POST", body: `{"path":"${missingFile}","value":"${fragment}"` });
+  assert.equal(malformed.status, 400);
+  assert.equal(malformed.body["error"], "Give an absolute path to the cookie file.", "a body without a path gets the path sentence");
+  assert.equal(malformed.text.includes(fragment), false, "a refused body is never repeated back");
+
+  assert.equal((await api("/__hui/browser")).body["state"], "stopped", "the browser is stopped, so an import waits");
+  const login = join(cookieDir, "login.json");
+  const liveSeconds = Math.floor(Date.now() / 1_000) + 3_600;
+  await writeFile(login, JSON.stringify({
+    cookies: [
+      { name: "sid", value: "abc123", domain: ".example.com", path: "/", expires: liveSeconds, httpOnly: true, secure: true, sameSite: "Lax" },
+      { name: "stale", value: "gone", domain: ".example.com", path: "/", expires: Math.floor(Date.now() / 1_000) - 60 },
+    ],
+    origins: [{ origin: "https://example.com", localStorage: [{ name: "token", value: "never imported" }] }],
+  }));
+  const imported = await importFile(login);
+  assert.equal(imported.status, 200, imported.text);
+  expectSchema(BrowserCookieImportReport, imported.body);
+  assert.deepEqual(imported.body, {
+    imported: 1,
+    expired: 1,
+    domains: [".example.com"],
+    applied: "next-start",
+    message: "imported 1 cookie for 1 domain (1 expired dropped)\ndomains: .example.com\nThey apply when the managed browser next starts.",
+  });
+  const pendingPath = join(dir, "hui", "browser", "pending-import.json");
+  assert.equal((await stat(pendingPath)).mode & 0o777, 0o600, "the file holds live cookies: only the operator reads it");
+  const parkedOf = async () => (JSON.parse(await readFile(pendingPath, "utf8")) as { cookies: Array<{ domain: string; name: string }> }).cookies;
+  assert.deepEqual((await parkedOf()).map((cookie) => `${cookie.domain} ${cookie.name}`), [".example.com sid"], "only the cookie still valid waits");
+
+  // No cookie's name or value can reach the answer: the value is built to be unmistakable.
+  const secretValue = `value-${crypto.randomUUID()}`;
+  const secretName = `name-${crypto.randomUUID()}`;
+  const otherSite = join(cookieDir, "other.json");
+  await writeFile(otherSite, JSON.stringify([{ name: secretName, value: secretValue, domain: ".other.example", path: "/", expires: -1 }]));
+  const second = await importFile(otherSite);
+  assert.equal(second.status, 200, second.text);
+  assert.equal(second.text.includes(secretValue), false, "a response never carries a cookie's value");
+  assert.equal(second.text.includes(secretName), false, "a response never carries a cookie's name");
+  assert.equal(String(second.body["message"]).includes(secretValue), false);
+  assert.equal(String(second.body["message"]).includes(secretName), false);
+  assert.deepEqual(second.body["domains"], [".other.example"]);
+  assert.deepEqual((await parkedOf()).map((cookie) => cookie.domain).sort(), [".example.com", ".other.example"], "a second import adds to what already waits");
+
   if (!detected.executable) {
     console.log("No Chromium-family browser is installed; skipped the live tab checks.");
     return;
@@ -129,6 +206,13 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   const started = await start();
   assert.equal(started.status, 200, String(started.body["error"]));
   assert.equal(started.body["state"], "running");
+  // A browser that runs takes an import now, and the answer does not tell the operator to wait for a start.
+  const runningFile = join(cookieDir, "running.json");
+  await writeFile(runningFile, JSON.stringify([{ name: "live", value: "now", domain: ".running.example", path: "/", expires: -1 }]));
+  const appliedNow = await importFile(runningFile);
+  assert.equal(appliedNow.status, 200, appliedNow.text);
+  assert.equal(appliedNow.body["applied"], "now");
+  assert.equal(appliedNow.body["message"], "imported 1 cookie for 1 domain (0 expired dropped)\ndomains: .running.example");
   const stopped = await api("/__hui/browser", { method: "POST", body: JSON.stringify({ action: "stop" }) });
   assert.equal(stopped.body["state"], "stopped");
 });

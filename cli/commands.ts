@@ -17,6 +17,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, readonly string[]>> = {
   "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
   "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
   "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
+  "browser cookies import": ["json"],
   update: ["from", "sha256", "rollback", "check", "json", "nightly", "force"], desktop: [], "install-app": [],
   doctor: ["fix", "json"], completion: [], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
   "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
@@ -34,3 +35,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, readonly string[]>> = {
   "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
   "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],
 };
+
+/** The one file a browser import names, and nothing else: the path is the gateway's to judge, so neither `parseCli`
+ * nor `cli/browser.ts` rewrites, resolves or reads it. Said the same way in both, and before a request is made. */
+export const BROWSER_IMPORT_NEEDS_FILE = "browser cookies import takes one file: hui browser cookies import <file> [--json].";

@@ -23,6 +23,8 @@ test("completion offers the subcommands of the words typed so far", () => {
   assert.ok(completionCandidates(["bot", "trigger", ""]).includes("test"));
   assert.ok(completionCandidates(["bots", ""]).includes("list"), "the alias completes like the command it names");
   assert.deepEqual(completionCandidates(["schedule", "pa"]), ["pause"]);
+  assert.deepEqual(completionCandidates(["browser", ""]), ["cookies"], "browser takes one command of its own after the ui alias");
+  assert.deepEqual(completionCandidates(["browser", "cookies", ""]), ["import"]);
   assert.deepEqual(completionCandidates(["bot", "export", ""]), [], "a command taking a bot, not a subcommand, leaves file names to the shell");
   assert.deepEqual(completionCandidates(["typo", ""]), [], "an unknown command offers nothing");
 });
@@ -35,6 +37,8 @@ test("completion offers the flags of the command that applies, and only those", 
   // `hui gateway` runs the gateway, as `hui workers` lists and `hui bot` lists.
   assert.ok(completionCandidates(["gateway", "--"]).includes("--port"));
   assert.deepEqual(completionCandidates(["workers", "--"]), ["--json"]);
+  assert.deepEqual(completionCandidates(["browser", "--"]), ["--no-open"], "opening the ui keeps its flag");
+  assert.deepEqual(completionCandidates(["browser", "cookies", "import", "--"]), ["--json"]);
   assert.deepEqual(completionCandidates(["bot", "--"]), ["--archived", "--json"]);
   assert.deepEqual(completionCandidates(["typo", "--"]), []);
   assert.deepEqual(completionCandidates(["doctor", "--f"]), ["--fix"]);
