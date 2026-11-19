@@ -7,6 +7,7 @@ import type { SessionRecord } from "./sessions/sessions.ts";
 import type { SessionGoal, SessionStatus } from "./api/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
 import { createHeartbeat, LEGACY_HEARTBEAT_DESCRIPTION, removeLegacyHeartbeatRoutines } from "./heartbeat.ts";
+import { SessionBusyError } from "./sessions/live-sessions.ts";
 import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 
 const session = (id: string, updatedAt = "2026-11-11T10:00:00.000Z", extra: Partial<SessionRecord> = {}) => ({
@@ -24,7 +25,7 @@ function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherSta
     isLive: () => true,
     watchers: () => watcherStates.map((state) => ({ state })),
     subagents: (): readonly { status: string }[] => [],
-    lastAssistant: (): string | undefined => "Done.",
+    lastAssistant: (_id: string): string | undefined => "Done.",
     notify: async (id: string, text: string) => { notifications.push({ id, text }); },
     bots: async (): Promise<readonly { title?: string; group?: string; archived?: boolean; sessionId: string }[]> => [],
     watch: async (_watcherId: string, _id: string, _on: boolean) => {},
@@ -39,6 +40,19 @@ function post(path = "/__hui/heartbeat"): RouteRequest {
     method: "POST", path, query: new URLSearchParams(), headers: {}, signal: new AbortController().signal,
     json: async () => ({}), bytes: async () => Buffer.alloc(0), stream: async function* () { /* no body */ },
   };
+}
+
+/** A watcher's chat as a bot's chat behaves: a report lands while it is idle, and one arriving while it works is
+ * refused with `SessionBusyError`, which is what `whenBusy: "refuse"` does for the heartbeat. A delivered report makes
+ * it busy, as the turn it starts does. */
+function refusingChat() {
+  const state = { busy: false, delivered: [] as Array<{ id: string; text: string }> };
+  const notify = async (id: string, text: string): Promise<void> => {
+    if (state.busy) throw new SessionBusyError("That chat is already working on a prompt.");
+    state.delivered.push({ id, text });
+    state.busy = true;
+  };
+  return { state, notify };
 }
 
 test("an idle watched session is reported once, and again only after a new reply", async () => {
@@ -208,6 +222,223 @@ test("a watcher whose delivery failed is told again, and one that already got th
   assert.deepEqual(f.notifications.map((notification) => notification.id), ["other", "watcher"]);
   assert.deepEqual(await heartbeat.scan(), { notified: [] });
   assert.equal(f.notifications.length, 2);
+});
+
+test("a report refused by a busy chat sends nothing and is not remembered as sent", async () => {
+  const f = fixture();
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  chat.state.busy = true;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] }, "a refused report counts as no report");
+  assert.deepEqual(chat.state.delivered, [], "nothing reached the busy chat");
+  assert.equal(f.notifications.length, 0);
+});
+
+test("the next scan is the fallback: a refused pair is retried once, with the newest facts", async () => {
+  const f = fixture();
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  chat.state.busy = true;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  // Its turn ended with no run end to flush it, so the 15-minute scan is the retry.
+  chat.state.busy = false;
+  f.deps.lastAssistant = () => "The retry found newer facts.";
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+  assert.equal(chat.state.delivered.length, 1);
+  assert.match(chat.state.delivered[0]?.text ?? "", /The retry found newer facts\./u);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] }, "and once only");
+  assert.equal(chat.state.delivered.length, 1);
+});
+
+test("a run end delivers the refused report recomputed from the newest facts", async () => {
+  const f = fixture();
+  f.deps.lastAssistant = () => "First reply.";
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  chat.state.busy = true;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  f.deps.lastAssistant = () => "Second reply: the migration ran and its tests pass.";
+  chat.state.busy = false;
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(chat.state.delivered.length, 1, "exactly one report");
+  assert.match(chat.state.delivered[0]?.text ?? "", /Second reply: the migration ran and its tests pass\./u);
+  assert.doesNotMatch(chat.state.delivered[0]?.text ?? "", /First reply\./u, "the old facts were never delivered");
+});
+
+test("scans while the chat is busy report nothing, and a run end sends one report", async () => {
+  const f = fixture();
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  chat.state.busy = true;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.deepEqual(chat.state.delivered, [], "two scans sent nothing and kept no duplicate");
+  chat.state.busy = false;
+  await Promise.all([heartbeat.watcherIdle("watcher"), heartbeat.watcherIdle("watcher")]);
+  assert.equal(chat.state.delivered.length, 1, "two flushes asked for at once send one report");
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(chat.state.delivered.length, 1, "the pair is no longer pending");
+});
+
+test("a run end with nothing pending neither scans nor notifies", async () => {
+  const f = fixture();
+  let reads = 0;
+  const records = f.deps.records;
+  f.deps.records = async () => { reads += 1; return records(); };
+  const heartbeat = createHeartbeat(f.deps);
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(reads, 0, "a run end alone never starts a scan");
+  assert.equal(f.notifications.length, 0);
+  // A scan does read the registry, so the assertion above is about the guard and not a fixture that never runs.
+  await heartbeat.scan();
+  assert.equal(reads, 1);
+  assert.equal(f.notifications.length, 1);
+});
+
+test("one report per watcher per scan: a second target waits for a later flush", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["first", "second"] }),
+    session("first"),
+    session("second"),
+  ];
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["first"] }, "the second waits, since the chat the first one made busy refuses it");
+  assert.equal(chat.state.delivered.length, 1);
+  assert.match(chat.state.delivered[0]?.text ?? "", /\[first\]\(\/sessions\/first\?open=app\)/u);
+  chat.state.busy = false;
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(chat.state.delivered.length, 2);
+  assert.match(chat.state.delivered[1]?.text ?? "", /\[second\]\(\/sessions\/second\?open=app\)/u);
+  chat.state.busy = false;
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(chat.state.delivered.length, 2, "nothing is left pending");
+});
+
+test("one report per watcher per scan holds when a delivery settles at once, and the rest waits for a run end", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["first", "second"] }),
+    session("first"),
+    session("second"),
+  ];
+  // The fixture's delivery starts no turn, so the chat is idle again the moment `notify` resolves: what the scan holds
+  // back cannot lean on the chat still being busy afterwards.
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["first"] }, "the chat takes one report per scan");
+  assert.equal(f.notifications.length, 1);
+  assert.match(f.notifications[0]?.text ?? "", /\[first\]\(\/sessions\/first\?open=app\)/u);
+  // The skipped pair recorded no fingerprint, so the run end at that chat's turn end sends it from the facts then.
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(f.notifications.length, 2, "the second report goes out at the run end, with no fact changed");
+  assert.match(f.notifications[1]?.text ?? "", /\[second\]\(\/sessions\/second\?open=app\)/u);
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(f.notifications.length, 2, "and only once: nothing is left pending");
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("a run end inside a delivery flushes the pair the scan held back, with the newest facts", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["first", "second"] }),
+    session("first"),
+    session("second"),
+  ];
+  const delivered: Array<{ id: string; text: string }> = [];
+  const replies: Record<string, string> = { first: "First reply.", second: "Second reply: the migration is still running." };
+  f.deps.lastAssistant = (id: string) => replies[id];
+  let runEnd: Promise<void> | undefined;
+  const heartbeat = createHeartbeat(f.deps);
+  // The first delivery starts a turn that ends before that delivery resolves, so the chat's run end arrives while the
+  // scan waits on it. The chat takes no busy flag: a second delivery would land the moment it was offered.
+  f.deps.notify = async (id: string, text: string) => {
+    delivered.push({ id, text });
+    if (delivered.length !== 1) return;
+    replies.second = "Second reply: the migration ran and its tests pass.";
+    runEnd = heartbeat.watcherIdle(id);
+  };
+  assert.deepEqual(await heartbeat.scan(), { notified: ["first"] }, "the scan reports the first and holds the second back");
+  assert.equal(delivered.length, 1);
+  await runEnd;
+  assert.equal(delivered.length, 2, "the run end delivers the pair the scan held back");
+  assert.match(delivered[0]?.text ?? "", /\[first\]\(\/sessions\/first\?open=app\)/u);
+  assert.match(delivered[0]?.text ?? "", /First reply\./u);
+  assert.match(delivered[1]?.text ?? "", /\[second\]\(\/sessions\/second\?open=app\)/u);
+  assert.match(delivered[1]?.text ?? "", /Second reply: the migration ran and its tests pass\./u, "recomputed from the newest facts");
+  assert.doesNotMatch(delivered[1]?.text ?? "", /still running/u, "the old facts were never delivered");
+  assert.deepEqual(await heartbeat.scan(), { notified: [] }, "nothing changed since");
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(delivered.length, 2, "each pair went out exactly once");
+});
+
+test("a run end during a scan flushes the report that scan refused, before it finishes", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("first", undefined, { watches: ["target"] }),
+    session("second", undefined, { watches: ["target"] }),
+    session("target"),
+  ];
+  f.deps.lastAssistant = () => "First reply.";
+  const first = refusingChat();
+  first.state.busy = true;
+  const second = refusingChat();
+  let reached!: () => void;
+  const waiting = new Promise<void>((resolve) => { reached = resolve; });
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  f.deps.notify = async (id, text) => {
+    if (id === "first") await first.notify(id, text);
+    else {
+      reached();
+      await blocked;
+      await second.notify(id, text);
+    }
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  const scan = heartbeat.scan();
+  await waiting;
+  // The first report was refused and the scan now waits for the second chat's delivery: this is the window in which the
+  // first chat's turn ends and asks for what it is owed.
+  first.state.busy = false;
+  f.deps.lastAssistant = () => "Second reply: the migration ran and its tests pass.";
+  const flush = heartbeat.watcherIdle("first");
+  release();
+  await Promise.all([scan, flush]);
+  assert.equal(first.state.delivered.length, 1, "the run end delivered the refused report exactly once");
+  assert.match(first.state.delivered[0]?.text ?? "", /Second reply: the migration ran and its tests pass\./u);
+  assert.doesNotMatch(first.state.delivered[0]?.text ?? "", /First reply\./u, "recomputed from the newest facts");
+  assert.deepEqual(await heartbeat.scan(), { notified: [] }, "nothing changed since");
+  assert.equal(first.state.delivered.length, 1, "and it is not sent twice");
+});
+
+test("a watcher stops being pending when the watch it was owed a report for is removed", async () => {
+  const f = fixture();
+  const chat = refusingChat();
+  f.deps.notify = chat.notify;
+  let records: SessionRecord[] = [
+    session("watcher", undefined, { watches: ["first", "second"] }),
+    session("first"),
+    session("second"),
+  ];
+  let reads = 0;
+  f.deps.records = async () => { reads += 1; return records; };
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: ["first"] });
+  assert.equal(chat.state.delivered.length, 1, "the chat took one report and the watcher is owed the other");
+  // The watch whose report never went out is removed while the one already reported stays: nothing is undelivered.
+  records = [session("watcher", undefined, { watches: ["first"] }), session("first"), session("second")];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  const before = reads;
+  await heartbeat.watcherIdle("watcher");
+  assert.equal(reads, before, "a run end with nothing pending reads nothing");
+  assert.equal(chat.state.delivered.length, 1, "and it notifies nothing");
 });
 
 test("the heartbeat route reports a POST once, not again until its facts change", async () => {

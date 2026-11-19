@@ -772,6 +772,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "backlog",
   },
+  {
+    id: "BOT-079",
+    title: "A heartbeat report is never queued in a watcher's chat",
+    behaviour: "A heartbeat report reaches a chief's chat only while that chat is idle: a busy chat gets no report, and nothing waits behind its turn to be read and answered stale. The report is made when that chat's turn ends, from the target's facts at that moment, so it names the target's newest reply.",
+    spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#post-__huiheartbeat"],
+    surfaces: ["route:POST /__hui/heartbeat"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

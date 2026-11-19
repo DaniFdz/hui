@@ -4195,7 +4195,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
-- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. A report is never queued behind a turn in the chief's chat: a busy chat refuses it and nothing is queued, and the pair is remembered, recomputed from the newest facts and delivered when that chat's turn ends, with the 15-minute scan as the fallback. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its
@@ -4241,16 +4241,20 @@ Session, never in a bot's chat or a subagent, and persists as `autonomous: true`
 - **Who supervises depends on who started it.** `create_session` gives a chief's session Autonomous mode, and HUI
   reports its stops to that chief: the chief of its group, else the Chief of Staff of no group (not an archived bot),
   which starts watching it when a run ends and gets the stop through the gateway heartbeat at once, marked
-  `Autonomous session`, queued behind a running turn and opening a sleeping chat. The chief answers with
+  `Autonomous session` and opening a sleeping chat. A chief chat that is busy is never queued into: the report is
+  refused, nothing is queued, and the heartbeat recomputes it from the newest facts and delivers it when that chat's
+  turn ends, with the 15-minute scan as the fallback. The chief answers with
   `sessions_send`, which starts the session's next turn; no bot hop or hourly limit applies, and a session on a worker
   works the same way. A session the operator started in Autonomous mode is given to no chief: its stops are reported
   in its own chat, with the desktop notification HUI already sends when one of its runs ends.
 - **What is not reported at once.** A stop while the session's subagents or watchers still work and its reply does
   not end on a question (they wake it), a run the operator stopped and a failed run (it retries or shows its error).
   Scans run one at a time so a stop is reported once, and a report is sent only when its facts change (status, stage,
-  goal status and objective, Autonomous flag and last reply). The fingerprint lives in memory, so a restart reports a
-  live watched session once more; a session not open in this gateway is skipped. An active goal does not continue by
-  itself in this mode: the session's supervisor takes the next step.
+  goal status and objective, Autonomous flag and last reply). A report whose chief chat is busy sends nothing and
+  records no fingerprint, so it goes out recomputed, once, at that chat's next run end or at the next scan. The
+  fingerprint lives in memory, so a restart reports a live watched session once more; a session not open in this
+  gateway is skipped. An active goal does not continue by itself in this mode: the session's supervisor takes the next
+  step.
 - **The chief's method is in the pack.** `chief-mode` (pack 16) tells a chief a session it started runs Autonomous,
   to approve or correct its plan with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle
   its report like a lead's.
