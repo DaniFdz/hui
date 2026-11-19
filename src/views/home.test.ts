@@ -646,6 +646,57 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
   return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
 }
 
+/** The handler bound to `@submit` in the first rendered template whose own markup holds `marker`. */
+function submitHandler(value: unknown, marker: string): ((event: unknown) => void) | undefined {
+  if (Array.isArray(value)) return value.map((item) => submitHandler(item, marker)).find(Boolean);
+  if (!value || typeof value !== "object" || !("strings" in value) || !("values" in value)) return undefined;
+  const { strings, values } = value as { strings: readonly string[]; values: unknown[] };
+  if (strings.join("").includes(marker)) {
+    const at = strings.findIndex((part) => part.endsWith("@submit="));
+    if (at >= 0) return values[at] as (event: unknown) => void;
+  }
+  return values.map((item) => submitHandler(item, marker)).find(Boolean);
+}
+
+/** The New Session form's submit handler, rendered with the picks a launch reads when it starts. */
+async function launchSubmit(overrides: Record<string, unknown> = {}): Promise<(event: unknown) => void> {
+  const { renderNewSession } = await import("./home.ts");
+  const props: Record<string, unknown> = {
+    groups: [], draft: "", launching: false, attachments: [], directorySuggestions: [], launchWorkers: [], launchModels: [],
+    chatPreferences: { sendShortcut: "enter" }, commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] },
+    localPathMenu: { open: false, paths: [], activeIndex: 0 },
+    ...overrides,
+  };
+  const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
+  const handler = submitHandler(renderNewSession(inert as unknown as import("./home.ts").HomeProps), 'class="launch new-session-page__draft"');
+  assert.equal(typeof handler, "function", "the launch form binds a submit handler");
+  return handler!;
+}
+
+test("a submit while the folder is being inspected still hands the launch to the app", async () => {
+  // The folder's checkout is inspected as it is typed, and Start session stays enabled meanwhile. Dropping the submit
+  // in that window lost the session the user asked for; the form hands the launch over and the app waits for the answer.
+  const launches: { intent: unknown; form: unknown }[] = [];
+  const submit = await launchSubmit({
+    draft: "/",
+    gitCheckoutLoading: true,
+    onLaunch: (intent: unknown, form: unknown) => launches.push({ intent, form }),
+  });
+  class Field { value: string; constructor(value: string) { this.value = value; } }
+  class Submit { value: string; constructor(value: string) { this.value = value; } }
+  const fields: Record<string, Field> = { cwd: new Field(" /repo "), prompt: new Field(" / "), group: new Field(" ") };
+  class Form { elements = { namedItem: (name: string) => fields[name] ?? null }; }
+  vi.stubGlobal("HTMLFormElement", Form);
+  vi.stubGlobal("HTMLInputElement", Field);
+  vi.stubGlobal("HTMLTextAreaElement", Field);
+  vi.stubGlobal("HTMLButtonElement", Submit);
+  const form = new Form();
+  let prevented = false;
+  submit({ preventDefault: () => { prevented = true; }, currentTarget: form, submitter: new Submit("commands") });
+  assert.equal(prevented, true, "the form's own submission is always cancelled");
+  assert.deepEqual(launches, [{ intent: { cwd: "/repo", commandDraft: "/" }, form }]);
+});
+
 test("Effort offers the model's own levels up to Maximum, and Speed only where fast mode applies", async () => {
   const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
   const html = await renderWorkerSession("idle", { currentModel: opus, thinking: "max", fast: true });

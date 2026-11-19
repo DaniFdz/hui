@@ -10,6 +10,7 @@
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { agentReplyTo } from "../../server/bots-format.ts";
+import { chiefsScripts } from "./chiefs-scene.ts";
 
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
@@ -21,7 +22,7 @@ type Call = { name: string; input: Record<string, unknown> };
  * and a script's first calls on the message that started it. */
 type Turn = { wait?: number; think?: string; say?: string | ((results: string[]) => string); calls?: Call[] | ((results: string[], prompt: string) => Call[]) };
 /** A script starts when the latest user message contains `when`; `title` and `branch` answer HUI's naming prompts. */
-type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
+export type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
 const page = (path: string) => `http://127.0.0.1:${port}${path}`;
 /** The Datadog widget graph the recorder uploads (PUT /demo/datadog-graph.png) and HUI fetches as its snapshot. */
@@ -242,6 +243,16 @@ const scripts: Script[] = [
         : `The tests did not pass in your terminal: ${(results[0] ?? "").slice(-300)}` },
     ],
   },
+  // Share: a link shared from a phone opens a session, whose agent reads the code the post is about.
+  {
+    when: "Look this post in Instagram",
+    title: "Order totals from an Instagram post",
+    branch: "order-totals-currency",
+    turns: [
+      { wait: 700, think: "An order total shown as 1234.5. Let me read how the orders page builds its rows.", calls: [{ name: "read", input: { path: "src/orders/orders-page.js" } }] },
+      { wait: 500, say: "That's a real one: the orders page returns `rows: orders`, so `total` prints as **1234.5**. I'd put a currency formatter in front of it and cover the rounding with a test. Want me to start?" },
+    ],
+  },
   // Phone: checking in on a session.
   {
     when: "Quick status on Apple Pay?",
@@ -334,6 +345,8 @@ const scripts: Script[] = [
     when: "Reverted acme/payments-api#148",
     turns: [{ wait: 900, say: "Resolved: #148 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
+  // The chiefs clip's delegation and the three sessions it starts, kept beside the scene (chiefs-scene.ts).
+  ...chiefsScripts,
 ];
 
 // Anthropic Messages streaming.

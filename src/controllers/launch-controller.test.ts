@@ -40,6 +40,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   assert.equal(launch.branchSuggestionsOpen, false);
   launch.requestCheckout(" /repo ");
   assert.equal(launch.checkoutLoading, true);
+  assert.equal(launch.inspectedDirectory, "/repo", "the shell compares a deferred submit against the folder it inspected");
   await settle();
   assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }]);
   assert.equal(launch.checkoutLoading, false);
@@ -53,6 +54,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   launch.requestCheckout("/repo");
   assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }], "the same directory is inspected once");
   launch.requestCheckout("/other");
+  assert.equal(launch.inspectedDirectory, "/other", "the inspected folder follows the newest request");
   await settle();
   assert.equal(launch.baseRef, "main", "another directory uses the repository default");
   assert.equal(launch.worktree, false);

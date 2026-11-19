@@ -91,7 +91,7 @@ import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
 import { GatewaysController } from "./controllers/gateways-controller.ts";
-import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
+import { QUESTION_FOCUS_SELECTOR, launchInput, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps, type LaunchInput, type LaunchIntent } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
 import { renderPanelPicker, type PanelSelectorProps } from "./views/panel-selector.ts";
@@ -266,6 +266,8 @@ export class HuiApp extends HuiElement {
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
+  /** A submit the New Session form sent while its folder's checkout was still being inspected, waiting for that answer. */
+  private pendingLaunch: { intent: LaunchIntent; form: HTMLFormElement } | undefined;
   /** A launch whose session the gateway lists only once its worktree exists. */
   private unlistedLaunch: { id: string; open: (app: HuiApp) => void } | undefined;
   @state() private note = "";
@@ -786,6 +788,7 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
+    this.flushPendingLaunch();
     if (this.embeddedPane) {
       const connection = `${this.paneSessionId}\0${this.paneCanAccessFiles()}`;
       if (connection !== this.renderedFilesConnection) {
@@ -1941,7 +1944,7 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
+  private launch = (input: LaunchInput) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -2004,6 +2007,33 @@ export class HuiApp extends HuiElement {
         this.launching = false;
       });
   };
+
+  /** The launch form's submit. Start session stays enabled while the folder is inspected, so a submit can arrive during
+   * that window: it is kept and started with the checkout the answer brings, and a newer submit replaces it. */
+  private requestLaunch = (intent: LaunchIntent, form: HTMLFormElement) => {
+    if (this.launcher.checkoutLoading || this.launching) {
+      this.pendingLaunch = { intent, form };
+      return;
+    }
+    this.launch(launchInput(intent, this.homeProps()));
+  };
+
+  /** Starts a submit kept back by an inspection. Called on every render: the inspection's answer and a settled launch
+   * both request one, so no timer is needed. */
+  private flushPendingLaunch() {
+    const pending = this.pendingLaunch;
+    if (!pending || this.embeddedPane) return;
+    if (!pending.form.isConnected) {
+      // The form left the page: nobody is waiting for this launch anymore.
+      this.pendingLaunch = undefined;
+      return;
+    }
+    if (this.launcher.checkoutLoading || this.launching) return;
+    this.pendingLaunch = undefined;
+    // The folder was edited after the submit, so the checkout that answered is another folder's.
+    if (this.launcher.inspectedDirectory !== pending.intent.cwd) return;
+    this.launch(launchInput(pending.intent, this.homeProps()));
+  }
 
   private requestDirectorySuggestions = (input: string) => {
     const action = this.groupAction?.action;
@@ -3008,7 +3038,7 @@ export class HuiApp extends HuiElement {
       savedCopy: this.conversation.savedCopy,
       offlineSupported: typeof window === "undefined" || (window.isSecureContext && "serviceWorker" in navigator),
       onForgetSaved: () => void this.conversation.forgetSaved(),
-      onLaunch: this.launch,
+      onLaunch: this.requestLaunch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
