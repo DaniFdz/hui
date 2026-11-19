@@ -35,6 +35,10 @@ export class LaunchController {
   branchSuggestionsOpen = false;
   checkout: GitCheckoutInfo | undefined;
   checkoutLoading = false;
+  /** The folder whose checkout is loaded or loading: a launch kept back until the answer belongs to it. */
+  get inspectedDirectory(): string {
+    return this.#inspectedDirectory;
+  }
   readonly #host: ReactiveControllerHost;
   #directoryRequest = 0;
   #checkoutRequest = 0;

@@ -217,6 +217,22 @@ function focusComposerFromSurface(event: MouseEvent) {
 /** The goal editor's transient state, owned by the composer controller and read by the Run status popover. */
 export type { GoalPanelState };
 
+/** What the New Session form itself holds: the values the user submitted, which outlive the folder's inspection. */
+export type LaunchIntent = { cwd: string; group?: string; prompt?: string; commandDraft?: string };
+
+/** Everything a launch sends: the form's intent plus the choices the pickers own, read when the launch starts. */
+export type LaunchInput = LaunchIntent & {
+  title?: string;
+  model?: string;
+  thinking?: string;
+  fast?: boolean;
+  autonomous?: boolean;
+  worker?: string;
+  worktree?: boolean;
+  branchName?: string;
+  baseRef?: string;
+};
+
 export type HomeProps = {
   session: SessionView | undefined;
   /** File references in the agent's replies and tool cards may open in this conversation's Files view. */
@@ -289,7 +305,7 @@ export type HomeProps = {
   savedCopy?: { savedAt: number; truncated: boolean };
   offlineSupported?: boolean;
   onForgetSaved?: () => void;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
+  onLaunch: (intent: LaunchIntent, form: HTMLFormElement) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique between the workspace's panes. */
   controlScope?: string;
@@ -466,10 +482,32 @@ function renderLaunchFeedback(props: HomeProps) {
   `;
 }
 
+/** The picks a submitted intent carries beyond what the form holds. They are read when the launch starts, not when the
+ * user asked for it: a launch kept back until the folder's checkout answers still uses what the pickers say then. */
+type LaunchPicks = Pick<HomeProps, "launchModel" | "launchThinking" | "launchFast" | "launchAutonomous" | "launchWorker"
+  | "workspaceWorktree" | "workspaceBranch" | "workspaceBaseRef" | "gitCheckout">;
+
+export function launchInput(intent: LaunchIntent, props: LaunchPicks): LaunchInput {
+  return {
+    ...intent,
+    ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
+    ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
+    ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
+    ...(props.launchAutonomous ? { autonomous: true } : {}),
+    ...(props.launchWorker ? { worker: props.launchWorker } : {}),
+    ...(props.workspaceWorktree ? {
+      worktree: true,
+      ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
+      ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
+    } : props.workspaceBaseRef && props.workspaceBaseRef !== props.gitCheckout?.headBranch ? {
+      baseRef: props.workspaceBaseRef,
+    } : {}),
+  };
+}
+
 function onSubmit(props: HomeProps) {
   return (event: SubmitEvent) => {
     event.preventDefault();
-    if (props.gitCheckoutLoading) return;
     const form = event.currentTarget;
     if (!(form instanceof HTMLFormElement)) {
       return;
@@ -482,24 +520,14 @@ function onSubmit(props: HomeProps) {
     };
     const browseCommands = event.submitter instanceof HTMLButtonElement && event.submitter.value === "commands";
     const prompt = browseCommands ? "" : value("prompt");
+    // The form is the submit's liveness: the app may start this launch only after the folder's checkout answers, and
+    // by then the form it came from may be gone. Every other choice is read when the launch starts.
     props.onLaunch({
       cwd: value("cwd"),
       ...(browseCommands ? { commandDraft: value("prompt") } : {}),
       ...(prompt ? { prompt } : {}),
       ...(value("group") ? { group: value("group") } : {}),
-      ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
-      ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
-      ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
-      ...(props.launchAutonomous ? { autonomous: true } : {}),
-      ...(props.launchWorker ? { worker: props.launchWorker } : {}),
-      ...(props.workspaceWorktree ? {
-        worktree: true,
-        ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
-        ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
-      } : props.workspaceBaseRef && props.workspaceBaseRef !== props.gitCheckout?.headBranch ? {
-        baseRef: props.workspaceBaseRef,
-      } : {}),
-    });
+    }, form);
   };
 }
 
