@@ -114,8 +114,9 @@ function parseCookie(entry: unknown, number: number, now: number): StoredCookie 
   if (!COOKIE_NAME.test(name)) throw new CookieImportError(`${at}has a name Chromium will not store.`);
   const domain = source["domain"];
   if (typeof domain !== "string" || domain === "") throw new CookieImportError(`${at}has no domain.`);
-  // A domain is matched against a request, never split: whitespace or a control character could only be a mistake.
-  if (/\s|[\p{Cc}]/u.test(domain)) throw new CookieImportError(`${at}has a domain with whitespace or a control character.`);
+  // A domain is matched against a request, never split: whitespace, a control character or a format character (a bidi
+  // override among them) could only be a mistake.
+  if (/\s|[\p{Cc}\p{Cf}]/u.test(domain)) throw new CookieImportError(`${at}has a domain with whitespace or a control or format character.`);
   const path = source["path"];
   if (typeof path !== "string" || path === "") throw new CookieImportError(`${at}has no path.`);
   if (!path.startsWith("/")) throw new CookieImportError(`${at}has a path that does not start with "/".`);

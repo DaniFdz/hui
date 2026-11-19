@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -110,6 +111,15 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   // Exactly at the bound is read and handed to the parser, so the size gate is a limit and not a cutoff.
   const boundaryFile = join(cookieDir, "boundary.json");
   await writeFile(boundaryFile, "x".repeat(4 * 1024 * 1024));
+  // A FIFO with no writer: the import must refuse it by its type instead of waiting for a writer to open it.
+  const fifoFile = join(cookieDir, "fifo");
+  let hasFifo = true;
+  try {
+    execFileSync("mkfifo", [fifoFile]);
+  } catch {
+    hasFifo = false;
+    console.log("mkfifo is unavailable; skipped the FIFO path check.");
+  }
   const pathRefusals: Array<[string, unknown, string]> = [
     ["a relative path", "cookies/login.json", "Give an absolute path to the cookie file."],
     ["a dash", "-", "Give an absolute path to the cookie file."],
@@ -120,6 +130,7 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
     ["a file one byte over 4 MiB", oversizedFile, "That file is larger than 4 MiB."],
     ["a file of exactly 4 MiB", boundaryFile, "That file is not valid JSON."],
   ];
+  if (hasFifo) pathRefusals.push(["a FIFO with no writer", fifoFile, "No readable file at that path."]);
   for (const [label, path, message] of pathRefusals) {
     const refused = await importFile(path);
     assert.equal(refused.status, 400, label);

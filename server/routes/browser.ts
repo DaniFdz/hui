@@ -6,6 +6,7 @@
  * `POST /__hui/sessions/:id/browser/connect` (a browser pane's one-use ticket, from `browser-transport.ts`). `hui.ts`
  * applies the `x-hui` guard before dispatching here.
  */
+import { constants } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
@@ -46,9 +47,10 @@ function cookieFilePath(value: unknown): string {
 
 /** The file's text, read from one open handle: the path is opened once, the bound is checked on that handle, and at
  * most one byte past it is read from the same handle, so a file that grows or is replaced between the check and the
- * read cannot cost more memory than the limit. */
+ * read cannot cost more memory than the limit. The open never waits for a writer, so a FIFO is refused by the stat
+ * that follows instead of blocking the import until the caller gives up. */
 async function cookieFileText(path: string): Promise<string> {
-  const handle = await open(path, "r").catch(() => undefined);
+  const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK).catch(() => undefined);
   if (!handle) throw new CookieFileError("No readable file at that path.");
   try {
     const stats = await handle.stat();

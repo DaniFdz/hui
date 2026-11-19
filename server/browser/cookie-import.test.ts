@@ -101,8 +101,8 @@ test("a malformed cookie is refused by its number and field, never by its value"
     ["no name", cookie({ name: undefined }), "Cookie 2 has no name."],
     ["an empty name", cookie({ name: "" }), "Cookie 2 has no name."],
     ["no domain", cookie({ domain: undefined }), "Cookie 2 has no domain."],
-    ["a domain with a space", cookie({ domain: "exa mple.com" }), "Cookie 2 has a domain with whitespace or a control character."],
-    ["a domain with a control character", cookie({ domain: "example.com\u0007" }), "Cookie 2 has a domain with whitespace or a control character."],
+    ["a domain with a space", cookie({ domain: "exa mple.com" }), "Cookie 2 has a domain with whitespace or a control or format character."],
+    ["a domain with a control character", cookie({ domain: "example.com\u0007" }), "Cookie 2 has a domain with whitespace or a control or format character."],
     ["no path", cookie({ path: undefined }), "Cookie 2 has no path."],
     ["a path without a slash", cookie({ path: "app" }), "Cookie 2 has a path that does not start with \"/\"."],
     ["a value that is not a string", cookie({ value: 42 }), "Cookie 2 has a value that is not a string."],
@@ -125,6 +125,13 @@ test("a malformed cookie is refused by its number and field, never by its value"
   assert.equal(refusal(() => parseCookieImport(infinite, NOW), leaked), "Cookie 2 has an expires that is not a finite number.");
   const third = JSON.stringify([cookie({ name: "first" }), cookie({ name: "second" }), cookie({ name: "", value: leaked })]);
   assert.equal(refusal(() => parseCookieImport(third, NOW), leaked), "Cookie 3 has no name.", "the number is the entry's place in the file");
+  // A right-to-left override is a format character: it could reorder the domains line the operator reads, so it is
+  // refused like a control character and the domain is never repeated back.
+  const bidiDomain = "evil\u202Eexample.test";
+  const bidi = JSON.stringify([cookie({ name: "good", value: leaked }), cookie({ name: "bidi", domain: bidiDomain })]);
+  const bidiRefusal = refusal(() => parseCookieImport(bidi, NOW), leaked);
+  assert.equal(bidiRefusal, "Cookie 2 has a domain with whitespace or a control or format character.");
+  assert.equal(bidiRefusal.includes(bidiDomain), false, "a refusal never echoes the domain it refused");
 });
 
 test("a file over 4 MiB or over 2000 cookies is refused", () => {
