@@ -243,6 +243,16 @@ const scripts: Script[] = [
         : `The tests did not pass in your terminal: ${(results[0] ?? "").slice(-300)}` },
     ],
   },
+  // Share: a link shared from a phone opens a session, whose agent reads the code the post is about.
+  {
+    when: "Look this post in Instagram",
+    title: "Order totals from an Instagram post",
+    branch: "order-totals-currency",
+    turns: [
+      { wait: 700, think: "An order total shown as 1234.5. Let me read how the orders page builds its rows.", calls: [{ name: "read", input: { path: "src/orders/orders-page.js" } }] },
+      { wait: 500, say: "That's a real one: the orders page returns `rows: orders`, so `total` prints as **1234.5**. I'd put a currency formatter in front of it and cover the rounding with a test. Want me to start?" },
+    ],
+  },
   // Phone: checking in on a session.
   {
     when: "Quick status on Apple Pay?",
