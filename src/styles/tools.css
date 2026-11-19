@@ -43,3 +43,6 @@ hui-workers-settings, hui-extensions-settings { display: contents; }
 .browser-settings__secret-fields { display: grid; gap: 6px; width: 100%; max-width: 340px; }
 .browser-settings__label { font-size: 11px; font-weight: 600; color: var(--muted-strong); }
 .browser-settings__secret-fields .btn { justify-self: start; margin-top: 2px; }
+/* The import report keeps its line breaks: the gateway's message is one line of counts, one naming domains and, when
+   the cookies wait for the next start, one saying so (Settings → Tools → Browser, components/settings/browser.ts). */
+.browser-settings__report { display: flex; flex-direction: column; min-width: 0; }

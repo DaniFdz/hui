@@ -1194,6 +1194,17 @@ a frame carries that frame, so its origin is checked and its field typed into in
 place. A frame the browser runs out of process is not inlined, so an embedded
 sign-in form it holds still needs a handoff.
 
+**A login can be imported.** The operator imports a file another browser
+exported — a Playwright `storageState` document or a bare list of cookies, at
+most 4 MiB — by giving its absolute path. A running browser takes the cookies
+at once; otherwise they wait in
+`$XDG_CONFIG_HOME/hui/browser/pending-import.json` (mode 0600) until the next
+launch pushes them once and deletes the file. A session cookie (`-1`) is kept,
+one already expired is dropped and only counted, and a merge adds to the cookies
+already there without replacing an unrelated one. Only cookies are imported:
+`origins` and every other field are ignored, and the report is counts and
+domains only, never a cookie's name or value.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or

@@ -5175,6 +5175,28 @@ Returns `BrowserStatus`.
 
 `BrowserControl` `{ action: "start" | "stop" }`, then `BrowserStatus`.
 
+### `POST /__hui/browser/cookies`
+
+`BrowserCookieImport` `{ path }` reads the operator's exported login from that
+absolute path and returns `BrowserCookieImportReport`
+`{ imported, expired, domains, applied, message }`. The file is a Playwright
+`storageState` document or a bare list of cookies, at most 4 MiB; only its
+cookies are imported, and `origins` and every other field are ignored. A session
+cookie is kept, one already expired is dropped and counted in `expired`, and a
+merge never replaces an unrelated cookie. `domains` is sorted and deduplicated;
+`applied` is `now` when the running browser took the cookies, or `next-start`
+when they wait in `browser/pending-import.json` (mode 0600) for the next launch,
+which pushes them once and deletes the file. Counts and domains are all an
+answer carries: a cookie's name or value is never returned, in `message` or
+anywhere else. A cookie whose name is not an RFC 6265 token, or whose value
+holds a `;` or a control character, returns 400 by its number and field and is
+never repeated back. A relative path, `-`, a path with a NUL, a missing path, a
+directory or a file over 4 MiB returns 400 with the reason, as does a body that
+is not JSON. An import that would not fit beside what already waits in
+`browser/pending-import.json` returns 409 and leaves that file as it was; a
+running browser that refuses the cookies answers 502. Any other method returns
+405, and any other failure returns 500.
+
 ### `GET /__hui/browser/secrets`
 
 `BrowserSecrets` `{ secrets: [{ name, origin, createdAt }] }`: the operator's

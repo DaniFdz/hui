@@ -37,11 +37,12 @@ import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
-import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, BROWSER_SECRETS_FILE, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { AUTOMATION_FILE, BROWSER_PENDING_IMPORT_FILE, BROWSER_PROFILE_DIR, BROWSER_SECRETS_FILE, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode/vscode.ts";
 import { VscodeInstaller } from "./vscode/install.ts";
 import { verifyVscodeServer } from "./vscode/providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
+import { BrowserStateFile } from "./browser/mirror.ts";
 import { SiteSecrets } from "./browser/secrets.ts";
 import { MacPower } from "./power.ts";
 import { createHostMetrics, sampleInBackground } from "./host-metrics.ts";
@@ -504,10 +505,15 @@ liveSessions.watchAutonomy((id, on) => {
 /** Site secrets live beside the profile, never in settings.json: they stay on the machine whose browser types them. */
 export const siteSecrets = new SiteSecrets({ file: BROWSER_SECRETS_FILE });
 
+/** Cookies imported while the browser was stopped wait here, in their own 0600 file beside the profile, until the
+ * browser has taken them. */
+const browserPendingImport = new BrowserStateFile(BROWSER_PENDING_IMPORT_FILE);
+
 export const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readHuiSettings()).browser,
   secrets: siteSecrets,
+  pending: browserPendingImport,
   mirror: {
     read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
     write: (state) => {

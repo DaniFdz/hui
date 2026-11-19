@@ -245,8 +245,11 @@ OpenClaw, Claude Code, Letta, character cards, CrewAI), and the exit codes of
 `send --wait`.
 
 On a headless host, use `hui ui --no-open` to print the URL without opening a
-browser. `hui browser` is an alias for `hui ui`. The development launcher is
-separate from an installed production gateway.
+browser. `hui browser` is an alias for `hui ui`, and `hui browser cookies import
+<file>` gives the running gateway a login another browser exported (a Playwright
+`storageState` document or a list of cookies), named by its absolute path, to
+hand to the managed browser. The development launcher is separate from an
+installed production gateway.
 
 ## Updates
 
