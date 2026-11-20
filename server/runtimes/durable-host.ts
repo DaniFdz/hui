@@ -248,6 +248,9 @@ export type DurableBots = {
   state(reader: DocumentReader, conversationId: ConversationId): Promise<DurableBotState | undefined>;
   /** Whether a bot's chat may call the HUI tool `action`, whatever it was offered. */
   mayCall(state: DurableBotState, action: string): boolean;
+  /** Whether the bot is a chief of staff, as its title says (`bots/chief-title.ts`): only a chief's chat carries the
+   * `hui_chief` prompt section. */
+  isChief(state: DurableBotState): Promise<boolean>;
   /** The bot's own skill folder on this host; undefined on a host that keeps no bots' homes. */
   skillsDir(state: DurableBotState): string | undefined;
   /** The own skill folder of the bot `botId`, for a subagent that loads a bot's skills. */
@@ -418,6 +421,14 @@ export class DurableHost implements ExtensionHost {
     };
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
     this.prompt.autonomousFor = (conversationId) => this.#autonomous.has(this.#callers.get(conversationId) ?? "");
+    // A Chief of Staff's chat carries its delegation rule on every request, never a skill body it must choose to read;
+    // an ordinary bot's chat, a session's and a subagent's carry none.
+    this.prompt.chiefFor = async (conversationId) => {
+      const bots = this.#bots;
+      if (!bots) return false;
+      const state = await this.botStateFor(conversationId).catch(() => undefined);
+      return state ? bots.isChief(state) : false;
+    };
     const goalFor = options.goalFor;
     if (goalFor) {
       this.prompt.goalFor = async (conversationId) => {
