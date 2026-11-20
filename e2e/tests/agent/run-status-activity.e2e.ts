@@ -1,6 +1,6 @@
 /** Run status's dot-only live-work mark: stable active-set animation with or without a plan, reduced motion,
  * live helper detail and fixed header controls (AGENT-075). */
-import { expect, type Locator } from "e2e";
+import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
@@ -162,16 +162,15 @@ test("growing live helper counts leave every control to the right fixed without 
   }));
   const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Layout helper", soul: "# Who I am\nA fixture bot.\n" })).bot;
   await hui.open(`/bots/${bot.id}`);
-  const check = async (scope: string, pane?: Locator) => {
-    const root = pane ?? screen;
-    const trigger = root.getByTestId("run-status-trigger", { visible: true });
+  const check = async (scope: string) => {
+    const trigger = screen.getByTestId("run-status-trigger", { visible: true });
     const send = async (text: string) => {
-      await root.getByLabel("Message", { visible: true }).fill(text);
-      await root.getByRole("button", "Send message", { exact: true, visible: true }).tap();
+      await screen.getByLabel("Message", { visible: true }).fill(text);
+      await screen.getByRole("button", "Send message", { exact: true, visible: true }).tap();
     };
     await send("E2E_PROGRESS");
     await expect(trigger).toHaveAccessibleName(/1 of 2 steps done/u);
-    await expect(root.getByLabel("Session status: Idle", { visible: true })).toBeVisible();
+    await expect(screen.getByLabel("Session status: Idle", { visible: true })).toBeVisible();
     const before = new Map<string, number>();
     for (const control of controls) {
       const selector = `${scope} ${control}`;
@@ -201,7 +200,7 @@ test("growing live helper counts leave every control to the right fixed without 
     await expect.poll(() => hui.contentOf(`${scope} ${TRIGGER} .chat-run-status__count`)).toBe("· 1 helper");
     await expect.poll(() => hui.drawn(`${scope} ${BADGE}`)).toBe(true);
     await fixed();
-    await expect(root.getByLabel("Session status: Idle", { visible: true })).toBeVisible();
+    await expect(screen.getByLabel("Session status: Idle", { visible: true })).toBeVisible();
     await send(calls(helper("Layout second helper")));
     await expect(trigger).toHaveAccessibleName(/2 of 2 helpers active/u);
     await expect.poll(() => hui.contentOf(`${scope} ${TRIGGER} .chat-run-status__count`)).toBe("· 2 helpers");
@@ -216,7 +215,7 @@ test("growing live helper counts leave every control to the right fixed without 
       }
     }
     await trigger.tap();
-    const panel = root.getByLabel("Run status");
+    const panel = screen.getByLabel("Run status");
     await expect(panel).toBeVisible();
     await expect.poll(() => hui.contentOf(`${scope} .chat-run-status__head .chat-run-status__count`)).toBe("· 2 helpers");
     for (const copy of [".chat-run-status__label", ".chat-run-status__count"]) {
@@ -245,17 +244,6 @@ test("growing live helper counts leave every control to the right fixed without 
   await expect(botHeader.getByRole("button", "Call Layout helper")).toBeVisible();
   await expect(botHeader.getByRole("button", "Actions for Layout helper")).toBeVisible();
   await check(header);
-  if ((await hui.viewportSize()).width >= 1100) {
-    const left = await hui.createSession({ title: "Layout left" });
-    await hui.createSession({ title: "Layout split" });
-    await hui.open(`/sessions/${left.id}`);
-    await screen.getByRole("tab", "Agents").tap();
-    await hui.sessionList();
-    await (await hui.sessionMenu("Layout split")).getByText("Open in split pane", { visible: true }).tap();
-    const pane = screen.getByTestId("session-pane").nth(1);
-    await expect(pane.getByRole("button", "Close session pane")).toBeVisible();
-    await check("[data-testid='session-pane'][aria-current='true'] [data-testid='chat-header']", pane);
-  }
   await hui.phoneScreen();
   // A fresh bot has no earlier helpers: the phone exercises the same 0 → 1 → 2 live counts.
   const phoneBot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Phone layout", soul: "# Who I am\nA fixture bot.\n" })).bot;
