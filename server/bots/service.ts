@@ -61,6 +61,7 @@ import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 import { BOT_SKILL_NAME, type BotSkillFiles } from "./skills.ts";
 import type { BotOwnSkill } from "../api/bots.ts";
+import { isChiefTitle } from "./chief-title.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
@@ -340,6 +341,15 @@ export class BotService {
   /** The bot whose chat this session is. The registry decides: a record whose bot is gone is an ordinary session. */
   async botForSession(sessionId: string): Promise<BotRecord | undefined> {
     return (await this.#registry.list()).find((bot) => bot.sessionId === sessionId);
+  }
+
+  /** Whether the bot is a chief of staff, as its title marks it (`chief-title.ts`): only a chief's chat carries its
+   * delegation rule, and a worker's host asks this before each of that chat's prompts. From the last registry read, and
+   * read now for a bot it does not hold yet (the first prompt after a restart). */
+  async isChief(botId: string): Promise<boolean> {
+    const cached = this.#registry.cached.find((candidate) => candidate.id === botId);
+    const bot = cached ?? (await this.#registry.list()).find((candidate) => candidate.id === botId);
+    return isChiefTitle(bot?.title);
   }
 
   /**
