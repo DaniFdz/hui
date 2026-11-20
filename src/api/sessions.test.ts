@@ -136,6 +136,55 @@ test("a status stream that ends on a refusal says so", async () => {
   stop();
 });
 
+test("the status stream reports live once it delivers, and lost when a connection ends without it", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const states: ("live" | "lost")[] = [];
+  let connections = 0;
+  const fetcher = (async () => {
+    connections += 1;
+    if (connections > 1) throw new TypeError("Failed to fetch");
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: snapshot\ndata: {"statuses":[]}\n\n'));
+        controller.close();
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state) => states.push(state),
+  }, fetcher);
+  t.onTestFinished(stop);
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
+
+  await settle();
+  assert.deepEqual(states, ["live", "lost"], "a stream that delivered its handshake and ended was lost after being live");
+  await vi.advanceTimersByTimeAsync(reconnectDelay(1, () => 1));
+  await settle();
+  assert.deepEqual(states, ["live", "lost", "lost"], "a connection that never becomes live is an outage, not silence");
+});
+
+test("a refused status stream reports no connection, and this client's own stop is not a loss", async () => {
+  const states: string[] = [];
+  const handlers = { onSnapshot: () => {}, onStatus: () => {}, onConnection: (state: "live" | "lost") => states.push(state) };
+  const refused = subscribeSessionStatuses(handlers, async () => new Response("{}", { status: 403 }));
+  for (let index = 0; index < 10 && !states.length; index += 1) await new Promise(setImmediate);
+  refused();
+  assert.deepEqual(states, [], "a gateway that answers with a refusal is not offline");
+
+  const stop = subscribeSessionStatuses(handlers, (async (_input: RequestInfo | URL, init?: RequestInit) => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+    },
+  }), { status: 200, headers: { "content-type": "text/event-stream" } })) as typeof fetch);
+  for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
+  stop();
+  for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
+  assert.deepEqual(states, [], "the caller stopping the stream is not the gateway going away");
+});
+
 test("a status stream that goes silent reconnects to resync", async (t) => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   t.onTestFinished(() => { vi.useRealTimers(); });

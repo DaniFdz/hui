@@ -50,6 +50,51 @@
       .hui-boot__failure button { padding: 0; border: 0; background: none; cursor: pointer; text-decoration: underline; }
       #hui-boot[data-state="failed"] .hui-boot__bar, #hui-boot[data-state="failed"] .hui-boot__slow { display: none; }
       #hui-boot[data-state="failed"] .hui-boot__failure { display: block; }
+      /* A gateway that cannot be reached: the slow line gives way to the recovery card src/boot-recovery.ts builds, so a
+         page never pretends to load forever. Inline like the rest of the boot screen, so the card needs nothing else. */
+      .hui-boot__recovery { display: none; box-sizing: border-box; width: min(360px, calc(100% - 48px));
+        max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 20px; gap: 12px;
+        border: 1px solid color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 16%, transparent); border-radius: 12px;
+        background: color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 6%, transparent);
+        color: var(--hui-boot-text, var(--boot-text)); text-align: left; }
+      #hui-boot[data-state="recovery"] { align-content: center; gap: 18px; overflow-y: auto; }
+      /* The recovery card is the only content: the logo, the name and the loading bar above it would say nothing the
+         card does not and push it past a phone's screen. */
+      #hui-boot[data-state="recovery"] .hui-boot__card { display: none; }
+      #hui-boot[data-state="recovery"] .hui-boot__recovery { display: grid; }
+      .hui-boot__recovery-title { margin: 0; font-size: 16px; font-weight: 650; line-height: 1.3; }
+      .hui-boot__recovery-title:focus { outline: none; }
+      .hui-boot__recovery-detail, .hui-boot__recovery-empty { margin: 0; }
+      .hui-boot__recovery-origin { margin: 0; font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+        font-size: 12px; color: var(--hui-boot-muted, var(--boot-muted)); overflow-wrap: anywhere; }
+      .hui-boot__recovery-empty { color: var(--hui-boot-muted, var(--boot-muted)); }
+      .hui-boot__recovery-error, .hui-boot__recovery-form-error { margin: 0; color: var(--hui-boot-accent, var(--boot-accent)); }
+      .hui-boot__recovery-error:empty, .hui-boot__recovery-form-error:empty { display: none; }
+      .hui-boot__recovery button { min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+        border: 1px solid color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 22%, transparent);
+        background: transparent; color: inherit; font: inherit; }
+      .hui-boot__recovery button:hover { background: color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 10%, transparent); }
+      .hui-boot__recovery button:disabled { cursor: default; opacity: .6; }
+      .hui-boot__recovery button:focus-visible, .hui-boot__recovery summary:focus-visible, .hui-boot__recovery input:focus-visible {
+        outline: 2px solid var(--hui-boot-accent, var(--boot-accent)); outline-offset: 2px; }
+      .hui-boot__recovery-retry { justify-self: start; }
+      .hui-boot__recovery-list { display: grid; gap: 6px; }
+      .hui-boot__recovery-list-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .07em;
+        text-transform: uppercase; color: var(--hui-boot-muted, var(--boot-muted)); }
+      .hui-boot__recovery-gateways { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+      .hui-boot__recovery-gateway { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+        column-gap: 8px; padding: 6px 0; }
+      .hui-boot__recovery-name { grid-column: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+      .hui-boot__recovery-host { grid-column: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px;
+        color: var(--hui-boot-muted, var(--boot-muted)); font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace); }
+      .hui-boot__recovery-gateway button { grid-column: 2; grid-row: 1 / span 2; }
+      .hui-boot__recovery-add { display: grid; gap: 8px; border-top: 1px solid color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 12%, transparent); padding-top: 10px; }
+      .hui-boot__recovery-add summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 600; }
+      .hui-boot__recovery-form { display: grid; gap: 8px; }
+      .hui-boot__recovery-field { display: grid; gap: 4px; font-size: 12px; color: var(--hui-boot-muted, var(--boot-muted)); }
+      .hui-boot__recovery-input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 10px; border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--hui-boot-text, var(--boot-text)) 22%, transparent);
+        background: var(--hui-boot-bg, var(--boot-bg)); color: var(--hui-boot-text, var(--boot-text)); font: inherit; }
       @keyframes hui-boot-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
       @keyframes hui-boot-reveal { to { opacity: 1; } }
       @media (prefers-reduced-motion: reduce) { .hui-boot__bar::after { width: 100%; opacity: .45; animation: none; } }
@@ -66,6 +111,8 @@
       </div>
     </div>
     <hui-app></hui-app>
+    <!-- Before the app, so the boot screen's own recovery timers start even when the app's code never arrives. -->
+    <script type="module" src="/src/boot-recovery.ts"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

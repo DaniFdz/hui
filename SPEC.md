@@ -1652,6 +1652,23 @@ draft. A cached page must check its build against the reachable gateway before
 restoring live controls; a different build offers **Reload HUI** instead. Offline
 reload requires HTTPS or localhost, where browsers allow service workers.
 
+The boot screen never pretends to load forever. After six seconds it asks this page's
+own gateway for `GET /__hui/health` with a four-second deadline, and at ten seconds
+without the app it becomes the recovery card, whether or not the probe answered. The
+card says **Can't reach this gateway.** — or **HUI is taking longer than usual to
+start.** when the gateway answered and the app has not painted — names the address this
+page came from, and offers **Retry**, every other gateway this device saved with
+**Switch**, and **Add a gateway** with **Name**, **Address** and **Add and switch**.
+Add refuses an address that is not `http(s)`, carries credentials, a query or a
+fragment, is this page's gateway, is already saved, or does not answer the identity
+handshake, and probes a new one exactly as the Add dialog does (SPEC.md "A device keeps
+a list of gateways"); a switch opens the chosen gateway in this page and carries this
+device's rows in its fragment. The card never navigates by itself. Once the app has
+painted, a gateway that stops answering marks the sidebar's footer **Offline** — the
+control reads *Gateway offline: the gateway's name. Choose another gateway.* — and its menu keeps
+**Retry connection**, the other gateways and **Add a gateway…** until a status snapshot,
+a live status stream or a successful session list read names it again.
+
 Detailed chat connections receive an application heartbeat every 15 seconds.
 A heartbeat alone cannot make a conversation live, and 40 seconds without an
 incoming application frame after it is live causes a reconnect. A send unanswered for five seconds starts

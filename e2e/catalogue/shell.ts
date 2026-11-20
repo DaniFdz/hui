@@ -611,6 +611,17 @@ const cases: UseCase[] = [
       decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
     },
   },
+  {
+    id: "SHELL-057",
+    title: "Switch gateways when the one serving the page cannot be reached",
+    behaviour:
+      "At ten seconds without the app, or when `GET /__hui/health` does not answer after six seconds, the boot screen replaces its slow line with a recovery card: the heading **Can't reach this gateway.** (or **HUI is taking longer than usual to start.** when the gateway answered), the address this page came from, **Retry**, an **Other gateways** list with every other gateway this device saved — each by name, with its address and **Switch** — and **Add a gateway** with **Name**, **Address** and **Add and switch**. Add refuses an address that is not `http://` or `https://` (*Enter an http:// or https:// address.*), this page's gateway (*This is the gateway serving this page.*), one already saved (*That gateway is already in your list.*), one carrying credentials, a query or a fragment, and one that does not answer as HUI, and it never moves the page. **Switch** opens the chosen gateway in this page, which keeps the gateway it left as one of its rows. After the app has painted, a lost connection shows **Offline** on the sidebar's gateway button, whose menu keeps **Retry connection**, the other gateways and **Add a gateway…**, and the button names the gateway again once it answers.",
+    spec: [BEHAVIOUR, "SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", OFFLINE],
+    surfaces: ["route:GET /__hui/health", "route:GET /__hui/update"],
+    journeys: ["gateway-settings", "remote-loading"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

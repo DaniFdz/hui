@@ -604,6 +604,12 @@ export type SessionStatusesHandlers = {
   onSessions?: (update: SessionListUpdate) => void;
   /** The stream ended and will not reconnect by itself (a refusal or this client's stop). */
   onStop?: () => void;
+  /**
+   * Whether the gateway answers at all: `live` once a connection has delivered its handshake and first frames, `lost`
+   * when an attempt ends without ever being live (or a live connection ends). The shell shows the gateway as offline
+   * until the next `live`, so a page whose gateway went away keeps its way to another one.
+   */
+  onConnection?: (state: "live" | "lost") => void;
   heldRevision?: () => number;
 };
 
@@ -619,10 +625,19 @@ export function subscribeSessionStatuses(
   void (async () => {
     try {
       while (!abort.signal.aborted) {
+        let live = false;
         const outcome = await connectStatusesOnce(handlers, abort.signal, fetcher, () => {
           attempt = 0;
+          live = true;
+          handlers.onConnection?.("live");
         });
-        if (abort.signal.aborted || outcome.kind === "refused") return;
+        // This client's own stop is not a connection state, and a refusal is the gateway answering rather than silence.
+        if (abort.signal.aborted) return;
+        if (outcome.kind === "refused") {
+          if (live) handlers.onConnection?.("lost");
+          return;
+        }
+        handlers.onConnection?.("lost");
         attempt += 1;
         await sleep(reconnectDelay(attempt), abort.signal);
       }

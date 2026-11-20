@@ -182,6 +182,10 @@ export type ShellProps = {
   onSwitchGateway: (url: string) => void;
   /** Opens the Add gateway dialog; Settings → Gateway also opens it and edits the saved ones. */
   onAddGateway: () => void;
+  /** This page's gateway is not answering: the footer says Offline and keeps Retry connection reachable. */
+  gatewayOffline: boolean;
+  /** Asks this page's gateway for its session list again (the footer's Retry connection). */
+  onRetryGateway: () => void;
   onSearch: (value: string) => void;
   onToggleMenu: (sessionId: string) => void;
   /** Idempotent close, kept separate from toggle for document-level dismissal. */
@@ -798,10 +802,13 @@ function renderSidebarTabs(bots: ShellBotsProps) {
 }
 
 /** The sidebar footer: this page's gateway, with the others this device knows behind it. Choosing one navigates to
- * it; Add a gateway… opens the Add gateway dialog in place. Escape closes the menu and returns focus to the button,
- * exactly as the session menus do. */
+ * it; Add a gateway… opens the Add gateway dialog in place. A gateway that stopped answering says Offline and keeps
+ * Retry connection first, so the way to another one never disappears behind the failure. Escape closes the menu and
+ * returns focus to the button, exactly as the session menus do. */
 function renderGatewayPicker(props: ShellProps) {
   const current = props.gateways.find((gateway) => gateway.state === "current");
+  const name = current?.name ?? "HUI";
+  const offline = props.gatewayOffline;
   return html`<wa-dropdown class="session-menu sidebar-gateway-menu" placement="top-start" distance="8"
     aria-label="Gateways" @wa-show=${labelDropdown} @keydown=${closeDropdownOnEscape}
     @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
@@ -812,12 +819,17 @@ function renderGatewayPicker(props: ShellProps) {
         props.onAddGateway();
         return;
       }
+      if (value === "retry") {
+        closeContainingDrawer(event);
+        props.onRetryGateway();
+        return;
+      }
       if (value.startsWith("switch:")) props.onSwitchGateway(value.slice("switch:".length));
     }}>
     <button slot="trigger" type="button" class="sidebar-gateway" data-testid="sidebar-gateway"
-      aria-label=${`Gateway: ${current?.name ?? "HUI"}`} aria-haspopup="menu">
-      <span class="sidebar-gateway__dot sidebar-gateway__dot--current" aria-hidden="true"></span>
-      <span class="sidebar-gateway__name">${current?.name ?? "HUI"}</span>
+      aria-label=${offline ? `Gateway offline: ${name}. Choose another gateway.` : `Gateway: ${name}`} aria-haspopup="menu">
+      <span class="sidebar-gateway__dot sidebar-gateway__dot--${offline ? "offline" : "current"}" aria-hidden="true"></span>
+      <span class="sidebar-gateway__name">${name}</span>
       <span class="sidebar-gateway__chevron" aria-hidden="true">${icons.chevronDown}</span>
     </button>
     <div class="sidebar-session-sort-menu__label">Gateways</div>
@@ -826,8 +838,12 @@ function renderGatewayPicker(props: ShellProps) {
       ?disabled=${gateway.state === "current"}>
       <span slot="icon" class="sidebar-gateway__dot sidebar-gateway__dot--${gateway.state}" aria-hidden="true"></span>
       <span class="session-menu__text sidebar-gateway-menu__name">${gateway.name}</span>
-      <span slot="details" class="sidebar-gateway-menu__state">${gateway.state === "current" ? "Current" : gateway.state === "offline" ? "Offline" : nothing}</span>
+      <span slot="details" class="sidebar-gateway-menu__state">${gateway.state === "current" ? (offline ? "Offline" : "Current") : gateway.state === "offline" ? "Offline" : nothing}</span>
     </wa-dropdown-item>`)}
+    ${offline ? html`<wa-dropdown-item class="session-menu__item sidebar-gateway-menu__retry" value="retry">
+      <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.refresh}</span>
+      <span class="session-menu__text">Retry connection</span>
+    </wa-dropdown-item>` : nothing}
     <div class="session-menu__separator" role="separator"></div>
     <wa-dropdown-item class="session-menu__item sidebar-gateway-menu__add" value="add">
       <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.plus}</span>
