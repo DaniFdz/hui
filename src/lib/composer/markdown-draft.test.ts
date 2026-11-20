@@ -110,7 +110,7 @@ test("a crossing run keeps its style on both lines", () => {
 test("nothing a draft holds can become markup", () => {
   const source = `<script>alert("x & y")</script> 'single' <img onerror=alert(1)> **<b>bold</b>** \`<i>\``;
   const html = renderDraftHtml(formatDraft(source));
-  assert.doesNotMatch(html, /<(?:script|img|b|i)[\s>]/u);
+  assert.doesNotMatch(html, /<(?:script|img|b|i)[\s>]/iu);
   assert.doesNotMatch(html, /<\/b>/u);
   assert.match(html, /&lt;script&gt;/u);
   assert.match(html, /&lt;img/u);
