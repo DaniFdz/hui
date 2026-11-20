@@ -1039,10 +1039,12 @@
   padding-right: 0;
 }
 .app-shell .session-row-creator:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* sm draws a 32px face and a 28px emoji tile; the mark is 28px either way, so both
- * looks clear the 30px row and read at the same size. */
-.app-shell .session-row-creator .bot-avatar--face hui-bot-face { --bot-face-size: 28px; }
-.app-shell .session-row-creator .bot-avatar--emoji { width: 28px; height: 28px; margin: 0; font-size: 16px; }
+/* sm draws a 32px face and a 28px emoji tile, both far larger than this row's
+ * 30px line needs; the mark is the 16px the chat header's creator chip draws, so
+ * a face and an emoji read at the same size in the same place. The control keeps
+ * its own 32px/44px target and centres the smaller mark in it. */
+.app-shell .session-row-creator .bot-avatar--face hui-bot-face { --bot-face-size: 16px; }
+.app-shell .session-row-creator .bot-avatar--emoji { width: 16px; height: 16px; margin: 0; font-size: 10px; }
 @media (hover: none), (pointer: coarse) {
   .app-shell .session-row-creator {
     width: 44px;

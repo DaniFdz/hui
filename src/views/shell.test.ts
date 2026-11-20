@@ -1067,6 +1067,14 @@ test("a session a bot started shows that bot's face as its own link to the bot's
   assert.match(control, /aria-hidden="true"/u, "the face stays decorative: the link carries the name");
   assert.match(rendered, /href=\/sessions\/made\b/u, "the row keeps opening the session itself");
 
+  // The mark is the chat header creator chip's 16px optical size, not sm's 32px face and 28px
+  // tile, while the link keeps the 32px/44px target that makes it reachable.
+  const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  assert.match(styles, /\.session-row-creator \.bot-avatar--face hui-bot-face \{ --bot-face-size: 16px; \}/u, "a face draws at the chip's 16px");
+  assert.match(styles, /\.session-row-creator \.bot-avatar--emoji \{ width: 16px; height: 16px; margin: 0; font-size: 10px; \}/u, "an emoji tile and its glyph read at that same 16px");
+  assert.match(styles, /\.session-row-creator \{[^}]*?width: 32px;[^}]*?height: 32px;/u, "the control keeps its 32px target");
+  assert.match(styles, /@media \(hover: none\), \(pointer: coarse\) \{\s*\.app-shell \.session-row-creator \{\s*width: 44px;\s*height: 44px;/u, "and 44px on a phone");
+
   // One click on the face opens the bot's chat and never the session.
   const click = clickHandler(view, "class=\"session-row-creator\"");
   assert.equal(typeof click, "function", "the face binds its own click handler");
