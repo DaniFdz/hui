@@ -21,7 +21,13 @@ import { projectDirectory } from "../sessions/group-session-defaults.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { piThinking } from "../runtimes/model-controls.ts";
 import { isThinkingLevel } from "../sessions/thinking.ts";
-import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "./subagent-completion.ts";
+import {
+  classifySubagentEnd,
+  formatSubagentCompletionEvent,
+  reportedSubagentEnd,
+  SUBAGENT_COMPLETION_MARKER,
+  type SubagentCompletionItem,
+} from "./subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;
 /** Collected children of one session tree (OpenClaw's Swarm defaults): at most this many start or run at once… */
@@ -136,10 +142,9 @@ function truncate(value: string, maximum: number): string {
   return value.length <= maximum ? value : `${value.slice(0, maximum - 1)}…`;
 }
 
-function lastAssistant(entries: readonly TranscriptEntry[]): string {
-  const entry = entries.findLast((item) => item.kind === "message" && item.role === "assistant");
-  return entry?.kind === "message" ? entry.text.trim() : "";
-}
+/** What a child's run left: its status, the error that explains a failure, and the error its runtime reported during
+ * the run (kept apart because a settle can replace the history that held it). */
+type RunOutcome = { status: SubagentStatus; error?: string; runtimeError?: string };
 
 function boundedHistory(entries: readonly TranscriptEntry[], limit: number): TranscriptEntry[] {
   const selected: TranscriptEntry[] = [];
@@ -537,22 +542,32 @@ export class SubagentService {
   }
 
   /** Records how a child's run ended. A cancel recorded itself. */
-  async #settleTask(child: SessionRecord, outcome: { status: SubagentStatus; error?: string }): Promise<void> {
+  async #settleTask(child: SessionRecord, outcome: RunOutcome): Promise<void> {
     if (outcome.status === "cancelled") return;
-    const summary = outcome.status === "completed"
-      ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
-      : "";
-    await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+    if (outcome.status !== "completed") {
+      await this.#finishTask(child.id, outcome.status, "", outcome.error);
+      return;
+    }
+    const end = classifySubagentEnd(this.sessions.transcript(child.id), outcome.runtimeError);
+    await this.#finishTask(
+      child.id,
+      end.status,
+      end.status === "completed" ? truncate(end.summary, 20_000) : "",
+      end.status === "failed" ? end.error : "",
+    );
   }
 
   #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number, resumed = false): {
-    promise: Promise<{ status: SubagentStatus; error?: string }>;
+    promise: Promise<RunOutcome>;
     cancel: () => void;
   } {
     let unsubscribe = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
-    let resolvePromise!: (value: { status: SubagentStatus; error?: string }) => void;
+    // A Durable run's error lives in the history only until settling refreshes it, and a run that answers after one
+    // has recovered: this holds the run's latest error for the settle that needs it.
+    let runtimeError: string | undefined;
+    let resolvePromise!: (value: RunOutcome) => void;
     const cleanup = () => {
       unsubscribe();
       if (timer) {
@@ -561,16 +576,20 @@ export class SubagentService {
       }
       this.#controls.delete(child.subagent!.taskId);
     };
-    const settle = (status: SubagentStatus, error?: string) => {
+    const settle = (status: SubagentStatus, error?: string, runError?: string) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolvePromise({ status, ...(error ? { error } : {}) });
+      resolvePromise({ status, ...(error ? { error } : {}), ...(runError ? { runtimeError: runError } : {}) });
     };
-    const promise = new Promise<{ status: SubagentStatus; error?: string }>((resolve) => {
+    const promise = new Promise<RunOutcome>((resolve) => {
       resolvePromise = resolve;
       const watched = this.sessions.watch(child.id, (message) => {
-        if (message.kind === "event" && message.event.type === "settled") settle("completed");
+        if (message.kind === "event" && message.event.type === "error") runtimeError = message.event.message;
+        else if (message.kind === "event" && message.event.type === "text" && message.event.delta.trim()) {
+          // The run kept answering after that error, so it recovered.
+          runtimeError = undefined;
+        } else if (message.kind === "event" && message.event.type === "settled") settle("completed", undefined, runtimeError);
         else if (message.kind === "status" && message.status === "error") {
           settle("failed", "The subagent runtime failed.");
         } else if (message.kind === "status" && message.status === "disconnected") {
@@ -578,12 +597,12 @@ export class SubagentService {
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
         } else if (resumed && message.kind === "status" && message.status === "idle") {
-          settle("completed");
+          settle("completed", undefined, runtimeError);
         }
       });
       unsubscribe = watched.unsubscribe;
       // A run that ended while this gateway was away reports no settle, so the state it left says so.
-      if (resumed && watched.snapshot.status === "idle") settle("completed");
+      if (resumed && watched.snapshot.status === "idle") settle("completed", undefined, runtimeError);
       if (runTimeoutSeconds > 0) {
         timer = setTimeout(() => {
           settle("timed_out", `The subagent exceeded ${runTimeoutSeconds} seconds.`);
@@ -737,12 +756,15 @@ export class SubagentService {
       return true;
     });
     if (!remaining.length || this.#disposed) return;
-    const items: SubagentCompletionItem[] = remaining.map((record) => ({
-      sessionId: record.id, title: record.title, task: record.subagent!.task,
-      status: record.subagent!.status, startedAt: record.subagent!.startedAt,
-      ...(record.subagent!.endedAt ? { endedAt: record.subagent!.endedAt } : {}),
-      result: record.subagent!.summary || record.subagent!.error || `Subagent ended with status ${record.subagent!.status}.`,
-    }));
+    const items: SubagentCompletionItem[] = remaining.map((record) => {
+      const end = reportedSubagentEnd(record.subagent!);
+      return {
+        sessionId: record.id, title: record.title, task: record.subagent!.task,
+        status: end.status, startedAt: record.subagent!.startedAt,
+        ...(record.subagent!.endedAt ? { endedAt: record.subagent!.endedAt } : {}),
+        result: end.summary || end.error || `Subagent ended with status ${end.status}.`,
+      };
+    });
     const ids = remaining.map((record) => record.subagent!.taskId);
     const message = formatSubagentCompletionEvent(items).replace(SUBAGENT_COMPLETION_MARKER,
       `${SUBAGENT_COMPLETION_MARKER}\ndelivery_ids: ${JSON.stringify(ids)}`);
@@ -1045,14 +1067,17 @@ export class SubagentService {
     if (steeredBy !== undefined) this.#steeredWaits.set(callerId, steeredBy);
     const pending = records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId);
     return {
-      completed: done.map((record) => ({
-        taskId: record.subagent!.taskId,
-        sessionKey: record.id,
-        label: record.title,
-        status: record.subagent!.status,
-        ...(record.subagent!.summary ? { result: record.subagent!.summary } : {}),
-        ...(record.subagent!.error ? { error: record.subagent!.error } : {}),
-      })),
+      completed: done.map((record) => {
+        const end = reportedSubagentEnd(record.subagent!);
+        return {
+          taskId: record.subagent!.taskId,
+          sessionKey: record.id,
+          label: record.title,
+          status: end.status,
+          ...(end.summary ? { result: end.summary } : {}),
+          ...(end.error ? { error: end.error } : {}),
+        };
+      }),
       pending,
       ...(steeredBy !== undefined && pending.length
         ? { interrupted: "A new message is waiting for you. You see it only once this tool call returns, or once the script returns when a codemode script called this. Return now, and call agents_wait again for the pending tasks if they still matter." }
