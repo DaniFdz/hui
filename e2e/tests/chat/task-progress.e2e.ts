@@ -5,7 +5,7 @@ import { test } from "../../fixtures/hui.ts";
 import { openRunStatus } from "../agent/run-status.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
-test("Task progress follows the work in the Run status popover, folds, and survives a reload", { tags: ["AGENT-053"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Task progress stays open, recomputes on request, and survives a reload", { tags: ["AGENT-053"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const trigger = screen.getByTestId("run-status-trigger");
@@ -46,13 +46,37 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await expect(plan.getByText("2 of 3")).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
-  // Folded: the current step and done/total stay on the section row.
+  // Plan is an always-open section, not a disclosure. Tapping its count cannot hide its rows.
+  await expect.poll(() => hui.contentOf("[data-testid='task-progress'] > div.chat-run-status__section-head")).toContain("Plan");
+  await expect.poll(() => hui.contentOf("[data-testid='task-progress'] > summary")).toBe("");
   await plan.getByText("2 of 3").tap();
-  await expect(steps).toBeHidden();
-  await expect(screen.getByText("2 of 3", { visible: true })).toBeVisible();
-  await expect(screen.getByText("Report the plan", { visible: true })).toBeVisible();
-  await screen.getByText("2 of 3", { visible: true }).tap();
   await expect(steps).toBeVisible();
+  await expect(steps.getByText("Report the plan")).toBeVisible();
+
+  // Hold the actual mutation at HTTP so the pending control is observable on every target, not just a slow model.
+  const recompute = plan.getByRole("button", { name: "Recompute", exact: true });
+  await expect(recompute).toHaveAttribute("data-hui-tooltip", "Ask HUI to recompute the plan from what is actually done and running");
+  const refresh = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/progress$/u);
+  await recompute.tap();
+  await refresh.arrived();
+  await expect(plan.getByRole("button", { name: "Recomputing…", exact: true })).toBeDisabled();
+  await expect(steps.getByText("Report the plan")).toBeVisible();
+  await expect(plan.getByText("2 of 3")).toBeVisible();
+  await refresh.deliver();
+  await expect(recompute).toBeEnabled();
+  await expect(plan).toContainText("the plan moved on");
+
+  // A refused recompute reports the error without replacing the last good card or collapsing its rows.
+  const refused = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/progress$/u);
+  await recompute.tap();
+  await refused.arrived();
+  await expect(plan.getByRole("button", { name: "Recomputing…", exact: true })).toBeDisabled();
+  await refused.reject(503, "Progress fixture unavailable");
+  await expect(popover.getByRole("alert")).toContainText("Progress fixture unavailable");
+  await expect(recompute).toBeEnabled();
+  await expect(steps.getByText("Report the plan")).toBeVisible();
+  await expect(plan.getByText("2 of 3")).toBeVisible();
+  await expect(plan).toContainText("the plan moved on");
 
   // HUI stores the card with the session, so reopening the popover after a reload shows the same one.
   await hui.reload();
@@ -62,6 +86,15 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
+  // Finishing the last step does not turn the Plan into a folded disclosure either.
+  await message.fill("E2E_PROGRESS_DONE");
+  await send.tap();
+  await openPanel();
+  await expect(plan.getByText("3 of 3", { visible: true })).toBeVisible();
+  await expect(steps.getByText("Report the plan")).toBeVisible();
+  await expect(plan.getByRole("listitem").filter({ hasText: "Report the plan" })).toHaveAttribute("data-status", "completed");
+  await plan.getByText("3 of 3").tap();
+  await expect(steps.getByText("Read fixture")).toBeVisible();
 });
 
 test("a session's stored card shows in its row hovercard without opening it", { tags: ["SESS-043"], platforms: ["web"] }, async ({ screen, hui }) => {

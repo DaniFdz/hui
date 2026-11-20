@@ -37,10 +37,10 @@ test("a conversation with nothing to report draws no trigger", () => {
   const model = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: false, waiting: false, now });
   assert.equal(model.visible, false);
   assert.equal(model.tone, "idle");
-  assert.equal(model.count, undefined);
+  assert.equal(model.detail, undefined);
 });
 
-test("a goal, plan and running helpers summarize as Working with the plan's count", () => {
+test("a goal, plan and running helpers summarize live work without a plan count", () => {
   const model = runStatus({
     goal: goal(),
     progress,
@@ -52,7 +52,7 @@ test("a goal, plan and running helpers summarize as Working with the plan's coun
   assert.equal(model.visible, true);
   assert.equal(model.tone, "running");
   assert.equal(model.label, "Working");
-  assert.equal(model.count, "1/3");
+  assert.equal(model.detail, "goal · 3 helpers");
   assert.equal(model.attention, false);
   assert.equal(model.plan?.done, 1);
   assert.equal(model.plan?.total, 3);
@@ -62,7 +62,7 @@ test("a goal, plan and running helpers summarize as Working with the plan's coun
     { total: model.helpers?.total, running: model.helpers?.running, queued: model.helpers?.queued, finished: model.helpers?.finished },
     { total: 3, running: 2, queued: 1, finished: 0 },
   );
-  assert.match(model.summary, /^Run status: Working, goal pursuing, 1 of 3 steps done, 3 side tasks active, 3 of 3 helpers active$/u);
+  assert.match(model.summary, /^Run status: Working, goal pursuing, 1 of 3 steps done, 3 of 3 helpers active$/u);
 });
 
 test("side work counts live helpers and watchers with a stable sorted active-set signature", () => {
@@ -74,7 +74,8 @@ test("side work counts live helpers and watchers with a stable sorted active-set
   const input = { goal: undefined, progress, subagents, watchers, streaming: false, waiting: false, now };
   const model = runStatus(input);
   assert.deepEqual(model.activity, { count: 4, signature: "helper:a|helper:b|helper:z|watcher:running" });
-  assert.match(model.summary, /4 side tasks active/u);
+  assert.equal(model.detail, "3 helpers · 1 watcher");
+  assert.doesNotMatch(model.summary, /side tasks/u);
   assert.deepEqual(runStatus({ ...input, subagents: [...subagents].reverse(), watchers: [...watchers].reverse(), streaming: true }).activity, model.activity);
   const changed = runStatus({ ...input, subagents: subagents.map((item) => item.taskId === "a" ? { ...item, status: "completed" as const } : item) });
   assert.equal(changed.activity.count, 3);
@@ -87,7 +88,11 @@ test("side work counts live helpers and watchers with a stable sorted active-set
   const empty = runStatus({ ...input, subagents: [], watchers: [] });
   assert.deepEqual(empty.activity, { count: 0, signature: "" });
   assert.doesNotMatch(empty.summary, /side task/u);
-  assert.match(runStatus({ ...input, subagents: [], watchers: watchers.slice(0, 1) }).summary, /1 side task active/u);
+  assert.equal(runStatus({ ...input, subagents: [], watchers: watchers.slice(0, 1) }).detail, "1 watcher");
+  assert.equal(runStatus({ ...input, subagents: [task("one", "queued")], watchers: [] }).detail, "1 helper");
+  assert.equal(empty.detail, undefined, "a plan alone adds no pill detail");
+  assert.equal(runStatus({ ...input, goal: goal(), streaming: true }).detail, "goal · 3 helpers · 1 watcher");
+  assert.equal(runStatus({ ...input, goal: goal("blocked") }).detail, "3 helpers · 1 watcher", "a goal label needs no repeated goal detail");
 });
 
 test("an open question outranks a running turn and marks the trigger for attention", () => {
@@ -120,7 +125,7 @@ test("a completed job reads as done, and some time between turns still says the 
   });
   assert.equal(complete.tone, "done");
   assert.equal(complete.label, "Goal achieved");
-  assert.equal(complete.count, "3/3");
+  assert.equal(complete.detail, undefined);
   assert.equal(complete.plan?.allComplete, true);
 
   const between = runStatus({ goal: goal(), progress, subagents: [], streaming: false, waiting: false, now });
@@ -142,18 +147,18 @@ test("a failed helper raises attention once the turn is over", () => {
   assert.equal(model.attention, true);
   assert.equal(model.helpers?.failed, 1);
   assert.equal(model.helpers?.finished, 2);
-  assert.equal(model.count, "1/3", "the plan count is the trigger's compact number");
+  assert.equal(model.detail, undefined, "finished helpers and plan counts add no live detail");
 });
 
-test("helpers alone count finished of total, and a whole successful batch reads as done", () => {
+test("helpers alone name live helpers, and a whole successful batch reads as done", () => {
   const active = runStatus({ goal: undefined, progress: undefined, subagents: [task("a", "running"), task("b", "completed"), task("c", "queued")], streaming: false, waiting: false, now });
-  assert.equal(active.count, "1/3");
+  assert.equal(active.detail, "2 helpers");
   assert.equal(active.label, "Working");
 
   const done = runStatus({ goal: undefined, progress: undefined, subagents: [task("a", "completed"), task("b", "completed")], streaming: false, waiting: false, now });
   assert.equal(done.tone, "done");
   assert.equal(done.label, "Done");
-  assert.equal(done.count, "2/2");
+  assert.equal(done.detail, undefined);
   assert.equal(done.helpers?.allSucceeded, true);
 });
 
@@ -270,7 +275,7 @@ test("background watchers keep the trigger alive and count as working", () => { 
   assert.equal(model.visible, true);
   assert.equal(model.tone, "running");
   assert.equal(model.label, "Working");
-  assert.equal(model.count, "2/3");
+  assert.equal(model.detail, "2 watchers");
   assert.match(model.summary, /2 of 3 watchers running/u);
 
   const failed = runStatus({

@@ -49,8 +49,8 @@ export type RunStatusModel = {
   tone: RunStatusTone;
   /** The trigger's word and the popover's state. */
   label: string;
-  /** The compact trailing count on the trigger, `1/2`; absent when there is no plan or batch. */
-  count: string | undefined;
+  /** Unit-bearing live work facts; plan completion belongs only in the Plan section. */
+  detail: string | undefined;
   goal: SessionGoal | undefined;
   plan: RunStatusPlan | undefined;
   helpers: RunStatusHelpers | undefined;
@@ -306,19 +306,17 @@ export function runStatus(options: {
     label = "Done";
   }
 
-  const count = plan?.total
-    ? `${plan.done}/${plan.total}`
-    : helpers
-      ? `${helpers.allFinished ? helpers.completed : helpers.finished}/${helpers.total}`
-      : watchers
-        ? `${watchers.running ? watchers.running : watchers.finished}/${watchers.total}`
-        : undefined;
+  const liveHelpers = options.subagents.filter((task) => ["running", "queued"].includes(subagentVisualState(task.status))).length;
+  const details: string[] = [];
+  if (goal && !label.toLowerCase().includes("goal")) details.push("goal");
+  if (liveHelpers) details.push(`${liveHelpers} ${liveHelpers === 1 ? "helper" : "helpers"}`);
+  if (watchers?.running) details.push(`${watchers.running} ${watchers.running === 1 ? "watcher" : "watchers"}`);
+  const detail = details.length ? details.join(" · ") : undefined;
 
   const parts = [label];
   // The name says the goal's state once too: a head that already is the goal's state does not repeat it.
   if (goal && goalSectionStatus({ label }, goal)) parts.push(`goal ${goal.status === "active" ? "pursuing" : goal.status}`);
   if (plan?.total) parts.push(`${plan.done} of ${plan.total} steps done`);
-  if (plan && activity.count > 0) parts.push(`${activity.count} side ${activity.count === 1 ? "task" : "tasks"} active`);
   if (helpers) {
     parts.push(helpers.allFinished
       ? `${helpers.completed} of ${helpers.total} helpers completed`
@@ -333,7 +331,7 @@ export function runStatus(options: {
     visible,
     tone,
     label,
-    count,
+    detail,
     goal,
     plan,
     helpers,

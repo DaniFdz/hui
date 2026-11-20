@@ -76,16 +76,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Side-work adds only its count and fixed dot to layout. The one-shot ring paints outside the dot without reflow. */
-.chat-run-status__activity {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
+/* Only the fixed dot takes space; its keyed one-shot ring paints outside it without reflow. */
 .chat-run-status__activity-dot {
+  color: var(--accent);
   position: relative;
   display: inline-flex;
   flex: none;
@@ -394,13 +387,11 @@
   gap: 8px;
 }
 
-.chat-run-status__plan-summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.chat-run-status__plan-summary::-webkit-details-marker {
-  display: none;
+.chat-run-status__recompute {
+  flex: none;
+  min-height: 24px;
+  padding: 2px 5px;
+  font-size: 11px;
 }
 
 .chat-run-status__plan-current {
@@ -423,11 +414,6 @@
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-.chat-run-status__plan[open] > .chat-run-status__plan-summary .chat-run-status__plan-current {
-  display: none;
-}
-
-.chat-run-status__plan[open] > .chat-run-status__plan-summary .chat-run-status__chevron svg,
 .chat-run-status__success[open] > .chat-run-status__section-head .chat-run-status__chevron svg {
   transform: rotate(180deg);
 }

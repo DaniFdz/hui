@@ -11,7 +11,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-075",
     title: "See side work at a glance",
-    behaviour: "With a plan present, Run status shows a badge counting running or queued helpers and running watchers, names the side-task count in its accessible summary and adds active in the panel head. A changed active set pings once; streamed output with the same set does not restart it. Reduced motion disables animation while counts still update. Without a plan there is no extra active count. Growing the plan and badge counts leaves all header controls to the right fixed.",
+    behaviour: "Run status shows a dot-only live-work mark whenever helpers are running or queued or watchers are running, with or without a plan; neither pill nor head adds an active count. A changed live set pings once; streamed output with the same set does not restart it. Reduced motion disables animation while the dot and live detail still update. The pill and panel head append muted detail separated by middle dots: goal (unless the state phrase already names the goal), N helpers and N watchers, counting running or queued helpers and running watchers only. Growing live helper counts leaves all header controls to the right fixed, without clipping the state or detail; on a 390px phone the panel stays 318px wide and leaves navigation reachable.",
     spec: ["SPEC.md#run-status"],
     surfaces: [],
     web: "required",
@@ -537,9 +537,9 @@ const cases: UseCase[] = [
   {
     id: "AGENT-053",
     title: "Follow a session's task progress",
-    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the Plan section of the chat header's Run status popover: folded, the current step and done/total; open, N of M, a one-line summary and each step marked pending, in progress or done. It starts expanded while any step is unfinished, on every device, and folds only when every step is done or the operator folds it by hand, a new turn rewrites it, and it is stored with the session so it returns after a reload. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
+    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the always-open Plan section of the chat header's Run status popover: a noninteractive section head keeps the current step and N of M done/total, followed by a one-line summary and every step marked pending, in progress or done. The plan never folds, even when every step is done; a new turn rewrites it, and it is stored with the session so it returns after a reload. The button reads Recompute with the tooltip Ask HUI to recompute the plan from what is actually done and running and asks HUI to reread the conversation; while its POST /progress is pending it reads Recomputing… and is disabled, with the last good card still visible. A failure reports an alert without removing that card and re-enables Recompute. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
-    surfaces: ["setting:models.utility"],
+    surfaces: ["setting:models.utility", "route:POST /__hui/sessions/:id/progress"],
     web: "required",
     phone: "required",
   },

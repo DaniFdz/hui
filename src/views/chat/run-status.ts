@@ -64,6 +64,8 @@ export type RunStatusProps = {
   sending: boolean;
   connectionLive: boolean;
   goalPanel: GoalPanelState;
+  progressRefresh: { pending: boolean; error: string | undefined };
+  onRecomputeProgress: () => void;
   onGoalChange: (kind: "pause" | "resume" | "clear") => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
@@ -86,13 +88,10 @@ function renderRunStatusMark(tone: RunStatusTone): TemplateResult {
 }
 
 /** Only a changed active set remounts the one-shot ring; streamed frames retain its animation and node. */
-function renderActivity(model: RunStatusModel, panel = false) {
-  if (!model.plan || model.activity.count === 0) return nothing;
+function renderActivity(model: RunStatusModel) {
+  if (model.activity.count === 0) return nothing;
   const activity = model.activity;
-  return html`<span class="chat-run-status__activity" aria-hidden=${panel ? nothing : "true"}>
-    <span class="chat-run-status__activity-dot">${keyed(activity.signature, html`<span class="chat-run-status__activity-ping"></span>`)}</span>
-    <span>${activity.count}${panel ? " active" : ""}</span>
-  </span>`;
+  return html`<span class="chat-run-status__activity-dot" aria-hidden="true">${keyed(activity.signature, html`<span class="chat-run-status__activity-ping"></span>`)}</span>`;
 }
 
 function subagentSnippet(task: SubagentTaskView): string {
@@ -185,35 +184,27 @@ function renderHelpers(props: RunStatusProps, model: RunStatusModel, id: string)
   </section>`;
 }
 
-function renderPlan(model: RunStatusModel, id: string) {
+function renderPlan(props: RunStatusProps, model: RunStatusModel, id: string) {
   const plan = model.plan;
   if (!plan) return nothing;
-  // The plan is the panel's most important section, so it starts expanded while any step is unfinished: it folds only
-  // when every step is done, or when the operator folds it by hand with its own chevron.
-  const folded = plan.allComplete;
   const body = html`
     ${plan.steps.length > 0 ? html`<div class="chat-run-status__steps-region" role="region" aria-label="Task progress steps" data-testid="task-progress-steps"><ol class="chat-run-status__steps">${plan.steps.map((step) => html`<li class="chat-run-status__step" data-status=${step.status} data-testid="task-progress-step">
       <span class="chat-run-status__step-mark" aria-hidden="true">${step.status === "completed" ? icons.check : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : icons.circle}</span>
       <span>${step.step}</span>
     </li>`)}</ol></div>` : nothing}
     ${plan.markdown ? html`<div class="chat-run-status__plan-note">${renderMarkdown(plan.markdown)}</div>` : nothing}`;
-  // A plan with no steps is a summary only: there is nothing for a fold to hide.
-  if (plan.steps.length === 0) {
-    return html`<section class="chat-run-status__section" aria-label="Task progress">
-      <div class="chat-run-status__section-head"><span class="chat-run-status__section-title">Plan</span></div>
-      ${body}
-    </section>`;
-  }
-  return html`<section class="chat-run-status__section" aria-labelledby=${`${id}-plan-title`}>
-    <details class="chat-run-status__plan" data-testid="task-progress" aria-label="Task progress" ?open=${!folded}>
-      <summary class="chat-run-status__section-head chat-run-status__plan-summary">
-        <span class="chat-run-status__section-title" id=${`${id}-plan-title`}>Plan</span>
-        ${plan.current ? html`<span class="chat-run-status__plan-current">${plan.current.step}</span>` : nothing}
-        <span class="chat-run-status__meta">${plan.done} of ${plan.total}</span>
-        <span class="chat-run-status__chevron" aria-hidden="true">${icons.chevronDown}</span>
-      </summary>
-      ${body}
-    </details>
+  return html`<section class="chat-run-status__section chat-run-status__plan" data-testid="task-progress" aria-label="Task progress">
+    <div class="chat-run-status__section-head">
+      <span class="chat-run-status__section-title" id=${`${id}-plan-title`}>Plan</span>
+      ${plan.current ? html`<span class="chat-run-status__plan-current">${plan.current.step}</span>` : nothing}
+      <span class="chat-run-status__meta">${plan.done} of ${plan.total}</span>
+      <button type="button" class="btn btn--ghost chat-run-status__recompute"
+        data-hui-tooltip="Ask HUI to recompute the plan from what is actually done and running"
+        ?disabled=${props.progressRefresh.pending || !props.connectionLive || props.loading || !["idle", "running"].includes(props.session.status)}
+        @click=${props.onRecomputeProgress}>${props.progressRefresh.pending ? "Recomputing…" : "Recompute"}</button>
+    </div>
+    ${props.progressRefresh.error ? html`<p class="chat-run-status__note" role="alert">Could not recompute the plan: ${props.progressRefresh.error}</p>` : nothing}
+    ${body}
   </section>`;
 }
 
@@ -765,7 +756,7 @@ export function renderRunStatus(props: RunStatusProps) {
     >
       <span class="chat-run-status__mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
       <span class="chat-run-status__label">${model.label}</span>
-      ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
+      ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
       ${renderActivity(model)}
       <span class="chat-run-status__trigger-chevron" aria-hidden="true">${icons.chevronDown}</span>
     </button>
@@ -781,14 +772,14 @@ export function renderRunStatus(props: RunStatusProps) {
           <span class="chat-run-status__state" data-tone=${model.tone}>
             <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
             <span class="chat-run-status__label">${model.label}</span>
-            ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
-            ${renderActivity(model, true)}
+            ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
+            ${renderActivity(model)}
           </span>
           <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__collapse" aria-label="Close run status" @click=${closePanel}>${icons.chevronDown}</button>
         </header>
         <div class="chat-run-status__body">
           ${renderGoal(props, model, panelId)}
-          ${renderPlan(model, panelId)}
+          ${renderPlan(props, model, panelId)}
           ${renderHelpers(props, model, panelId)}
           ${renderWatchers(props)}
         </div>

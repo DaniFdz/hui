@@ -1,11 +1,11 @@
 /** A phone's chat spends one header row: the Active panel chooser sits in the header in place of the title, and the
- * Run status plan starts expanded with work left and folds by hand (SHELL-047). */
+ * Run status plan is always open and its panel leaves navigation reachable (SHELL-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
 test(
-  "a phone's chat keeps its chooser in the header and starts the plan expanded in Run status",
+  "a phone's chat keeps its chooser in the header and its Run status plan always open",
   { tags: ["SHELL-047"], platforms: ["web"] },
   async ({ screen, hui }) => {
     const settings = await hui.api<Settings>("GET", "/__hui/settings");
@@ -59,9 +59,9 @@ test(
     const steps = screen.getByLabel("Task progress steps");
     await expect(steps.getByText("Read fixture")).toBeVisible();
     await screen.getByText("1 of 2", { visible: true }).tap();
-    await expect(steps).toBeHidden();
-    await screen.getByText("1 of 2", { visible: true }).tap();
     await expect(steps.getByText("Read fixture")).toBeVisible();
+    await expect(screen.getByTestId("task-progress").getByRole("button", { name: "Recompute", exact: true })).toBeVisible();
+    await expect.poll(() => hui.contentOf(".chat-run-status__head .chat-run-status__state")).toBe("Status");
     const pill = await trigger.boundingBox();
     const actions = await hui.rect(".chat-pane__header-actions");
     const nav = await screen.getByRole("button", "Open navigation").boundingBox();
@@ -73,6 +73,7 @@ test(
     expect(Math.abs(panel!.y - actions!.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(panel!.x + panel!.width - actions!.x - actions!.width)).toBeLessThanOrEqual(1);
     expect(panel!.x + panel!.width).toBeLessThanOrEqual(nav!.x);
+    if ((await hui.viewportSize()).width === 390) expect(Math.abs(panel!.width - 318)).toBeLessThanOrEqual(1);
     expect(pill!.x).toBeLessThan(nav!.x);
     expect(nav!.width).toBeGreaterThanOrEqual(24);
     expect(await hui.overflowsSideways()).toBe(false);

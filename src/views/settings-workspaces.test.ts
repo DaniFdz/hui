@@ -132,7 +132,7 @@ test("Appearance exposes functional OpenClaw chat preferences", () => {
     assert.match(settingsSource, new RegExp(label));
   }
   assert.match(settingsSource, /props\.onChangeChat/);
-  assert.doesNotMatch(settingsSource, /Collapse task progress/, "the plan folds by its own chevron, not by a device preference");
+  assert.doesNotMatch(settingsSource, /Collapse task progress/, "the plan is always open, not controlled by a device preference");
   for (const label of ["Message width", "Send shortcut"]) {
     assert.ok(settingsSource.includes(`renderSettingsPicker("${label}"`));
   }

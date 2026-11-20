@@ -1919,7 +1919,11 @@ header's Run status popover, stored with the session. Nothing waits on that call
 utility model, on a failure, or on an answer with neither a summary nor a plan,
 the previous plan stays and the turn is unaffected. Subagent sessions get no
 plan of their own; their work is the parent's. HUI never infers plan state from
-prose in the transcript, and the agent has no tool for it.
+prose in the transcript, and the agent has no tool for it. The Plan head's **Recompute**
+asks this same HUI writer to refresh from what is actually done and running, never
+starting an agent turn. It works while idle or running with a live connection.
+While waiting it reads **Recomputing…** and is disabled; a failure keeps the old
+card, shows a small alert, and allows another attempt.
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
 step/count and the card's Markdown summary. Idle unfinished plans show the
@@ -1934,20 +1938,24 @@ The chat header's leftmost action is **Run status**, present whenever the
 conversation has a goal, a plan, a recent batch of helpers or background
 watchers; otherwise it is absent. It reads the most urgent state — Waiting for
 your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
-Goal achieved, Done or Pursuing goal — with the plan's done/total (or the
-helpers' or watchers' count) beside it. Its accessible name names the goal, plan
-and helper facts it summarizes. While a plan exists, a compact dot-and-count badge shows running or queued helpers
-plus running watchers, and the accessible name states that side-task count. The panel head adds the word “active”.
-A changed active set replays one ping; streamed output with the same set does not. Reduced motion disables the ping,
-not count updates. Without a plan the existing helper/watcher facts stand alone, with no second active count.
+Goal achieved, Done or Pursuing goal — followed by muted, unit-bearing live detail:
+**goal** when a goal exists and the label does not already name it, then running
+or queued **N helper(s)**, then running **N watcher(s)**, joined by ** · **.
+For example, **Working · goal · 2 helpers** or **Working · 1 watcher**.
+A plan alone adds no detail; its done/total belongs only in the Plan section.
+The accessible name retains the goal, plan, helper and watcher facts. A fixed,
+aria-hidden dot follows live helper/watcher detail, whether or not a plan exists;
+there is no second count or “active” word. A changed active set replays one ping;
+streamed output with the same set retains its node and animation. Reduced motion
+disables the ping, not live detail updates.
 Header actions run left to right: Run status, Call, bot-panel toggle, bot menu, Continue, Close pane (where present).
 The phone navigation toggle follows the actions group at the far right. The group's right edge stays fixed as the pill
 grows, so all the controls to its right keep their positions. On a narrow pane or a phone the trigger keeps
-only its mark and count.
+only its mark and live detail.
 
 Clicking the trigger opens one popover whose settled top-right corner is
 the actions group's (just left of navigation on a phone); while it is out the pill is not drawn at all — the panel's first
-line is its own title, the pill's mark, one state word and count set at the
+line is its own title, the pill's mark, state word and live detail set at the
 card's left padding on the same 12px the rows below use, with the chevron, now
 pointing up, at the box's right edge as the close — so the two boxes never show
 together and no word floats alone at the right. The
@@ -1960,7 +1968,7 @@ chevron carries the first frame — and written once the box has arrived, where 
 stays; a close drops it with the fold's first frame. A close draws the same box
 back into the pill before it hides, and the pill returns only once that close has
 landed, so the pill and the panel never show together. The head reads what the
-pill reads — the mark, the state word and the count — and the chevron it turns
+pill reads — the mark, the state word and live detail — and the chevron it turns
 into closes the panel and returns focus to the trigger; the trigger stays in
 place as the popover's anchor, unpainted, and gives its accessible name and
 aria-expanded back when the pill paints again.
@@ -1976,8 +1984,8 @@ the conversation starts on its own — a watcher settling, a helper finishing �
 opens or shuts the panel. A reload starts closed.
 The popover holds **Goal** (the objective, its status note, when it was set, its
 automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
-steps and summary, expanded while any step is unfinished; it folds only when all steps are done or the operator
-folds it by hand, with no device preference or phone-specific default), **Helpers** (the latest batch, its counts, one dot per child
+steps and summary, always visible, including completed steps; a non-interactive head
+keeps the current step, done of total and Recompute, with no fold or device preference), **Helpers** (the latest batch, its counts, one dot per child
 and each child's row) and **Watchers** (each watcher's purpose, latest output,
 state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
 its rows behind Watcher details while the section header keeps the running

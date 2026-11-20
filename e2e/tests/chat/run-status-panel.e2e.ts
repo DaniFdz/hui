@@ -21,7 +21,7 @@ const TRIGGER = ".chat-run-status__trigger";
 const PANEL = "[data-testid=\"run-status\"]";
 const LABEL = `${TRIGGER} .chat-run-status__label`;
 const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
-/** The head's whole copy — mark, the one state word and the count — the panel's own title line. */
+/** The head's whole copy — mark, state phrase and muted live-work detail — the panel's own title line. */
 const HEAD_COPY = `.chat-run-status__head .chat-run-status__state`;
 /** The mark that opens that title line, and the close chevron that keeps the box's right edge. */
 const HEAD_MARK = `.chat-run-status__head .chat-run-status__state-mark`;
@@ -69,7 +69,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await hold();
   await expect(message).toBeFocused();
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).toHaveText("Working");
   await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
   // The send landed: the composer took the prompt and emptied itself, and it is usable again.
@@ -77,7 +77,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(message).toBeEnabled();
 
   // The operator's own press is what opens it, and the pill morphs into the panel it opens: the head reads the same state
-  // as the trigger — mark, word and count — so one control visibly becomes the other. The panel's settled top-right corner
+  // as the trigger — mark and state phrase, with no plan count — so one control visibly becomes the other. The panel's settled top-right corner
   // is the actions group's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
   // trigger keeps its box as the anchor and the aria-expanded, word and summary it gives back on close.
   await trigger.tap();
@@ -88,14 +88,15 @@ test("Run status stays shut through a run until the operator opens it, and then 
   // the panel, whose head is the converted pill.
   await expect(trigger).not.toBeVisible();
   await expect(popover.getByText("Working", { exact: true })).toBeVisible();
-  await expect(popover.getByText("1/2", { exact: true })).toBeVisible();
+  await expect(popover.getByText("1 of 2", { exact: true })).toBeVisible();
+  await expect.poll(() => hui.contentOf(HEAD_COPY)).toBe("Working");
 
   // Escape closes it, and the focus the show moved into the panel comes back to the pill that anchors it once the box has
   // drawn itself back. The pill paints again, still reading the running state it carried into the panel.
   await close().press("Escape");
   await expect(trigger).not.toBeExpanded();
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).toHaveText("Working");
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
 
@@ -113,7 +114,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await hold();
   await expect(message).toBeFocused();
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).toHaveText("Working");
   await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
 
@@ -149,7 +150,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(idle).toBeVisible();
   await hold();
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("Working 1/2");
+  await expect(trigger).toHaveText("Working");
   await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
 
@@ -241,7 +242,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   expect((settled?.x ?? Number.POSITIVE_INFINITY), "the panel reaches left of the pill").toBeLessThan((pill?.x ?? 0) - 20);
   expect((settled?.y ?? 0) + (settled?.height ?? 0), "and its box covers the pill's").toBeGreaterThanOrEqual((pill?.y ?? 0) + (pill?.height ?? 0));
   // The settled panel reads like a card: its first line is the panel's own title — the mark, the one state word and the
-  // count — left-aligned on the card's padding, where the section rows below it start, with the close chevron keeping the
+  // live-work detail — left-aligned on the card's padding, where the section rows below it start, with the close chevron keeping the
   // box's right edge. No word floats alone at the right, and no second title line is added above or below it.
   const headMark = await hui.rect(HEAD_MARK);
   const headWord = await hui.rect(HEAD_LABEL);
@@ -267,7 +268,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(idle).toBeVisible();
 
   // The state's own words are never the part that gets cut. A question turn prints the longest phrase a pill draws —
-  // "Waiting for your answer" — with the plan's count beside it, and the label has to hold all of it: a scroll width
+  // "Waiting for your answer" — without a plan count beside it, and the label has to hold all of it: a scroll width
   // wider than its box means the pill ellipsizes its own state, which a visibility read would never show.
   await message.fill(askDatabase);
   await send.tap();
@@ -290,7 +291,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   }).toBeLessThanOrEqual(1);
 
   // A resize is not a close: the operator's open survives the phone's narrower window, and the panel is still out. Their
-  // own close paints the pill again, where a phone keeps only its mark and the count on one header row and the words move
+  // own close paints the pill again, where a phone keeps only its mark on one header row and the words move
   // into the accessible name (the labels are the view's own media queries, not this test's).
   await hui.phoneScreen();
   await expect(popover).toBeVisible();
@@ -300,6 +301,6 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(popover).toBeHidden();
   await expect.poll(() => hui.drawn(LABEL)).toBe(false);
   await expect.poll(() => hui.drawn(`${TRIGGER} .chat-run-status__mark`)).toBe(true);
-  await expect(trigger.getByText("1/2", { exact: true })).toBeVisible();
+  await expect(trigger.getByText("1/2", { exact: true })).toHaveCount(0);
   await hui.wideScreen();
 });

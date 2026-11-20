@@ -6057,6 +6057,21 @@ only its newest transcript, so a slow model call delays cards without piling
 work up. A changed card is published to open browsers as
 `SessionStatusUpdate.progress`; an unchanged one writes nothing.
 
+### `POST /__hui/sessions/:id/progress`
+
+Recompute the Task progress card through HUI's own utility writer, from the
+session's current transcript; never send an agent prompt or start a turn.
+The central `x-hui` guard applies. Available while idle or running.
+Returns `{ ok: true }` once the refresh has answered and any generated card
+has been stored/published. A refresh already waiting or running for this session
+returns 409 without queueing another. A failed refresh returns 502 with the
+error and leaves the previous card untouched. The Plan section stays open,
+with its current step and done-of-total; Recompute reads Recomputing… and is
+disabled while pending (and disabled without a live connection). A failure
+shows a small alert in Plan and allows retry without discarding the old card.
+The closed pill and panel head show unit-bearing live goal/helper/watcher detail,
+not plan completion; the Plan section alone carries done-of-total.
+
 ### Session-list progress
 
 Session rows use the original OpenClaw 2026.9.5 hovercard component and CSS,

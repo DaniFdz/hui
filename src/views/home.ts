@@ -335,6 +335,8 @@ export type HomeProps = {
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
   /** The goal editor inside the Run status popover: whether the objective is being retyped, and a refused save. */
   goalPanel: GoalPanelState;
+  progressRefresh: { pending: boolean; error: string | undefined };
+  onRecomputeProgress: () => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
   onGoalCancelEdit: () => void;
@@ -2563,6 +2565,8 @@ function renderHeader(props: HomeProps, session: SessionView) {
             sending: props.sending,
             connectionLive: props.connection === "live",
             goalPanel: props.goalPanel,
+            progressRefresh: props.progressRefresh,
+            onRecomputeProgress: props.onRecomputeProgress,
             onGoalChange: props.onGoalChange,
             onGoalEdit: props.onGoalEdit,
             onGoalSave: props.onGoalSave,

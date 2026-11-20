@@ -278,7 +278,7 @@ test("Task progress lives in the Run status popover and never draws in the trans
   // still carries the whole state. The morph is what makes that one control visible as both.
   assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
-  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
+  assert.doesNotMatch(html, /class="chat-run-status__count"/u, "plan completion stays in the Plan section");
   // One box: the head's chevron — the pill's, turned up — is the close, and the head's copy is exposed inside the dialog,
   // because the pill itself is not painted while the panel is out.
   assert.match(html, /class="chat-run-status__head"[\s\S]*?chat-run-status__collapse" aria-label="Close run status"/u);
@@ -306,7 +306,7 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
 });
 
-test("side work badges use a keyed active set and keep the plan open with work left", async () => {
+test("side work uses a keyed dot-only badge and the plan is always open", async () => {
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "idle", progress: {
     markdown: "Plan", steps: [{ step: "Verify", status: "in_progress" }],
   } };
@@ -315,20 +315,21 @@ test("side work badges use a keyed active set and keep the plan open with work l
     bot: { bot: { id: "b", name: "Ada" }, panelOpen: false, onTogglePanel: () => {}, onAction: () => {} },
     call: { inCall: false, onCall: () => {} }, onClosePane: () => {},
   });
-  assert.equal(html.match(/class="chat-run-status__activity" aria-hidden=(?:"true"|true)/gu)?.length, 1);
-  assert.equal(html.match(/class="chat-run-status__activity"/gu)?.length, 2, "the panel head keeps its live word readable");
-  assert.match(html, /1 side task active/u);
-  assert.match(html, /1 active/u);
-  assert.match(html, /data-testid="task-progress" aria-label="Task progress" \?open=true/u, "unfinished plans start open on phones too");
+  assert.equal(html.match(/class="chat-run-status__activity-dot" aria-hidden="true"/gu)?.length, 2);
+  assert.equal(html.match(/class="chat-run-status__count"> · 1 helper</gu)?.length, 2);
+  assert.doesNotMatch(html, /side task active|1 active/u);
+  assert.match(html, /<section class="chat-run-status__section chat-run-status__plan" data-testid="task-progress"/u);
+  assert.doesNotMatch(html, /<details class="chat-run-status__plan"/u);
   const done = await renderWorkerSession("idle", { session: { ...session, progress: { markdown: "Done", steps: [{ step: "Verify", status: "completed" }] } } });
-  assert.doesNotMatch(done, /\?open=true/u);
-  assert.doesNotMatch(await renderWorkerSession("idle", { subagents }), /class="chat-run-status__activity"/u);
-  assert.doesNotMatch(await renderWorkerSession("idle", { session, subagents: [] }), /class="chat-run-status__activity"/u);
+  assert.match(done, /data-testid="task-progress-steps"/u, "completed steps stay visible");
+  assert.doesNotMatch(done, /<details class="chat-run-status__plan"/u);
+  assert.match(await renderWorkerSession("idle", { subagents }), /class="chat-run-status__activity-dot"/u, "live work needs no plan");
+  assert.doesNotMatch(await renderWorkerSession("idle", { session, subagents: [] }), /class="chat-run-status__activity-dot"/u);
   const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
   assert.match(view, /keyed\(activity\.signature, html/u);
   assert.match(view, /skidding = actionsGroup \? actionsGroup\.getBoundingClientRect\(\)\.right - trigger\.getBoundingClientRect\(\)\.right : 0/u);
   const css = readStyles("../styles/chat-run-status.css");
-  assert.match(css, /\.chat-run-status__activity \{[^}]*display: inline-flex;[^}]*flex: none;/su);
+  assert.match(css, /\.chat-run-status__activity-dot \{[^}]*display: inline-flex;[^}]*flex: none;/su);
   assert.match(css, /\.chat-run-status__activity-ping \{[^}]*position: absolute;/su);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chat-run-status__activity-ping \{ animation: none;/su);
   const actions = html.slice(html.indexOf('class="chat-pane__actions chat-pane__header-actions"'));
@@ -343,6 +344,25 @@ test("side work badges use a keyed active set and keep the plan open with work l
   assert.doesNotMatch(leading, /Open navigation/u);
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
+});
+
+test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "running", progress: {
+    markdown: "Keep this card", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const normal = await renderWorkerSession("running", { session, streaming: true });
+  assert.match(normal, /data-hui-tooltip="Ask HUI to recompute the plan from what is actually done and running"/u);
+  assert.match(normal, /\?disabled=false[^>]*>Recompute</u);
+  const pending = await renderWorkerSession("running", { session, progressRefresh: { pending: true, error: undefined } });
+  assert.match(pending, /\?disabled=true[^>]*>Recomputing…</u);
+  const offline = await renderWorkerSession("idle", { session, connection: "reconnecting" });
+  assert.match(offline, /\?disabled=true[^>]*>Recompute</u);
+  const waiting = await renderWorkerSession("waiting", { session: { ...session, status: "waiting" } });
+  assert.match(waiting, /\?disabled=true[^>]*>Recompute</u, "the button agrees with the controller's status guard");
+  const failed = await renderWorkerSession("idle", { session, progressRefresh: { pending: false, error: "utility unavailable" } });
+  assert.match(failed, /role="alert">Could not recompute the plan: utility unavailable</u);
+  assert.match(failed, /Keep this card/u);
+  assert.match(failed, /data-testid="task-progress-steps"/u);
 });
 
 test("only the operator's press opens the Run status popover", () => {
@@ -676,6 +696,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
     goalPanel: { editing: false, error: "" },
+    progressRefresh: { pending: false, error: undefined }, onRecomputeProgress: () => {},
     chatPreferences: { sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
