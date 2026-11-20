@@ -3,7 +3,7 @@
  * strip or the keyboard, and Continue releases the tab without resuming the run (AGENT-075, AGENT-076, AGENT-077). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openWork } from "../work/work-views.ts";
+import { backToChat, openWork } from "../work/work-views.ts";
 
 /** A fixture password, not a credential: long enough to prove the whole value crossed and never came back. */
 const PASSWORD = "V7!k#Q2m@R9$tW4xL6&pN8*zB3^cF5_hJ1+gD0=sA2%yU6(iO4)eK8";
@@ -21,7 +21,6 @@ const taken = async (screen: Screen, hui: Hui) => {
   await expect(pane.getByText("You have control", { exact: true })).toBeVisible();
   await expect(pane.getByText("You have control; the agent is stopped.")).toBeVisible();
   await expect(take).toHaveCount(0);
-  await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
   const frame = pane.getByLabel("You have control of the page");
   await expect(frame).toBeVisible();
   const box = await frame.boundingBox();
@@ -46,7 +45,6 @@ test("the operator takes the agent's browser, clicks through the page and pastes
   await strip.fill(PASSWORD);
   await pane.getByRole("button", "Send", { exact: true }).click();
   await expect(picker).toHaveAttribute("aria-label", /\(pasted 54\)$/u);
-  await expect(transcript).not.toContainText(PASSWORD);
 
   // A click on a link navigates the page, so the tab's own title and address change under the operator.
   await frame.click({ position: { x: box.width / 2, y: 20 } });
@@ -57,7 +55,10 @@ test("the operator takes the agent's browser, clicks through the page and pastes
   await expect(pane.getByText("You finished; the agent is stopped. Write in chat to continue.")).toBeVisible();
   await expect(pane.getByLabel("Text to send into the page")).toHaveCount(0);
   await expect(pane.getByRole("button", "Take control")).toBeVisible();
-  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  // A phone shows the Work destination instead of the chat; the stop and the transcript are read there.
+  await backToChat(screen);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
+  await expect(transcript).not.toContainText(PASSWORD);
 });
 
 test("the operator pastes into the page with the keyboard", { tags: ["AGENT-077"], platforms: ["web"] }, async ({ screen, hui }) => {
