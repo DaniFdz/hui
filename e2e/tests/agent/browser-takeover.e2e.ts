@@ -7,7 +7,13 @@ import { backToChat, openWork } from "../work/work-views.ts";
 
 /** A fixture value, not a credential: long enough to prove the whole clipboard value crossed. */
 const PASSWORD = "V7!k#Q2m@R9$tW4xL6&pN8*zB3^cF5_hJ1+gD0=sA2%yU6(iO4)eK8";
-/** The fixture page's selectable line, whose length is the selection a drag makes. */
+
+const chord = async (hui: Hui, key: string) => {
+  await hui.keyboard.down("Control");
+  await hui.keyboard.down(key);
+  await hui.keyboard.up(key);
+  await hui.keyboard.up("Control");
+};
 
 const taken = async (screen: Screen, hui: Hui) => {
   const session = await hui.createSession({ title: "Take over the browser" });
@@ -29,7 +35,7 @@ const taken = async (screen: Screen, hui: Hui) => {
   return { pane, frame, box };
 };
 
-test("the operator takes the agent's browser and drives the page as a device screen", { tags: ["AGENT-075"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the operator takes the agent's browser and drives the page as a device screen", { tags: ["AGENT-076"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { pane, frame, box } = await taken(screen, hui);
   const picker = pane.getByRole("button", /^Browser tab: /u);
 
@@ -53,24 +59,29 @@ test("the operator takes the agent's browser and drives the page as a device scr
 test("the operator copies page text and pastes it with the keyboard", { tags: ["AGENT-077"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { pane, frame, box } = await taken(screen, hui);
   const picker = pane.getByRole("button", /^Browser tab: /u);
-  const chord = async (key: string) => {
-    await hui.keyboard.down("Control");
-    await hui.keyboard.down(key);
-    await hui.keyboard.up(key);
-    await hui.keyboard.up("Control");
-  };
-
   // Ctrl+A selects the field's text, Ctrl+C copies it, and Ctrl+V inserts it into the next field.
   await frame.click({ position: { x: box.width / 2, y: box.height * 0.3 } });
   await hui.type("Ada");
-  await chord("a");
+  await chord(hui, "a");
   await expect(picker).toHaveAttribute("aria-label", /\(selected 3\)$/u);
-  await chord("c");
+  await chord(hui, "c");
   await frame.click({ position: { x: box.width / 2, y: box.height * 0.75 } });
-  await chord("v");
+  await chord(hui, "v");
   await expect(picker).toHaveAttribute("aria-label", /\(pasted 3\)$/u);
 
   // An external clipboard value takes the same paste path.
   await hui.paste(PASSWORD);
   await expect(picker).toHaveAttribute("aria-label", /\(pasted 57\)$/u);
+});
+
+test("the copy control writes the page selection when the clipboard API is refused", { tags: ["AGENT-077"], platforms: ["web"] }, async ({ screen, hui }) => {
+  // The page refuses the async clipboard and records the legacy copy path instead.
+  await hui.clipboard({ refuse: true, legacyCopy: true });
+  const { frame, box } = await taken(screen, hui);
+
+  await frame.click({ position: { x: box.width / 2, y: box.height * 0.3 } });
+  await hui.type("Ada");
+  await chord(hui, "a");
+  await chord(hui, "c");
+  await expect.poll(() => hui.copied(), { timeout: 15_000 }).toBe("Ada");
 });

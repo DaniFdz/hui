@@ -584,7 +584,7 @@ const cases: UseCase[] = [
     phone: "required",
   },
   {
-    id: "AGENT-075",
+    id: "AGENT-076",
     title: "Take control of the agent's browser",
     behaviour: "In the Browser view, Take control stops the conversation's running turn once, keeps the watched tab open and gives the operator its pointer, wheel and keys without a reload. The view says You have control. The agent is stopped. with I'm done — continue, and the activity line reads You have control; the agent is stopped. A click focuses a page field and typing reaches it; a drag selects page text, a double click a word, a triple click the paragraph, and a long press opens the page's own context menu. I'm done — continue releases the tab without resuming the agent; the tab stays and the next chat message continues. Take control is absent when the browser is stopped, paused or the view is disconnected.",
     spec: BROWSER,
