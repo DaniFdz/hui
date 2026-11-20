@@ -218,7 +218,7 @@ test("user messages preserve explicit line breaks", async () => {
   assert.doesNotMatch(html, /chat-text--plain/u, "the operator's own words take the Markdown path");
   // A routine's line break still comes from its plain, pre-wrapped box.
   const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Digest] first line\nsecond line" }] });
-  assert.match(routine, /class="chat-text chat-text--plain">first line\s+second line/u);
+  assert.match(routine, /class="chat-text chat-text--plain"[^>]*>first line\s+second line/u);
   assert.doesNotMatch(routine, /<br>/u);
 });
 
@@ -241,6 +241,28 @@ test("the operator's own prompt renders the Markdown the composer previewed", as
   assert.match(routine, /class="chat-text chat-text--plain"/u);
   assert.match(routine, /\*\*Summarize\*\*/u);
   assert.doesNotMatch(routine, /<strong>Summarize<\/strong>/u);
+});
+
+test("a message's text box carries the test id a clip can be measured by, and keeps its classes", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const userText = source.slice(source.indexOf("function renderUserText("), source.indexOf("function renderMetrics("));
+
+  // The browser test that measures a clipped prompt takes the `.chat-text` box, which is the element the fold clips;
+  // WebKit otherwise resolves the Markdown's full-height `<p>` inside it and the box it measures never fits.
+  assert.match(userText, /class="chat-text chat-text--plain chat-text--rich-link" data-testid="message-text"><hui-slack-link/u, "a Slack message keeps its card inside the measured box");
+  assert.match(userText, /class="chat-text" data-testid="message-text">\$\{renderAgentMarkdown\(content, embeds\)\}<\/div>/u);
+  assert.match(userText, /class="chat-text chat-text--plain" data-testid="message-text">\$\{content\}<\/div>/u);
+  assert.match(userText, /class="chat-text \$\{markdown \? "" : "chat-text--plain"\} chat-text--collapsible \$\{expanded \? "" : "chat-text--collapsed"\}" data-testid="message-text"/u, "the collapsible prompt keeps the box the fold clips");
+  assert.match(source, /html`<div class="chat-text" data-testid="message-text">\$\{renderAgentMarkdown\(item\.text, embeds\)\}<\/div>`/u, "an answer's text box too");
+
+  // Rendered: the id sits on the container of each branch, not on a paragraph inside one.
+  const short = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "Ship it" }] });
+  assert.match(short, /<div class="chat-text" data-testid="message-text"><p>Ship it<\/p>/u);
+  const long = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "E2E_CALL:".padEnd(900, "a") }] });
+  assert.match(long, /<div class="chat-text\s+chat-text--collapsible chat-text--collapsed" data-testid="message-text">/u);
+  assert.match(long, /class="chat-prompt-toggle"[^>]*aria-expanded=false/u, "the toggle stays beside the clipped box");
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Digest] first line" }] });
+  assert.match(routine, /<div class="chat-text chat-text--plain" data-testid="message-text">first line<\/div>/u);
 });
 
 test("both composers paint their draft's Markdown under the textarea", () => {
@@ -1075,7 +1097,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   const bot = row("g");
   assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
   assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
-  assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
+  assert.match(bot, /<div class="chat-text"[^>]*>.*PR #7 review needs your decision\./u);
   assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
   assert.match(bot, /aria-label=Copy message/u);
   assert.doesNotMatch(bot, /\[from @grace|>You<|chat-group-rewind/u);
@@ -1089,7 +1111,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     transcript: [{ kind: "message", id: "t", role: "user", text: "[Subagent Task]\nCheck the alert history." }],
   });
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
-  assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
+  assert.match(row("r"), /<div class="chat-text chat-text--plain"[^>]*>Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
   assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
   assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);

@@ -1032,16 +1032,16 @@ function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, te
     : nothing;
   const content = invoked ? expandedSkillText(invoked) : text;
   const slack = embeds ? parseSlackLink(content.trim()) : undefined;
-  if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
+  if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link" data-testid="message-text"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${content}</div>`}`;
+  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text" data-testid="message-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain" data-testid="message-text">${content}</div>`}`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
+  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}" data-testid="message-text">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -1091,7 +1091,7 @@ function renderMessage(props: HomeProps, item: ChatMessage, embeds: boolean, att
         </div>`
       : nothing}
     ${attributed ? renderUserText(props, item, embeds, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
-      : item.role === "user" ? renderUserText(props, item, embeds, item.text, true) : html`<div class="chat-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
+      : item.role === "user" ? renderUserText(props, item, embeds, item.text, true) : html`<div class="chat-text" data-testid="message-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
