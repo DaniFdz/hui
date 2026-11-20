@@ -14,8 +14,9 @@ const { liveSessions } = await import("./live-sessions.ts");
 
 afterEach(() => vi.restoreAllMocks());
 
+const creator = { id: "bot-1", handle: "ada", name: "Ada" };
 const views = createSessionViews({
-  bots: () => ({ identity: () => undefined }),
+  bots: () => ({ identity: (botId: string) => botId === creator.id ? creator : undefined }),
   botRegistry: { list: async () => [] },
   pullRequestStatuses: () => ({ view: (ref) => ref }),
   jiraIssues: () => [],
@@ -23,8 +24,8 @@ const views = createSessionViews({
 });
 
 const now = new Date(0).toISOString();
-function record(id: string): SessionRecord {
-  return { id, title: id, group: "", cwd: tmpdir(), tool: "pi", createdAt: now, updatedAt: now };
+function record(id: string, patch: Partial<SessionRecord> = {}): SessionRecord {
+  return { id, title: id, group: "", cwd: tmpdir(), tool: "pi", createdAt: now, updatedAt: now, ...patch };
 }
 
 /** HUI's own pending questions, handed to the one session the tests ask about. */
@@ -137,4 +138,21 @@ test("a failed session view carries its failure, and a healthy one carries neith
   assert.equal("question" in healthy, false);
   assert.equal("failure" in healthy, false);
   assert.equal("runFailed" in healthy, false);
+});
+
+test("a session view names the bot that started it, and only while that bot exists", () => {
+  const made = views.toView(record("made", { lead: true, createdByBot: creator.id }), "idle");
+  assert.deepEqual(made.createdBy, creator);
+  assert.equal("bot" in made, false, "a session a bot started is not that bot's forever chat");
+
+  const gone = views.toView(record("gone", { createdByBot: "deleted-bot" }), "idle");
+  assert.equal("createdBy" in gone, false, "a creator bot outside the registry leaves an ordinary session");
+
+  // The record holds both fields, as a bot may create its own forever chat: the bot field is what omits the creator,
+  // so the same creator id on a record without one still reports it.
+  const own = views.toView(record("own-chat", { bot: creator.id, createdByBot: creator.id }), "idle");
+  assert.deepEqual(own.bot, creator);
+  assert.equal("createdBy" in own, false, "a bot's own chat carries its bot, never a creator");
+  const startedBySameBot = views.toView(record("started", { createdByBot: creator.id }), "idle");
+  assert.deepEqual(startedBySameBot.createdBy, creator, "the same creator id without a bot field is still reported");
 });

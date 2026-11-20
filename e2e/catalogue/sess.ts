@@ -780,6 +780,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "SESS-081",
+    title: "See which bot started a session",
+    behaviour: "A session a Chief of Staff started with create_session shows that bot's face in its sidebar row and a \"Started by <name>\" chip in its chat header. The face is a link of its own, named \"Open <name>'s chat\", drawn beside the title and leading to that bot's chat: clicking it opens that chat, while clicking the row's title still opens the session. The chip is drawn in the session's header, named \"Started by <name>\" and leading to the same chat, and clicking it opens that chat too.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#shapes", "docs/api.md#bots"],
+    surfaces: ["nav:session", "nav:bot"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

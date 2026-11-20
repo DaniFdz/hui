@@ -38,6 +38,81 @@ test("the open chat draws the sleep notice in flow between its header and its tr
   assert.doesNotMatch(await renderWorkerSession("idle"), /Sleep prevention/u, "a chat handed no notice draws none");
 });
 
+const ADA = { id: "bot-ada", handle: "ada", name: "Ada", avatar: { emoji: "🦊" } };
+const SESSION_STARTED_BY_ADA = {
+  id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle",
+  worker: { id: "w", name: "devbox" }, createdBy: { id: "bot-ada", handle: "ada", name: "Ada" },
+};
+
+/** The open chat's header alone: from its own test id up to the transcript. */
+const headerOf = (html: string) => html.slice(html.indexOf('data-testid="chat-header"'), html.indexOf('data-testid="transcript"'));
+
+test("an open chat names the bot that started it, on the title's own line", async () => {
+  const html = await renderWorkerSession("idle", { session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: () => {} });
+  const header = headerOf(html);
+  assert.match(header, /class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u, "the chip leads to the bot's chat");
+  assert.match(header, /Started by Ada/u);
+  assert.match(header, /bot-avatar--emoji/u, "the chip carries the bot's own small face");
+  // The label is the sentence's two halves, each its own element, so a header short of room drops the prefix and keeps
+  // the name. The link carries the whole sentence itself, so the name a screen reader hears never shortens, and the
+  // face stays decorative inside it.
+  assert.match(header, /<a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada aria-label=Started by Ada /u,
+    "the link is named for the bot that started the chat, whatever the chip draws");
+  assert.match(header, /<span class="chat-pane__creator-face" aria-hidden="true"><span class="bot-avatar/u,
+    "the face stays decorative inside the named link");
+  assert.match(header, /<span class="chat-pane__creator-label"><span class="chat-pane__creator-prefix">Started by <\/span><span class="chat-pane__creator-name">Ada<\/span><\/span>/u,
+    "the prefix and the name are the label's own two spans, in that order");
+  assert.doesNotMatch(header, /chat-pane__creator-label">Started by/u, "the label holds no bare sentence the sheet cannot take apart");
+  assert.match(header, /data-testid="session-title"/u, "the title keeps its place");
+  assert.ok(header.indexOf('data-testid="session-title"') < header.indexOf('data-testid="chat-pane-creator"'), "the title comes first on the line");
+  // The line is only a flex row: the title and the chip are its two siblings, the title first and the chip after it, so
+  // the chip follows the title instead of landing at the header's edge. The title keeps its identity and, in the sheet,
+  // the rule that ellipsizes it; the line declares no overflow of its own.
+  const titleLine = header.match(/<div class="chat-pane__title-line">(.*?)<\/div>/u)?.[1] ?? "";
+  assert.match(titleLine, /^<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=Build>Build<\/h2><a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u,
+    "the title and the chip are siblings in the title line, the chip after the title");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.transcript__head \.transcript__title,\s*\.transcript__head \.transcript__meta \{ display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/u,
+    "the title still ellipsizes by the header's own rule");
+  const titleInLine = styles.match(/\.chat-pane__title-line > \.transcript__title \{([^}]*)\}/u)?.[1] ?? "";
+  assert.match(titleInLine, /min-width: 0;/u, "the title may shrink on the line, so its own ellipsis still applies");
+  assert.doesNotMatch(titleInLine, /overflow|white-space/u, "the line lays out only; it never re-declares the title's ellipsis");
+  // The chip's own rule keeps it on one line; a narrow header drops the prefix and so keeps the name, and the drawer
+  // layout's chooser, which holds the line at any width, does the same.
+  assert.match(styles, /\.chat-pane__creator \{[^}]*white-space: nowrap;/u, "the chip stays on one line");
+  assert.match(styles, /\.transcript__head \.chat-pane__crumbs--picker \.chat-pane__creator-prefix \{ display: none; \}/u,
+    "the chip drops its prefix where the chooser holds the line, so the bot's name keeps the room");
+  assert.match(styles, /@container session-header \(max-width: 600px\) \{[^@]*?\.chat-pane__creator-prefix \{ display: none; \}/u,
+    "a narrow header drops the prefix and keeps the name");
+  assert.doesNotMatch(styles, /\.chat-pane__creator-label \{[^}]*display: none/u, "the label itself is never dropped");
+
+  // Nothing at all without a creator, and nothing on a bot's own chat.
+  assert.doesNotMatch(headerOf(await renderWorkerSession("idle", { bots: [ADA], onOpenBot: () => {} })), /chat-pane-creator/u);
+  const ownChat = await renderWorkerSession("idle", {
+    session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: () => {},
+    bot: { bot: ADA, panelOpen: false, panelId: "panel", onTogglePanel: () => {} },
+  });
+  assert.match(headerOf(ownChat), /bot-chat-identity/u, "a bot's chat keeps its own header");
+  assert.doesNotMatch(ownChat, /chat-pane-creator/u, "a bot's own chat never says a bot started it");
+});
+
+test("a creator chip opens that bot's chat on a plain click, and leaves other clicks to the browser", async () => {
+  const { renderHome } = await import("./home.ts");
+  const opened: string[] = [];
+  const view = renderHome(await workerSession("idle", {
+    session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: (botId: string) => opened.push(botId),
+  }) as unknown as import("./home.ts").HomeProps);
+  const click = clickHandler(view, 'class="chat-pane__creator"');
+  assert.equal(typeof click, "function", "the chip binds its own click handler");
+  let prevented = false;
+  click!({ button: 0, preventDefault: () => { prevented = true; } } as unknown as MouseEvent);
+  assert.equal(prevented, true, "the chip does not let the browser leave the app");
+  assert.deepEqual(opened, ["bot-ada"], "the chip opens the bot that started the session");
+  // A middle click keeps the browser's own behaviour, so its cancellation is the failure.
+  click!({ button: 1, preventDefault: () => { throw new Error("a middle click is the browser's"); } } as unknown as MouseEvent);
+  assert.deepEqual(opened, ["bot-ada"]);
+});
+
 test("auto-follow and scroll-to-latest target the real reference transcript scroller", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const { TRANSCRIPT_SCROLLER_SELECTOR } = await import("./home.ts");
@@ -429,7 +504,7 @@ test("Task progress lives in the Run status popover and never draws in the trans
   // still carries the whole state. The morph is what makes that one control visible as both.
   assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
-  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
+  assert.doesNotMatch(html, /class="chat-run-status__count"/u, "plan completion stays in the Plan section");
   // One box: the head's chevron — the pill's, turned up — is the close, and the head's copy is exposed inside the dialog,
   // because the pill itself is not painted while the panel is out.
   assert.match(html, /class="chat-run-status__head"[\s\S]*?chat-run-status__collapse" aria-label="Close run status"/u);
@@ -455,6 +530,91 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.match(html, /Wiring the card\./u);
   assert.doesNotMatch(html, /session-progress-card/u, "the old composer card is gone");
   assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
+});
+
+test("side work uses a keyed dot-only badge and the plan is always open", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "idle", progress: {
+    markdown: "Plan", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const subagents = [{ taskId: "a", sessionId: "child", parentSessionId: "s", title: "Helper", status: "running", startedAt: new Date().toISOString() }];
+  const html = await renderWorkerSession("idle", { session, subagents, mobileNavLayout: true,
+    bot: { bot: { id: "b", name: "Ada" }, panelOpen: false, onTogglePanel: () => {}, onAction: () => {} },
+    call: { inCall: false, onCall: () => {} }, onClosePane: () => {},
+  });
+  assert.equal(html.match(/class="chat-run-status__activity-dot" aria-hidden="true"/gu)?.length, 2);
+  assert.equal(html.match(/class="chat-run-status__count"> · 1 helper</gu)?.length, 2);
+  assert.doesNotMatch(html, /side task active|1 active/u);
+  assert.match(html, /<section class="chat-run-status__section chat-run-status__plan" data-testid="task-progress"/u);
+  assert.doesNotMatch(html, /<details class="chat-run-status__plan"/u);
+  const done = await renderWorkerSession("idle", { session: { ...session, progress: { markdown: "Done", steps: [{ step: "Verify", status: "completed" }] } } });
+  assert.match(done, /data-testid="task-progress-steps"/u, "completed steps stay visible");
+  assert.doesNotMatch(done, /<details class="chat-run-status__plan"/u);
+  assert.match(await renderWorkerSession("idle", { subagents }), /class="chat-run-status__activity-dot"/u, "live work needs no plan");
+  assert.doesNotMatch(await renderWorkerSession("idle", { session, subagents: [] }), /class="chat-run-status__activity-dot"/u);
+  const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
+  assert.match(view, /keyed\(activity\.signature, html/u);
+  assert.match(view, /skidding = actionsGroup \? actionsGroup\.getBoundingClientRect\(\)\.right - trigger\.getBoundingClientRect\(\)\.right : 0/u);
+  const css = readStyles("../styles/chat-run-status.css");
+  assert.match(css, /\.chat-run-status__activity-dot \{[^}]*display: inline-flex;[^}]*flex: none;/su);
+  assert.match(css, /\.chat-run-status__activity-ping \{[^}]*position: absolute;/su);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chat-run-status__activity-ping \{ animation: none;/su);
+  const actions = html.slice(html.indexOf('class="chat-pane__actions chat-pane__header-actions"'));
+  const controls = ['data-testid="run-status-trigger"', 'aria-label=Call Ada', 'bot-panel-toggle', 'bot-header-menu__trigger', 'aria-label="Continue without a prompt"', 'aria-label="Close session pane"', 'aria-label="Open navigation"'];
+  let previous = -1;
+  for (const control of controls) {
+    const index = actions.indexOf(control);
+    assert.ok(index > previous, "header control follows its predecessor: " + control);
+    previous = index;
+  }
+  const leading = html.slice(html.indexOf('class="chat-pane__header-leading"'), html.indexOf('class="chat-pane__header-trailing"'));
+  assert.doesNotMatch(leading, /Open navigation/u);
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
+});
+
+test("Run status counts live child sessions while closed and draws capped session rows only while open", async () => {
+  const { childSessionsByParent } = await import("../lib/session/sidebar-sessions.ts");
+  const childSessions = childSessionsByParent([{ label: "", sessions: Array.from({ length: 10 }, (_, i) => ({
+    id: `child-${i}`, title: `Operator child ${i}`, parentId: "s", status: i === 9 ? "running" : "idle",
+    tool: "durable", cwd: "/repo", displayCwd: "", group: "", stage: "investigation", stageOrigin: "default", createdAt: "", updatedAt: "",
+  })) }]).get("s")!;
+  const subagents = [{ taskId: "a", sessionId: "helper", parentSessionId: "s", title: "Helper title", status: "running", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+  const watchers = { expanded: new Set(), pending: new Set(), errors: {}, onExpanded: () => {}, onAction: () => {}, watchers: [{ id: "w", purpose: "Watcher purpose", target: "", outcome: "", command: "true", pid: null, logPath: "", state: "running", startedAt: new Date().toISOString(), lastLine: "" }] };
+  const closed = await renderWorkerSession("idle", { childSessions, subagents, watchers });
+  assert.match(closed, /class="chat-run-status__count"> · 1 helper · 1 session · 1 watcher</u);
+  assert.match(closed, /1 session running/u);
+  assert.doesNotMatch(closed, /Operator child|aria-label="Sessions"/u, "closed panels do not construct child rows");
+  const open = await renderWorkerSession("idle", { childSessions, subagents, watchers, runStatusPanelOpen: true });
+  const helper = open.indexOf('>Helpers<');
+  const sessions = open.indexOf('aria-label="Sessions"');
+  const watcher = open.indexOf('>Watchers<');
+  assert.ok(helper > 0 && sessions > helper && watcher > sessions, "Sessions sits between Helpers and Watchers");
+  assert.equal(open.match(/aria-label=Open session Operator child/gu)?.length, 8);
+  assert.ok(open.indexOf('>Operator child 9<') < open.indexOf('>Operator child 0<'), "running child sorts first");
+  assert.match(open, />Running</u);
+  assert.match(open, />Idle</u);
+  assert.match(open, /class="chat-run-status__note">\+2 more</u);
+  assert.doesNotMatch(open, />Operator child [78]</u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { runStatusPanelOpen: true, subagents }), /aria-label="Sessions"/u);
+});
+
+test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "running", progress: {
+    markdown: "Keep this card", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const normal = await renderWorkerSession("running", { session, streaming: true });
+  assert.match(normal, /data-hui-tooltip="Ask HUI to recompute the plan from what is actually done and running"/u);
+  assert.match(normal, /\?disabled=false[^>]*>Recompute</u);
+  const pending = await renderWorkerSession("running", { session, progressRefresh: { pending: true, error: undefined } });
+  assert.match(pending, /\?disabled=true[^>]*>Recomputing…</u);
+  const offline = await renderWorkerSession("idle", { session, connection: "reconnecting" });
+  assert.match(offline, /\?disabled=true[^>]*>Recompute</u);
+  const waiting = await renderWorkerSession("waiting", { session: { ...session, status: "waiting" } });
+  assert.match(waiting, /\?disabled=true[^>]*>Recompute</u, "the button agrees with the controller's status guard");
+  const failed = await renderWorkerSession("idle", { session, progressRefresh: { pending: false, error: "utility unavailable" } });
+  assert.match(failed, /role="alert">Could not recompute the plan: utility unavailable</u);
+  assert.match(failed, /Keep this card/u);
+  assert.match(failed, /data-testid="task-progress-steps"/u);
 });
 
 test("only the operator's press opens the Run status popover", () => {
@@ -780,21 +940,39 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-/** An open worker session; handlers are inert and unlisted props absent. */
-async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
-  const { renderHome } = await import("./home.ts");
+/** An open worker session's props; handlers are inert and unlisted props absent. */
+async function workerSession(status: string, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const props: Record<string, unknown> = {
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    childSessions: [], runStatusPanelOpen: false,
     goalPanel: { editing: false, error: "" },
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
+    progressRefresh: { pending: false, error: undefined }, onRecomputeProgress: () => {},
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
   };
-  const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
-  return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+  return new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
+}
+
+/** An open worker session's markup; handlers are inert and unlisted props absent. */
+async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
+  const { renderHome } = await import("./home.ts");
+  return markup(renderHome(await workerSession(status, overrides) as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+}
+
+/** The handler bound to `@click` on the innermost rendered template whose own markup holds `marker`. */
+function clickHandler(value: unknown, marker: string): ((event: MouseEvent) => void) | undefined {
+  if (Array.isArray(value)) return value.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (!value || typeof value !== "object" || !("strings" in value) || !("values" in value)) return undefined;
+  const { strings, values } = value as { strings: readonly string[]; values: unknown[] };
+  const child = values.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (child) return child;
+  if (!strings.join("").includes(marker)) return undefined;
+  const at = strings.findIndex((part) => part.endsWith("@click="));
+  return at >= 0 ? values[at] as (event: MouseEvent) => void : undefined;
 }
 
 /** The handler bound to `@submit` in the first rendered template whose own markup holds `marker`. */
@@ -1126,7 +1304,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },

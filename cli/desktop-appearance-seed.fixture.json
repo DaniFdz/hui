@@ -63,7 +63,7 @@
     "case": "a chat preference is no part of the look and changes nothing",
     "input": {
       "theme": "rose",
-      "chat": { "messageWidth": "wide", "collapseTaskProgress": true, "sendShortcut": "modifierEnter", "githubEmbeds": false, "datadogEmbeds": false }
+      "chat": { "messageWidth": "wide", "sendShortcut": "modifierEnter", "githubEmbeds": false, "datadogEmbeds": false }
     },
     "expected": {
       "theme": "rose",

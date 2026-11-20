@@ -1314,6 +1314,8 @@ type SessionView = {
   parentId?: string;
   subagent?: Omit<SubagentRecord, "task" | "summary">; // the task and report stay out of lists: see SubagentTaskView
   bot?: { id: string; handle: string; name: string }; // the bot whose forever chat this is; see Bots
+  createdBy?: { id: string; handle: string; name: string }; // the bot that started this session with
+                        // create_session; absent on a bot's own chat and on sessions created before it was recorded
   pullRequests?: SessionPullRequest[]; // oldest first, at most 20
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
   stage: SessionStage;                 // effective Kanban column
@@ -1535,6 +1537,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `model`, `thinking`, `fast`, `autonomous` | HUI | Session preference passed back to the runtime on reopen; `fast` and `autonomous` are optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
+| `createdByBot` | HUI | Optional id of the bot (bots.json) that started this session with `create_session`, shown as `createdBy` in views. Written only there, additive with no registry version bump; a session created before the field existed, and a bot's own chat, have none, and one whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `progress` | HUI | Optional Task progress card `{ markdown, steps }` that HUI's utility model last wrote. Additive, so existing registries need no migration; absent means no card yet. See [Task progress](#task-progress). |
@@ -4991,7 +4994,7 @@ so every device reads the same maps).
 
 Appearance is not there. A theme, color mode, accent, interface, chat-prose or
 terminal typeface, text size and the chat preferences (`messageWidth`,
-`collapseTaskProgress`, `sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
+`sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
 the client that shows them, and are kept in that client's own storage under the
 versioned `hui.appearance.v1` key: one gateway serves many screens and people, so
 two clients must be able to disagree, and a phone's WebView keeps its own copy per
@@ -6077,6 +6080,22 @@ One refresh runs at a time, and a session with a refresh still waiting keeps
 only its newest transcript, so a slow model call delays cards without piling
 work up. A changed card is published to open browsers as
 `SessionStatusUpdate.progress`; an unchanged one writes nothing.
+
+### `POST /__hui/sessions/:id/progress`
+
+Recompute the Task progress card through HUI's own utility writer, from the
+session's current transcript; never send an agent prompt or start a turn.
+The central `x-hui` guard applies. Available while idle or running.
+Returns `{ ok: true }` once the refresh has answered and any generated card
+has been stored/published. A refresh already waiting or running for this session
+returns 409 without queueing another. A failed refresh returns 502 with the
+error and leaves the previous card untouched. The Plan section stays open,
+with its current step and done-of-total; Recompute reads Recomputing… and is
+disabled while pending (and disabled without a live connection). A failure
+shows a small alert in Plan and allows retry without discarding the old card.
+The closed pill and panel head show unit-bearing live goal/helper/session/watcher detail
+(the browser counts running, unarchived ordinary children from the existing session list),
+not plan completion; the Plan section alone carries done-of-total.
 
 ### Session-list progress
 

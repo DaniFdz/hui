@@ -26,7 +26,8 @@ import { primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { sessionAccessibleName, sessionGlyph } from "../lib/session/labels.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
-import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
+import { renderBotAvatar, renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 import type { GatewayView } from "../lib/gateways/gateway-list.ts";
@@ -174,6 +175,8 @@ export type ShellProps = {
   onOpenKanban: () => void;
   onOpenPage: (page: HuiPage) => void;
   onSelectSession: (session: SessionView) => void;
+  /** Opens a bot's chat: a row's face and a chat header's "Started by" chip lead to the bot that started the session. */
+  onOpenBot?: (botId: string) => void;
   onSplitSession: (session: SessionView) => void;
   onToggleGroup: (label: string) => void;
   onOpenSettings: () => void;
@@ -388,7 +391,15 @@ function renderJiraBadge(session: SessionView) {
 
 const menusShown = new Set<string>();
 
-function sessionRow(session: SessionView, selected: boolean, props: ShellProps, depth = 0, hasChildren = false, treeCollapsed = false) {
+/** The roster by id, built once per shell render: a row asks for the bot that started its session without searching the
+ * list, and a bot the roster no longer holds leaves an ordinary row. */
+function botIndex(bots: readonly BotView[]): ReadonlyMap<string, BotView> {
+  const index = new Map<string, BotView>();
+  for (const bot of bots) index.set(bot.id, bot);
+  return index;
+}
+
+function sessionRow(session: SessionView, selected: boolean, props: ShellProps, botsById: ReadonlyMap<string, BotView>, depth = 0, hasChildren = false, treeCollapsed = false) {
   const open = props.menuFor === session.id;
   if (open) menusShown.add(session.id);
   const splitOpen = props.openSessionIds?.has(session.id) ?? props.splitSessionId === session.id;
@@ -408,6 +419,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   const stage = isSessionStage(session.stage) ? session.stage : undefined;
   const showJiraLead = Boolean(session.jiraIssues?.length) && !attention && !busy
     && !(depth > 0 && session.subagent);
+  // The bot that started this session, while the roster still has it and the shell can open its chat. It sits between the
+  // title and the pull request marks, as its own link: the row keeps opening the session.
+  const creatorBot = session.createdBy ? botsById.get(session.createdBy.id) : undefined;
+  const openCreator = creatorBot ? props.onOpenBot : undefined;
   return html`
     <div
       class="session-row-wrap session-row-host sidebar-recent-session sidebar-recent-session--single-line ${depth > 0 ? "sidebar-recent-session--child" : ""} ${selected ? "sidebar-recent-session--active" : ""} ${splitOpen ? "sidebar-recent-session--split" : ""} ${session.pinned ? "session-row-host--pinned" : ""} ${session.unread ? "sidebar-recent-session--unread" : ""} ${stage ? "sidebar-recent-session--staged" : ""} ${session.status === "running" ? "session-row-host--running" : ""} ${hasDraft ? "sidebar-recent-session--has-draft" : ""} ${session.status === "error" ? "sidebar-recent-session--attention-danger" : ""} ${dragging ? "sidebar-recent-session--dragging" : ""} ${props.sessionMovePendingId === session.id ? "sidebar-recent-session--moving" : ""}"
@@ -469,6 +484,19 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           ${session.creating?.percent !== undefined ? html`<span class="sidebar-recent-session__duration">${session.creating.percent}%</span>` : nothing}
         </span>
       </a>
+      ${creatorBot && openCreator ? html`<a
+        href=${navigationPath({ kind: "bot", id: creatorBot.id })}
+        class="session-row-creator"
+        draggable="false"
+        data-testid="session-row-creator"
+        aria-label=${`Open ${creatorBot.name}'s chat`}
+        @click=${(event: MouseEvent) => {
+          if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          closeContainingDrawer(event, false, true);
+          openCreator(creatorBot.id);
+        }}
+      >${renderBotAvatar(creatorBot, "sm")}</a>` : nothing}
       ${renderPullRequestBadges(session)}
       <span class="sidebar-recent-session__aside session-row-aside">
       <span class="session-row-actions">
@@ -558,7 +586,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   `;
 }
 
-function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: boolean): TemplateResult {
+function groupSection(group: SidebarSessionGroup, props: ShellProps, botsById: ReadonlyMap<string, BotView>, filtering: boolean): TemplateResult {
   const fold = filtering ? undefined : { selectedId: props.selectedSessionId, toggled: props.toggledSessionTrees };
   // Each root and its visible descendants form one tree; the selected session's
   // open tree shares a panel so the parent and its subagents read as one unit.
@@ -570,7 +598,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
     }
     return trees.map((tree) => {
       const rendered = tree.map(({ session, depth, hasChildren, collapsed }) =>
-        sessionRow(session, session.id === props.selectedSessionId, props, depth, hasChildren, collapsed));
+        sessionRow(session, session.id === props.selectedSessionId, props, botsById, depth, hasChildren, collapsed));
       return tree.length > 1 && tree.some(({ session }) => session.id === props.selectedSessionId)
         ? html`<div class="session-tree session-tree--active" data-session-stage=${isSessionStage(tree[0]!.session.stage) ? tree[0]!.session.stage : nothing}>${rendered}</div>`
         : rendered;
@@ -856,6 +884,8 @@ export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
+  // One index for the whole list, so a row never searches the roster.
+  const botsById = botIndex(props.bots.roster.bots);
   // The Agents and Bots lists keep the same destinations: the tab only swaps
   // the session list for the bot roster and the search's name.
   const botsTab = props.bots.tab === "bots" ? props.bots : undefined;
@@ -1024,7 +1054,7 @@ export function renderSidebar(props: ShellProps) {
                       ${filtering ? nothing : renderImportNote(props)}
                     </div>
                   `
-                : html`${visibleGroups.map((group) => groupSection(group, props, filtering))}`
+                : html`${visibleGroups.map((group) => groupSection(group, props, botsById, filtering))}`
         }
           </div>`}
           </div>

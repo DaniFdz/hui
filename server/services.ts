@@ -654,7 +654,8 @@ liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 /** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
 liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));
 /** The Task progress card is HUI's: the utility model writes it after each settled turn and every five minutes of a
- * running one. Nothing waits on it, and a failed call leaves the previous card in place. */
+ * running one. Automatic refreshes never hold up a turn; a manual recompute awaits its saved card. A failed call
+ * leaves the previous card in place. */
 const sessionProgress = new SessionProgress({
   settings: readHuiSettings,
   session: async (id) => {
@@ -794,7 +795,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   } as Record<string, unknown>);
   // The session is the PR lead, and the caller watches it for the heartbeat.
   await updateRegistry((records) => records.map((current) => {
-    if (current.id === record.id) return { ...current, lead: true as const };
+    if (current.id === record.id) return { ...current, lead: true as const, createdByBot: owner.id };
     if (current.id === callerSessionId && params["watch"] !== false) {
       return { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) };
     }
@@ -1168,6 +1169,11 @@ export const sessionActionRoutes = createSessionActionRoutes({
   subagents,
   secretRequests,
   questionnaires,
+  refreshProgress: (record) => sessionProgress.refresh(record.id, async () => {
+    if (!liveSessions.ensure(record)) throw new Error(`unknown session: ${record.id}`);
+    await liveSessions.booted(record.id);
+    return liveSessions.transcript(record.id);
+  }),
 });
 
 export const automationClockBinding = createAutomationClockBinding();

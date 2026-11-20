@@ -25,7 +25,7 @@ test("this device's appearance is not the gateway's to store", () => {
   const settings = normalizeSettings({
     theme: "catppuccin", themeMode: "dark", accent: "#a78bfa", fontUi: "geist", fontChat: "lora",
     fontTerminal: "MesloLGS NF", textScale: 125,
-    chat: { messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false },
+    chat: { messageWidth: "wide", sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false },
   });
   assert.deepEqual(settings, DEFAULT_SETTINGS);
   for (const key of ["theme", "themeMode", "accent", "fontUi", "fontChat", "fontTerminal", "textScale", "typeface"]) {

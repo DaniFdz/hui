@@ -11511,6 +11511,25 @@
             }
           }
         },
+        "createdBy": {
+          "type": "object",
+          "required": [
+            "id",
+            "handle",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
         "stage": {
           "$ref": "#/$defs/SessionStage"
         },
@@ -17166,6 +17185,13 @@
       "path": "/__hui/sessions/:id/open",
       "response": {
         "$ref": "#/$defs/SessionOpenResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/progress",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
       }
     },
     {

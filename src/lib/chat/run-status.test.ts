@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
+import type { ProgressCard, SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
 import { goalSectionStatus, goalStatusLabel, runStatus, runStatusHeadCopyTiming, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted, type RunStatusPanelState } from "./run-status.ts";
 
@@ -37,10 +37,22 @@ test("a conversation with nothing to report draws no trigger", () => {
   const model = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: false, waiting: false, now });
   assert.equal(model.visible, false);
   assert.equal(model.tone, "idle");
-  assert.equal(model.count, undefined);
+  assert.equal(model.detail, undefined);
 });
 
-test("a goal, plan and running helpers summarize as Working with the plan's count", () => {
+test("a bare streaming turn or pending question still has Run status to open", () => {
+  const streaming = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: true, waiting: false, now });
+  assert.equal(streaming.visible, true);
+  assert.equal(streaming.tone, "running");
+  assert.equal(streaming.label, "Working");
+  assert.equal(streaming.detail, undefined, "nothing live but the turn itself");
+  const waiting = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: false, waiting: true, now });
+  assert.equal(waiting.visible, true);
+  assert.equal(waiting.tone, "waiting");
+  assert.equal(waiting.label, "Waiting for your answer");
+});
+
+test("a goal, plan and running helpers summarize live work without a plan count", () => {
   const model = runStatus({
     goal: goal(),
     progress,
@@ -52,7 +64,7 @@ test("a goal, plan and running helpers summarize as Working with the plan's coun
   assert.equal(model.visible, true);
   assert.equal(model.tone, "running");
   assert.equal(model.label, "Working");
-  assert.equal(model.count, "1/3");
+  assert.equal(model.detail, "goal · 3 helpers");
   assert.equal(model.attention, false);
   assert.equal(model.plan?.done, 1);
   assert.equal(model.plan?.total, 3);
@@ -63,6 +75,67 @@ test("a goal, plan and running helpers summarize as Working with the plan's coun
     { total: 3, running: 2, queued: 1, finished: 0 },
   );
   assert.match(model.summary, /^Run status: Working, goal pursuing, 1 of 3 steps done, 3 of 3 helpers active$/u);
+});
+
+test("side work counts live helpers and watchers with a stable sorted active-set signature", () => {
+  const watchers = (["running", "done", "failed"] as const).map((state) => ({
+    id: state, purpose: state, target: "", outcome: "", command: "true", pid: null, logPath: "/tmp/log",
+    state, startedAt, lastLine: "",
+  }));
+  const subagents = [task("z", "queued"), task("b", "starting"), task("a", "running"), task("done", "completed"), task("failed", "failed")];
+  const input = { goal: undefined, progress, subagents, watchers, streaming: false, waiting: false, now };
+  const model = runStatus(input);
+  assert.deepEqual(model.activity, { count: 4, signature: "helper:a|helper:b|helper:z|watcher:running" });
+  assert.equal(model.detail, "3 helpers · 1 watcher");
+  assert.doesNotMatch(model.summary, /side tasks/u);
+  assert.deepEqual(runStatus({ ...input, subagents: [...subagents].reverse(), watchers: [...watchers].reverse(), streaming: true }).activity, model.activity);
+  const changed = runStatus({ ...input, subagents: subagents.map((item) => item.taskId === "a" ? { ...item, status: "completed" as const } : item) });
+  assert.equal(changed.activity.count, 3);
+  assert.notEqual(changed.activity.signature, model.activity.signature);
+  const noPlan = runStatus({ ...input, progress: undefined });
+  assert.deepEqual(noPlan.activity, model.activity);
+  assert.doesNotMatch(noPlan.summary, /side tasks active/u);
+  assert.match(noPlan.summary, /3 of 5 helpers active/u);
+  assert.match(noPlan.summary, /1 of 3 watchers running/u);
+  const empty = runStatus({ ...input, subagents: [], watchers: [] });
+  assert.deepEqual(empty.activity, { count: 0, signature: "" });
+  assert.doesNotMatch(empty.summary, /side task/u);
+  assert.equal(runStatus({ ...input, subagents: [], watchers: watchers.slice(0, 1) }).detail, "1 watcher");
+  assert.equal(runStatus({ ...input, subagents: [task("one", "queued")], watchers: [] }).detail, "1 helper");
+  assert.equal(empty.detail, undefined, "a plan alone adds no pill detail");
+  assert.equal(runStatus({ ...input, goal: goal(), streaming: true }).detail, "goal · 3 helpers · 1 watcher");
+  assert.equal(runStatus({ ...input, goal: goal("blocked") }).detail, "3 helpers · 1 watcher", "a goal label needs no repeated goal detail");
+});
+
+test("running child sessions contribute live detail and activity between helpers and watchers", () => {
+  const childSessions = (["running", "idle", "waiting", "error", "running"] as const).map((status, index) => ({
+    id: `child-${index}`, title: `Child ${index}`, parentId: "s", status,
+  } as SessionView));
+  const watchers = [{ id: "w", purpose: "Watch", target: "", outcome: "", command: "true", pid: null,
+    logPath: "", state: "running" as const, startedAt, lastLine: "" }];
+  const input = { goal: goal(), progress, subagents: [task("a", "running")], childSessions, watchers, streaming: false, waiting: false, now };
+  const active = runStatus(input);
+  assert.equal(active.detail, "goal · 1 helper · 2 sessions · 1 watcher");
+  assert.equal(active.label, "Working");
+  assert.equal(active.liveSessions, 2);
+  assert.strictEqual(active.childSessions, childSessions);
+  assert.deepEqual(active.activity, { count: 4, signature: "helper:a|session:child-0|session:child-4|watcher:w" });
+  assert.match(active.summary, /1 of 1 helpers active, 2 sessions running, 1 of 1 watchers running/u);
+  assert.deepEqual(runStatus({ ...input, childSessions: [...childSessions].reverse(), streaming: true }).activity, active.activity);
+  const one = runStatus({ ...input, childSessions: childSessions.slice(0, 1) });
+  assert.equal(one.detail, "goal · 1 helper · 1 session · 1 watcher");
+  assert.notEqual(one.activity.signature, active.activity.signature);
+  const settled = runStatus({ ...input, childSessions: childSessions.map((session) => ({ ...session, status: "idle" })) });
+  assert.equal(settled.detail, "goal · 1 helper · 1 watcher");
+  assert.equal(settled.activity.count, 2);
+  const alone = runStatus({ ...input, goal: undefined, progress: undefined, subagents: [], watchers: [] });
+  assert.equal(alone.visible, true);
+  assert.equal(alone.label, "Working");
+  assert.equal(alone.detail, "2 sessions");
+  const idle = runStatus({ ...input, goal: undefined, progress: undefined, subagents: [], watchers: [], childSessions: childSessions.slice(1, 4) });
+  assert.equal(idle.visible, true, "idle children still have rows to inspect");
+  assert.equal(idle.detail, undefined);
+  assert.deepEqual(idle.activity, { count: 0, signature: "" });
 });
 
 test("an open question outranks a running turn and marks the trigger for attention", () => {
@@ -95,7 +168,7 @@ test("a completed job reads as done, and some time between turns still says the 
   });
   assert.equal(complete.tone, "done");
   assert.equal(complete.label, "Goal achieved");
-  assert.equal(complete.count, "3/3");
+  assert.equal(complete.detail, undefined);
   assert.equal(complete.plan?.allComplete, true);
 
   const between = runStatus({ goal: goal(), progress, subagents: [], streaming: false, waiting: false, now });
@@ -117,18 +190,18 @@ test("a failed helper raises attention once the turn is over", () => {
   assert.equal(model.attention, true);
   assert.equal(model.helpers?.failed, 1);
   assert.equal(model.helpers?.finished, 2);
-  assert.equal(model.count, "1/3", "the plan count is the trigger's compact number");
+  assert.equal(model.detail, undefined, "finished helpers and plan counts add no live detail");
 });
 
-test("helpers alone count finished of total, and a whole successful batch reads as done", () => {
+test("helpers alone name live helpers, and a whole successful batch reads as done", () => {
   const active = runStatus({ goal: undefined, progress: undefined, subagents: [task("a", "running"), task("b", "completed"), task("c", "queued")], streaming: false, waiting: false, now });
-  assert.equal(active.count, "1/3");
+  assert.equal(active.detail, "2 helpers");
   assert.equal(active.label, "Working");
 
   const done = runStatus({ goal: undefined, progress: undefined, subagents: [task("a", "completed"), task("b", "completed")], streaming: false, waiting: false, now });
   assert.equal(done.tone, "done");
   assert.equal(done.label, "Done");
-  assert.equal(done.count, "2/2");
+  assert.equal(done.detail, undefined);
   assert.equal(done.helpers?.allSucceeded, true);
 });
 
@@ -245,7 +318,7 @@ test("background watchers keep the trigger alive and count as working", () => { 
   assert.equal(model.visible, true);
   assert.equal(model.tone, "running");
   assert.equal(model.label, "Working");
-  assert.equal(model.count, "2/3");
+  assert.equal(model.detail, "2 watchers");
   assert.match(model.summary, /2 of 3 watchers running/u);
 
   const failed = runStatus({
@@ -263,27 +336,26 @@ test("background watchers keep the trigger alive and count as working", () => { 
   assert.match(failed.summary, /1 watcher$/u);
 });
 
-test("the pill and the panel share one top-right corner, so the box only grows left and down", () => {
-  // The popover overlays the anchor by the pill's height, so the panel's settled top-right is the pill's: the corner
-  // never travels, and neither does the right edge while the box widens.
+test("the top stays pinned while the right edge travels from the pill to the actions group", () => {
+  // The leftmost pill grows into the measured panel at the fixed right edge of the actions group.
   const pill = { x: 1100, y: 20, width: 104, height: 28 };
-  const panel = { x: 784, y: 20, width: 420, height: 360 };
+  const panel = { x: 884, y: 20, width: 420, height: 360 };
   const boxes = runStatusMorphBoxes({ pill, panel, pillRadius: 999, panelRadius: 14, reducedMotion: false });
   assert.deepEqual(boxes, {
     // Exactly the pill's rect and the panel's corner: the pill's own round at 28px tall.
     from: { x: 1100, y: 20, width: 104, height: 28, radius: 14 },
     // And the panel's settled rect, unchanged by the morph.
-    to: { x: 784, y: 20, width: 420, height: 360, radius: 14 },
+    to: { x: 884, y: 20, width: 420, height: 360, radius: 14 },
   });
   // The box's top-right corner is the trigger's, and its width is the trigger's: no scale is involved.
   assert.equal(boxes!.from.x + boxes!.from.width, pill.x + pill.width);
   assert.equal(boxes!.from.y, pill.y);
   assert.equal(boxes!.from.width, pill.width);
   assert.equal(boxes!.from.height, pill.height);
-  // Both ends share the pill's top-right corner, and the end box carries the panel's own size: the corner stays put
-  // while the box grows left and down into the rows it holds.
+  // The measured panel carries the actions group's right edge, not the pill's.
   assert.equal(boxes!.to.y, pill.y, "the settled top edge is the pill's");
-  assert.equal(boxes!.to.x + boxes!.to.width, pill.x + pill.width, "and the settled right edge is the pill's");
+  assert.equal(boxes!.to.x + boxes!.to.width, 1304, "the settled right edge is the actions group's");
+  assert.notEqual(boxes!.to.x + boxes!.to.width, pill.x + pill.width);
   assert.equal(boxes!.to.width, panel.width, "while the box keeps the panel's own width");
   assert.equal(boxes!.to.height, panel.height);
 });

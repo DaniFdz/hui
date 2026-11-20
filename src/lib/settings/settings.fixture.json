@@ -3045,7 +3045,6 @@
     "input": {
       "chat": {
         "messageWidth": "wide",
-        "collapseTaskProgress": true,
         "sendShortcut": "modifierEnter",
         "githubEmbeds": false,
         "datadogEmbeds": false,

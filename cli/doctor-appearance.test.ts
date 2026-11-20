@@ -29,7 +29,7 @@ const seed = async () => JSON.parse(await readFile(seedFile, "utf8")) as Record<
 
 const LEGACY = {
   theme: "miami", themeMode: "dark", accent: "#5b9cf6", fontUi: "geist", fontChat: "lora", fontTerminal: "MesloLGS NF", textScale: 125,
-  chat: { messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false, toolMarks: { pup: "🐶" } },
+  chat: { messageWidth: "wide", sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false, toolMarks: { pup: "🐶" } },
   name: "build-box",
 };
 
@@ -45,11 +45,11 @@ test("settings.json is reported for each appearance key it still carries, and th
   assert.equal(report.ok, false, "the file still holds state that a device owns now");
   assert.deepEqual(report.checks[0]!.items.map((item) => item.id), [
     "theme", "themeMode", "accent", "fontUi", "fontChat", "fontTerminal", "textScale",
-    "chat.messageWidth", "chat.collapseTaskProgress", "chat.sendShortcut", "chat.githubEmbeds", "chat.datadogEmbeds",
+    "chat.messageWidth", "chat.sendShortcut", "chat.githubEmbeds", "chat.datadogEmbeds",
   ]);
-  assert.equal(report.checks[0]!.summary, "12 settings in settings.json belong to each device now");
+  assert.equal(report.checks[0]!.summary, "11 settings in settings.json belong to each device now");
   assert.match(report.checks[0]!.items[0]!.detail!, /"miami".*every device keeps its own now/u);
-  assert.match(formatDoctorReport(report), /^✗ Appearance: 12 settings in settings.json belong to each device now$/mu);
+  assert.match(formatDoctorReport(report), /^✗ Appearance: 11 settings in settings.json belong to each device now$/mu);
   assert.doesNotMatch(formatDoctorReport(report), /chat\.toolMarks/u, "a tool's marks stay on the gateway");
   assert.deepEqual(await read(), LEGACY, "reporting changes nothing");
   assert.equal(existsSync(seedFile), false, "a report exports nothing");
@@ -59,7 +59,7 @@ test("--fix strips the keys, keeps every gateway setting, and exports the look a
   const report = await fix();
   assert.equal(report.ok, true);
   assert.equal(report.checks[0]!.status, "fixed");
-  assert.match(report.checks[0]!.summary, /^removed 12 settings that belong to each device now; exported the look to .*desktop-appearance\.json for HUI's desktop app \(gateway "build-box"\)/u);
+  assert.match(report.checks[0]!.summary, /^removed 11 settings that belong to each device now; exported the look to .*desktop-appearance\.json for HUI's desktop app \(gateway "build-box"\)/u);
   assert.equal(report.checks[0]!.items.every((item) => item.status === "fixed"), true);
 
   const fixed = await read();

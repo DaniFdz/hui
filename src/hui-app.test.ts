@@ -66,7 +66,9 @@ vi.mock("./api/control-surfaces.ts", async (importOriginal) => ({
 type Shell = {
   embeddedPane: boolean;
   paneVisible: boolean;
+  paneGroups: readonly SessionGroup[] | undefined;
   paneSession: SessionView | undefined;
+  paneSessionId: string;
   panePowerNotice: PowerNoticeProps | undefined;
   paneMobileNav: boolean;
   paneActive: boolean;
@@ -90,6 +92,7 @@ type Shell = {
   disconnectedCallback: () => void;
   scheduleUpdate: () => void;
   updated: (changed: Map<string, unknown>) => void;
+  willUpdate: (changed: Map<string, unknown>) => void;
   render: () => unknown;
   renderSessionPane: (pane: SessionPane, state: PanePresentation) => unknown;
   renderSessionMultiplex: () => unknown;
@@ -221,6 +224,78 @@ test("a chat with no selected conversation is handed no sleep notice", () => {
   assert.equal("powerNotice" in app.homeProps(), false, "the launcher has no chat to draw it in");
   app.conversation.select(session("s1"));
   assert.equal(app.homeProps().powerNotice?.power, power);
+});
+
+test("Run status reuses the child index across streamed frames and panes until the session-list identity changes", () => {
+  const app = shell();
+  app.conversation.select(session("parent"));
+  let parentReads = 0;
+  const child = { ...session("child", { status: "running" }), get parentId() { parentReads += 1; return "parent"; } };
+  const groups = [{ label: "", sessions: [child, session("other")] }];
+  app.sessions.groups = groups;
+  const first = app.homeProps().childSessions;
+  const indexedReads = parentReads;
+  assert.deepEqual(first.map(({ id }) => id), ["child"]);
+  for (let frame = 0; frame < 100; frame += 1) assert.strictEqual(app.homeProps().childSessions, first);
+  assert.equal(parentReads, indexedReads, "a streamed frame does not scan parent links");
+  const pane = shell();
+  pane.conversation.select(session("parent"));
+  pane.embeddedPane = true;
+  pane.paneGroups = groups;
+  pane.sessions.groups = groups.map((group) => ({ ...group, sessions: [...group.sessions] }));
+  assert.strictEqual(pane.homeProps().childSessions, first, "panes share the canonical registry's index despite local overlays");
+  app.willUpdate(new Map());
+  app.homeProps().onRunStatusPanelOpenChange(true);
+  assert.equal(app.homeProps().runStatusPanelOpen, true);
+  app.sessions.groups = [{ label: "", sessions: [{ ...child, status: "idle", archived: true }] }];
+  app.willUpdate(new Map());
+  assert.deepEqual(app.homeProps().childSessions, []);
+  app.sessions.groups = groups;
+  assert.equal(app.homeProps().runStatusPanelOpen, false, "restoring the last removed section starts closed");
+  app.sessions.groups = [{ label: "", sessions: [] }];
+  assert.deepEqual(app.homeProps().childSessions, [], "deleted children leave the next index");
+  const closed = app.homeProps();
+  assert.equal(closed.runStatusPanelOpen, false);
+  closed.onRunStatusPanelOpenChange(true);
+  assert.equal(app.homeProps().runStatusPanelOpen, true);
+  closed.onRunStatusPanelOpenChange(false);
+  assert.equal(app.homeProps().runStatusPanelOpen, false);
+  app.willUpdate(new Map());
+  closed.onRunStatusPanelOpenChange(true);
+  app.conversation.opening = true;
+  app.willUpdate(new Map());
+  app.conversation.opening = false;
+  assert.equal(app.homeProps().runStatusPanelOpen, false, "loading removes the surface without needing after-hide");
+  closed.onRunStatusPanelOpenChange(true);
+  app.conversation.select(session("other"));
+  app.willUpdate(new Map());
+  app.homeProps().onRunStatusPanelOpenChange(true);
+  closed.onRunStatusPanelOpenChange(false);
+  assert.equal(app.homeProps().runStatusPanelOpen, true, "an old surface's dismissal cannot change the new conversation");
+  app.conversation.select(session("parent"));
+  app.willUpdate(new Map());
+  assert.equal(app.homeProps().runStatusPanelOpen, false, "returning draws a closed pill without child rows");
+});
+
+test("clearing a pane's last plan from another screen drops lazy rows before later children arrive", () => {
+  const app = shell();
+  app.embeddedPane = true;
+  app.paneVisible = true;
+  app.paneSessionId = "parent";
+  const planned = session("parent", { progress: { markdown: "Plan", steps: [] } });
+  app.conversation.select(planned);
+  app.paneGroups = [{ label: "", sessions: [planned] }];
+  app.willUpdate(new Map([["paneGroups", undefined]]));
+  app.homeProps().onRunStatusPanelOpenChange(true);
+  assert.equal(app.homeProps().runStatusPanelOpen, true);
+  const previous = app.paneGroups;
+  app.paneGroups = [{ label: "", sessions: [session("parent")] }];
+  app.willUpdate(new Map([["paneGroups", previous]]));
+  assert.equal(app.conversation.selected?.progress, undefined);
+  app.paneGroups = [{ label: "", sessions: [session("parent"), session("child", { parentId: "parent" })] }];
+  app.willUpdate(new Map([["paneGroups", previous]]));
+  assert.equal(app.homeProps().childSessions.length, 1);
+  assert.equal(app.homeProps().runStatusPanelOpen, false, "new children do not reuse the removed popover's open flag");
 });
 
 test("a pane's sleep notice dismisses and turns the lid switch off through the app that owns them", async () => {
