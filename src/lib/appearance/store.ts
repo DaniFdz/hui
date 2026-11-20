@@ -24,7 +24,6 @@ export type SendShortcut = (typeof SEND_SHORTCUTS)[number];
 /** What the conversation does with what this device chose. A tool's own mark and icon file stay on the gateway. */
 export type ChatAppearance = {
   messageWidth: MessageWidth;
-  collapseTaskProgress: boolean;
   sendShortcut: SendShortcut;
   githubEmbeds: boolean;
   datadogEmbeds: boolean;
@@ -43,7 +42,6 @@ export type DeviceAppearance = {
 
 export const DEFAULT_CHAT_APPEARANCE: ChatAppearance = {
   messageWidth: "comfortable",
-  collapseTaskProgress: false,
   sendShortcut: "enter",
   // Opt-out: only an explicit false turns the previews off.
   githubEmbeds: true,
@@ -70,7 +68,6 @@ export function normalizeChatAppearance(value: unknown): ChatAppearance {
   const shortcut = SEND_SHORTCUTS.find((candidate) => candidate === source["sendShortcut"]);
   return {
     messageWidth: width ?? DEFAULT_CHAT_APPEARANCE.messageWidth,
-    collapseTaskProgress: source["collapseTaskProgress"] === true,
     sendShortcut: shortcut ?? DEFAULT_CHAT_APPEARANCE.sendShortcut,
     githubEmbeds: source["githubEmbeds"] !== false,
     datadogEmbeds: source["datadogEmbeds"] !== false,

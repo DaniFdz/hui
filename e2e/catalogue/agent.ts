@@ -9,6 +9,15 @@ const BROWSER = ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and
 
 const cases: UseCase[] = [
   {
+    id: "AGENT-075",
+    title: "See side work at a glance",
+    behaviour: "Run status shows a dot-only live-work mark whenever helpers are running or queued, ordinary child sessions are running or watchers are running, with or without a plan; neither pill nor head adds an active count. A changed live set pings once; streamed output with the same set does not restart it. Reduced motion disables animation while the dot and live detail still update. The pill and panel head append muted detail separated by middle dots: goal (unless the state phrase already names the goal), N helpers, N sessions and N watchers, counting running or queued helpers, running unarchived ordinary children (parentId set, no subagent metadata) and running watchers only. A running child settling removes its count and dot without opening the panel. The Sessions section sits between Helpers and Watchers; its titled status rows open those conversations, order running, waiting, error, idle then other statuses, and draw only while the panel is open, capped at eight with +N more. With no children the section is absent. Growing live helper counts leaves all header controls to the right fixed, without clipping the state or detail; on a 390px phone the panel stays 318px wide and leaves navigation reachable.",
+    spec: ["SPEC.md#run-status"],
+    surfaces: [],
+    web: "required",
+    phone: "required",
+  },
+  {
     id: "AGENT-001",
     title: "Answer an agent's question",
     behaviour: "One card opens at the end of the transcript, its last row above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. The card scrolls with the conversation, so scrolling back for context keeps it where it was asked. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
@@ -528,9 +537,9 @@ const cases: UseCase[] = [
   {
     id: "AGENT-053",
     title: "Follow a session's task progress",
-    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the Plan section of the chat header's Run status popover: folded, the current step and done/total; open, N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on (and starts folded on a phone), a new turn rewrites it, and it is stored with the session so it returns after a reload. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
+    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the always-open Plan section of the chat header's Run status popover: a noninteractive section head keeps the current step and N of M done/total, followed by a one-line summary and every step marked pending, in progress or done. The plan never folds, even when every step is done; a new turn rewrites it, and it is stored with the session so it returns after a reload. The button reads Recompute with the tooltip Ask HUI to recompute the plan from what is actually done and running and asks HUI to reread the conversation; while its POST /progress is pending it reads Recomputing… and is disabled, with the last good card still visible. A failure reports an alert without removing that card and re-enables Recompute. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
-    surfaces: ["appearance:chat.collapseTaskProgress", "setting:models.utility"],
+    surfaces: ["setting:models.utility", "route:POST /__hui/sessions/:id/progress"],
     web: "required",
     phone: "required",
   },

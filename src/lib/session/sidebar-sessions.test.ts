@@ -6,6 +6,8 @@ import {
   DEFAULT_SIDEBAR_SESSION_OPTIONS as defaults,
   filterSessionGroups,
   customGroupOrder,
+  childSessionsByParent,
+  runStatusChildRows,
   moveGroupLabel,
   normalizeSidebarSessionOptions,
   sessionTreeRows,
@@ -133,6 +135,45 @@ test("hiding many Swarm trees reads parent links once per projection", () => {
     assert.deepEqual(ids(sidebarSessionGroups(source, "", { ...defaults, groupBy })).sort(), ["ordinary", "outside", "parent"]);
     assert.ok(parentReads <= helpers.length * 4, `parent links were read ${parentReads} times for ${helpers.length} helpers`);
   }
+});
+
+test("child sessions are indexed once for all parents, excluding helpers and archived children", () => {
+  let parentReads = 0;
+  const children = Array.from({ length: 128 }, (_, index) => ({
+    ...session(`child-${index}`),
+    get parentId() { parentReads += 1; return `parent-${index % 8}`; },
+  }));
+  const source = [{ label: "Work", sessions: [
+    ...children,
+    session("root"),
+    session("archived", { parentId: "parent-0", archived: true }),
+    session("helper", { parentId: "parent-0", subagent: {
+      taskId: "helper", status: "running", startedAt: "", updatedAt: "",
+    } }),
+  ] }];
+  const index = childSessionsByParent(source);
+  assert.equal(parentReads, children.length, "one read per child, not one scan per parent");
+  for (let parent = 0; parent < 8; parent += 1) {
+    const siblings = index.get(`parent-${parent}`)!;
+    assert.equal(siblings.length, 16);
+    assert.strictEqual(index.get(`parent-${parent}`), siblings, "lookups retain the same array");
+    assert.equal(runStatusChildRows(siblings).more, 8);
+  }
+  assert.equal(parentReads, children.length, "parent lookups and row caps never reread the registry");
+  assert.equal([...index.values()].flat().length, children.length);
+  const changed = childSessionsByParent([{ label: "Work", sessions: [session("new", { parentId: "parent-0" })] }]);
+  assert.deepEqual(changed.get("parent-0")?.map(({ id }) => id), ["new"], "a new registry drops deleted/archived children");
+});
+
+test("child session rows prioritize running, waiting, error, idle then other statuses and cap only drawing", () => {
+  const statuses = ["starting", "idle", "error", "waiting", "running", "reconnecting", "disconnected", "running", "idle", "waiting"] as const;
+  const source = [{ label: "Work", sessions: statuses.map((status, i) => session(String(i), { parentId: "parent", status })) }];
+  const before = source[0]!.sessions.map(({ id }) => id);
+  const children = childSessionsByParent(source).get("parent")!;
+  assert.deepEqual(children.map(({ id }) => id), ["4", "7", "3", "9", "2", "1", "8", "0", "5", "6"]);
+  assert.deepEqual(runStatusChildRows(children), { rows: children.slice(0, 8), more: 2 });
+  assert.deepEqual(runStatusChildRows([]), { rows: [], more: 0 });
+  assert.deepEqual(source[0]!.sessions.map(({ id }) => id), before, "projection never mutates registry order");
 });
 
 test("search recognizes OTHER and raw labels across every grouping mode", () => {

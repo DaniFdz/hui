@@ -53,7 +53,7 @@ test("a device with nothing stored starts from HUI's defaults, not the gateway's
     fontChat: "instrument-sans",
     fontTerminal: "JetBrains Mono",
     textScale: 100,
-    chat: { messageWidth: "comfortable", collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true },
+    chat: { messageWidth: "comfortable", sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true },
   });
 });
 
@@ -81,7 +81,7 @@ test("every stored value passes the validator the Appearance page uses", () => {
   );
   const junk = normalizeDeviceAppearance({
     theme: 42, themeMode: "chartreuse", accent: "red", fontUi: {}, fontChat: [], fontTerminal: "bad;name", textScale: "big",
-    chat: { messageWidth: "huge", collapseTaskProgress: "yes", sendShortcut: "space", githubEmbeds: "no", datadogEmbeds: 0 },
+    chat: { messageWidth: "huge", sendShortcut: "space", githubEmbeds: "no", datadogEmbeds: 0 },
   });
   assert.deepEqual(junk, DEFAULT_DEVICE_APPEARANCE);
 });
@@ -93,10 +93,21 @@ test("an unknown theme id is kept, so a missing theme file is not a forgotten ch
 });
 
 test("the chat preferences keep the enums, and both previews are opt-out", () => {
-  assert.deepEqual(normalizeDeviceAppearance({ chat: { messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false } }).chat, {
-    messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false,
+  assert.deepEqual(normalizeDeviceAppearance({ chat: { messageWidth: "wide", sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false } }).chat, {
+    messageWidth: "wide", sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false,
   });
   assert.deepEqual(normalizeDeviceAppearance({ chat: { githubEmbeds: null, datadogEmbeds: null } }).chat, DEFAULT_CHAT_APPEARANCE);
+});
+
+test("a stored collapseTaskProgress is dropped, so an old device gets the expanded plan without touching a setting", () => {
+  // The preference is gone end to end; a `true` a device stored before it was removed is normalized away rather than
+  // carried as a field nothing reads, and nothing in the record names it again.
+  const normalized = normalizeDeviceAppearance({ chat: { messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true } });
+  assert.equal("collapseTaskProgress" in normalized.chat, false);
+  assert.deepEqual(normalized.chat, { messageWidth: "wide", sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true });
+  const device = storage(JSON.stringify({ version: APPEARANCE_VERSION, ...DEFAULT_DEVICE_APPEARANCE, chat: { ...DEFAULT_CHAT_APPEARANCE, collapseTaskProgress: true } }));
+  assert.equal("collapseTaskProgress" in readAppearance(device).chat, false, "an old record reads without the retired field");
+  assert.deepEqual(saveAppearance({}, device)?.chat, DEFAULT_CHAT_APPEARANCE, "and a later write leaves it out");
 });
 
 test("a saved choice round-trips under one versioned key", () => {

@@ -13,7 +13,7 @@ test("GitHub link previews can be turned off and the choice persists", { tags: [
   await expect(toggle).toBeChecked();
   await toggle.press("Space");
   await expect(toggle).not.toBeChecked();
-  expect(await chat(hui)).toEqual({ githubEmbeds: false, collapseTaskProgress: false, datadogEmbeds: true, messageWidth: "comfortable", sendShortcut: "enter" });
+  expect(await chat(hui)).toEqual({ githubEmbeds: false, datadogEmbeds: true, messageWidth: "comfortable", sendShortcut: "enter" });
   // The gateway keeps no preview switch: it belongs to the device that draws the cards.
   expect(((await hui.api<{ chat: Record<string, unknown> }>("GET", "/__hui/settings")).chat as Record<string, unknown>).githubEmbeds).toBeUndefined();
 
@@ -28,7 +28,7 @@ test("Datadog link previews can be turned off and the choice persists", { tags: 
   await expect(toggle).toBeChecked();
   await toggle.press("Space");
   await expect(toggle).not.toBeChecked();
-  expect(await chat(hui)).toEqual({ githubEmbeds: true, collapseTaskProgress: false, datadogEmbeds: false, messageWidth: "comfortable", sendShortcut: "enter" });
+  expect(await chat(hui)).toEqual({ githubEmbeds: true, datadogEmbeds: false, messageWidth: "comfortable", sendShortcut: "enter" });
   expect(((await hui.api<{ chat: Record<string, unknown> }>("GET", "/__hui/settings")).chat as Record<string, unknown>).datadogEmbeds).toBeUndefined();
 
   await hui.reload();

@@ -1,6 +1,6 @@
 /**
  * The sidebar's projection of the session registry: grouping, sorting, filtering, the parent/child tree and
- * custom group order, plus the per-browser view options in localStorage. Every projection is view-only; the
+ * custom group order and Run status's child-session index, plus the per-browser view options in localStorage. Every projection is view-only; the
  * registry's groups and order are changed only through its API.
  */
 import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../kanban.ts";
@@ -48,6 +48,32 @@ export type SidebarSessionGroup = SessionGroup & {
   key: string;
   kind: SidebarSessionOptions["groupBy"];
 };
+
+const CHILD_STATUS_ORDER: Partial<Record<SessionStatus, number>> = { running: 0, waiting: 1, error: 2, idle: 3 };
+
+/** Index ordinary, unarchived children once per registry projection, never once per parent or streamed frame.
+ * Stable sibling order breaks status ties; helpers belong in Helpers, not Sessions. */
+export function childSessionsByParent(groups: readonly SessionGroup[]): ReadonlyMap<string, readonly SessionView[]> {
+  const children = new Map<string, SessionView[]>();
+  for (const group of groups) {
+    for (const session of group.sessions) {
+      const parentId = session.parentId;
+      if (!parentId || session.subagent || session.archived) continue;
+      const siblings = children.get(parentId);
+      if (siblings) siblings.push(session);
+      else children.set(parentId, [session]);
+    }
+  }
+  for (const siblings of children.values()) {
+    siblings.sort((a, b) => (CHILD_STATUS_ORDER[a.status] ?? 4) - (CHILD_STATUS_ORDER[b.status] ?? 4));
+  }
+  return children;
+}
+
+/** Only an open Run status draws rows; keep the cap separate from the complete live-work count. */
+export function runStatusChildRows(children: readonly SessionView[]): { rows: readonly SessionView[]; more: number } {
+  return { rows: children.slice(0, 8), more: Math.max(0, children.length - 8) };
+}
 
 export type SidebarSessionTreeRow = { session: SessionView; depth: number; hasChildren: boolean; collapsed: boolean };
 

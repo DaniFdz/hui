@@ -4,12 +4,12 @@
  * command menu and the commands it lists; local path and bot mention completion; sending a prompt, a steer, a
  * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat view), with the first prompt
  * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
- * target and answering a question; and the session's message queue, with the edit of one queued message and the
+ * target, answering a question and requesting a fresh progress card; and the session's message queue, with the edit of one queued message and the
  * requests that edit, remove, move and steer queued messages, or send the steered ones now. The shell reads its
  * props, measures its textarea and hands it the queue from the conversation's snapshots and events.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
-import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
+import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, recomputeSessionProgress, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
@@ -88,6 +88,8 @@ export class ComposerController {
   readonly #sendRequests = new SendRequests();
   #draftIndicatorRevision = 0;
   #commandsLoaded = false;
+  #progressRefreshRequest = 0;
+  progressRefresh: HomeProps["progressRefresh"] = { pending: false, error: undefined };
   #commandsRequest = 0;
   #localPathsRequest = 0;
   #localPathCwd = "";
@@ -140,6 +142,7 @@ export class ComposerController {
     if (key !== this.draftKey) {
       void this.persistDraft();
       this.goalPanel = CLOSED_GOAL_PANEL;
+      this.#resetProgressRefresh();
     }
     this.draftKey = key;
     this.draftHydrated = true;
@@ -547,6 +550,7 @@ export class ComposerController {
   }
 
   resetSession(): void {
+    this.#resetProgressRefresh();
     this.resetCommands();
     this.resetLocalPaths();
     this.pendingCommandBrowse = false;
@@ -757,6 +761,31 @@ export class ComposerController {
           this.sending = false;
           this.#host.requestUpdate();
         }
+      });
+  };
+
+  #resetProgressRefresh(): void {
+    this.#progressRefreshRequest += 1;
+    this.progressRefresh = { pending: false, error: undefined };
+  }
+
+  /** Requests a confirmed progress update without sending a turn; snapshots own the resulting card. */
+  recomputeProgress = () => {
+    const session = this.#conversation.selected;
+    if (!session || this.progressRefresh.pending || this.#conversation.opening || this.#conversation.connection !== "live"
+      || (session.status !== "idle" && session.status !== "running")) return;
+    const request = ++this.#progressRefreshRequest;
+    this.progressRefresh = { pending: true, error: undefined };
+    this.#host.requestUpdate();
+    void recomputeSessionProgress(session.id)
+      .catch((error: unknown) => {
+        if (request !== this.#progressRefreshRequest || !isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.progressRefresh = { pending: true, error: error instanceof Error ? error.message : "Could not recompute progress." };
+      })
+      .finally(() => {
+        if (request !== this.#progressRefreshRequest || !isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.progressRefresh = { ...this.progressRefresh, pending: false };
+        this.#host.requestUpdate();
       });
   };
 
@@ -990,7 +1019,7 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "progressRefresh" | "onRecomputeProgress" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
@@ -1007,6 +1036,8 @@ export class ComposerController {
       onAnswerQuestion: this.#answerQuestion,
       onGoalChange: (action) => this.changeGoal(action),
       goalPanel: this.goalPanel,
+      progressRefresh: this.progressRefresh,
+      onRecomputeProgress: this.recomputeProgress,
       onGoalEdit: this.#editGoal,
       onGoalSave: this.#saveGoal,
       onGoalCancelEdit: this.#cancelGoalEdit,

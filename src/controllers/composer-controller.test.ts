@@ -12,6 +12,7 @@ import type { ConversationController } from "./conversation-controller.ts";
 const fake = vi.hoisted(() => ({
   mutations: [] as { id: string; mutation: unknown; resolve: () => void; reject: (error: Error) => void }[],
   goals: [] as { id: string; action: string; objective?: string; resolve: () => void; reject: (error: Error) => void }[],
+  progressRequests: [] as { id: string; resolve: () => void; reject: (error: unknown) => void }[],
   drafts: new Map<string, ComposerDraft>(),
   draftWrites: [] as { key: string; text: string }[],
   pathRequests: [] as { cwd: string; input: string }[],
@@ -23,6 +24,7 @@ const fake = vi.hoisted(() => ({
   sideQuestions: [] as { id: string; question: string; resolve: (result: { question: string; answer: string; model: string }) => void; reject: (error: Error) => void }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
+  recomputeSessionProgress: (id: string) => new Promise<void>((resolve, reject) => fake.progressRequests.push({ id, resolve, reject })),
   loadCommands: (id: string) => new Promise<RuntimeCommand[]>((resolve, reject) => fake.commandRequests.push({ id, resolve, reject })),
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
@@ -53,6 +55,7 @@ vi.mock("../lib/composer/drafts.ts", async (importOriginal) => ({
 beforeEach(() => {
   fake.mutations = [];
   fake.goals = [];
+  fake.progressRequests = [];
   fake.drafts = new Map();
   fake.draftWrites = [];
   fake.pathRequests = [];
@@ -94,6 +97,93 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
   });
   return { controller, conversation, notes, reported, updates: () => updates };
 }
+
+test("progress recompute is single-flight for idle and running sessions and waits for confirmed completion", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller, notes, updates } = composer(selected);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  controller.props().onRecomputeProgress();
+  controller.props().onRecomputeProgress();
+  assert.equal(fake.progressRequests.length, 1);
+  assert.equal(fake.progressRequests[0]?.id, "s1");
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  assert.equal(controller.sending, false, "refresh does not send a turn or block the composer");
+  const beforeCompletion = updates();
+  fake.progressRequests[0]?.resolve();
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  assert.ok(updates() > beforeCompletion);
+  selected.current = { ...selected.current, status: "running" };
+  controller.props().onRecomputeProgress();
+  assert.equal(fake.progressRequests.length, 2, "an active turn allows recompute too");
+  fake.progressRequests[1]?.resolve();
+  await settle();
+  assert.deepEqual(notes, []);
+  assert.deepEqual(fake.prompts, []);
+});
+
+test("progress recompute requires a selected live, opened idle or running session", () => {
+  const selected: { current: SessionView | undefined } = { current: undefined };
+  const { controller, conversation } = composer(selected);
+  controller.props().onRecomputeProgress();
+  selected.current = { id: "s1", status: "idle" } as SessionView;
+  for (const connection of ["reconnecting", "stopped", "saved", "outdated"] as const) {
+    conversation.connection = connection;
+    controller.props().onRecomputeProgress();
+  }
+  conversation.connection = "live";
+  conversation.opening = true;
+  controller.props().onRecomputeProgress();
+  conversation.opening = false;
+  for (const status of ["waiting", "starting", "error", "reconnecting", "disconnected"] as const) {
+    selected.current = { ...selected.current, status };
+    controller.props().onRecomputeProgress();
+  }
+  assert.deepEqual(fake.progressRequests, []);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+});
+
+test("progress recompute shows a failure inline, clears it on retry and on session reset", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[0]?.reject(new Error("The utility model is unavailable."));
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: "The utility model is unavailable." });
+  controller.props().onRecomputeProgress();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  fake.progressRequests[1]?.reject("unexpected refusal");
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: "Could not recompute progress." });
+  controller.resetSession();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  assert.deepEqual(notes, [], "the failure belongs to the progress panel");
+});
+
+test("switching drafts clears progress state and stale completions cannot settle a newer request", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller } = composer(selected);
+  controller.switchDraft(sessionDraftKey("s1"));
+  controller.props().onRecomputeProgress();
+  selected.current = { id: "s2", status: "running" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s2"));
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  selected.current = { id: "s1", status: "idle" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s1"));
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[0]?.reject(new Error("Old failure"));
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  controller.resetSession();
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[1]?.resolve();
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  fake.progressRequests[2]?.reject(new Error("New failure"));
+  await settle();
+  assert.equal(controller.props().progressRefresh.error, "New failure");
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+});
 
 test("/btw asks the utility model and leaves the answer in the side chat, not the transcript", async () => {
   const { controller, notes } = composer({ current: { id: "s1" } as SessionView });

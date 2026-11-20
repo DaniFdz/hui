@@ -378,6 +378,16 @@ export async function askSideQuestion(id: string, question: string): Promise<Sid
   });
 }
 
+/** Rebuilds the progress card; session updates deliver the confirmed result. The shared utility queue can wait
+ * behind other cards before its own 20-second call starts, so this mutation gets a five-minute response budget. */
+export async function recomputeSessionProgress(id: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/progress`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  }, undefined, 5 * 60_000);
+}
+
 export async function continueSession(id: string): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/continue`, {
     method: "POST",

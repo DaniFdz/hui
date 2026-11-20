@@ -12,6 +12,7 @@ import {
   STATUS_STREAM_STALL_MS,
   createSessionGroup,
   openSession,
+  recomputeSessionProgress,
   subscribeSessionStatuses,
   subscribeSession,
   type RuntimeEvent,
@@ -32,6 +33,44 @@ test("an open the gateway never answers is abandoned after five seconds", async 
   const failed = assert.rejects(opening, /HUI did not answer within 5 s/u);
   await vi.advanceTimersByTimeAsync(OPEN_HEADER_TIMEOUT_MS);
   await failed;
+});
+
+test("progress recompute posts to the encoded session route and surfaces a refusal", async (t) => {
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.stubGlobal("fetch", nativeFetch); });
+  let status = 200;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(String(input), "/__hui/sessions/a%2Fb/progress");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("x-hui"), "1");
+    assert.equal(init?.body, "{}");
+    return new Response(JSON.stringify(status === 200 ? { ok: true } : { error: "A refresh is already running." }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  await recomputeSessionProgress("a/b");
+  status = 409;
+  await assert.rejects(recomputeSessionProgress("a/b"), /A refresh is already running\./u);
+});
+
+test("progress recompute allows queue time beyond the ordinary HTTP deadline", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.useRealTimers(); vi.stubGlobal("fetch", nativeFetch); });
+  let deliver!: (response: Response) => void;
+  let requestSignal: AbortSignal | null | undefined;
+  vi.stubGlobal("fetch", (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+    deliver = resolve;
+    requestSignal = init?.signal;
+    requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+  }));
+  const refresh = recomputeSessionProgress("queued");
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS + 1);
+  assert.ok(requestSignal);
+  assert.equal(requestSignal.aborted, false, "queueing must not consume the model's response budget");
+  deliver(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  await refresh;
 });
 
 test("the browser runtime contract includes settled", () => {
