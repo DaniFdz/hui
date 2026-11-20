@@ -25,8 +25,7 @@ const suggest = (suggestion: Suggestion) =>
 const promptOf = ({ title, problem, fix }: Suggestion) =>
   [`# ${title}`, "## Problem", problem, "## Proposed fix", fix || "Not known yet. Investigate and confirm the root cause before changing code."].join("\n\n");
 
-/** How a turn or a card reads: the prompt as one run of text, and Markdown code as the words it styles. */
-const oneLine = (text: string) => text.replaceAll("\n\n", " ");
+/** How a turn or a card reads once Markdown renders it: code as the words it styles. */
 const styled = (text: string) => text.replaceAll("`", "");
 
 /** A session with both cards: the one without a fix arrived first, so the fixed one is the card shown at 1/2. */
@@ -157,13 +156,21 @@ test("Start in this session sends the card as a new turn in the same conversatio
   await expect(card).toBeHidden();
   expect(await hui.url()).toBe(url);
   await expectChatTitle(screen, "Started in this session");
-  // A user turn is the card's prompt as sent, not Markdown the browser re-rendered.
-  await expect(transcript.getByText(oneLine(promptOf(WITH_FIX)))).toBeVisible();
+  // The operator's own turn renders the card's Markdown, so the headings read without source markers.
+  await expect(transcript.getByRole("heading", { name: WITH_FIX.title })).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Problem" })).toBeVisible();
+  await expect(transcript.getByText(styled(WITH_FIX.problem))).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Proposed fix" })).toBeVisible();
+  await expect(transcript.getByText(styled(WITH_FIX.fix!))).toBeVisible();
+  await expect(transcript).not.toContainText(`# ${WITH_FIX.title}`);
+  await expect(transcript).not.toContainText("## Problem");
+  await expect(transcript).not.toContainText("## Proposed fix");
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 });
 
 test("Start in a new session reads Starting…, keeps the card when it fails, then opens the new session with the card as its first turn", { tags: ["AGENT-047"] }, async ({ screen, hui }) => {
-  const transcript = screen.getByTestId("transcript");
+  // A session swap leaves the pane it came from on screen for a moment: the open conversation is the visible one.
+  const transcript = screen.getByTestId("transcript", { visible: true });
   const card = screen.getByRole("article", { name: WITH_FIX.title });
   const source = await suggested(hui, screen, "Suggestion source", "Suggestion group");
 
@@ -179,7 +186,15 @@ test("Start in a new session reads Starting…, keeps the card when it fails, th
   await card.getByRole("button", "Start in a new session").tap();
   await expectChatTitle(screen, WITH_FIX.title);
   expect(await hui.url()).not.toContain(`/sessions/${source.id}`);
-  await expect(transcript.getByText(oneLine(promptOf(WITH_FIX)))).toBeVisible();
+  // The new session's first turn is the card's prompt, rendered as its Markdown.
+  await expect(transcript.getByRole("heading", { name: WITH_FIX.title })).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Problem" })).toBeVisible();
+  await expect(transcript.getByText(styled(WITH_FIX.problem))).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Proposed fix" })).toBeVisible();
+  await expect(transcript.getByText(styled(WITH_FIX.fix!))).toBeVisible();
+  await expect(transcript).not.toContainText(`# ${WITH_FIX.title}`);
+  await expect(transcript).not.toContainText("## Problem");
+  await expect(transcript).not.toContainText("## Proposed fix");
   // The session lands in the card's directory and the source conversation's group; the chat header shows the group
   // only as an upper-cased label beside a status that moves, so the registry is what this reads.
   const created = (await hui.api<{ groups: { sessions: { id: string; title: string; cwd: string; group: string }[] }[] }>("GET", "/__hui/sessions"))

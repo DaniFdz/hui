@@ -21,6 +21,7 @@ import { HuiApp } from "./hui-app.ts";
 
 const api = vi.hoisted(() => ({ calls: [] as unknown[][] }));
 const textarea = vi.hoisted(() => ({ calls: [] as string[] }));
+const mirror = vi.hoisted(() => ({ calls: [] as string[] }));
 const powerApi = vi.hoisted(() => ({ lidAwake: [] as boolean[] }));
 const launchApi = vi.hoisted(() => ({ created: [] as Record<string, unknown>[], checkouts: [] as ((checkout: unknown) => void)[] }));
 
@@ -47,6 +48,11 @@ vi.mock("./lib/composer/textarea.ts", async (importOriginal) => ({
   observeTextareaOverflow: (element: { id: string }) => textarea.calls.push(`observe ${element.id}`),
   disconnectTextareaOverflowObserver: (element: { id: string }) => textarea.calls.push(`disconnect ${element.id}`),
   scheduleTextareaHeightAdjustment: (element: { id: string }) => textarea.calls.push(`measure ${element.id}`),
+}));
+
+vi.mock("./lib/composer/composer-mirror.ts", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./lib/composer/composer-mirror.ts")>(),
+  disconnectComposerMirror: (element: { id: string }) => mirror.calls.push(`disconnect ${element.id}`),
 }));
 
 vi.mock("./api/control-surfaces.ts", async (importOriginal) => ({
@@ -83,6 +89,7 @@ type Shell = {
   launching: boolean;
   requestLaunch: (intent: LaunchIntent, form: HTMLFormElement) => void;
   connectedCallback: () => void;
+  disconnectedCallback: () => void;
   scheduleUpdate: () => void;
   updated: (changed: Map<string, unknown>) => void;
   willUpdate: (changed: Map<string, unknown>) => void;
@@ -145,6 +152,7 @@ function escape() {
 beforeEach(() => {
   api.calls = [];
   textarea.calls = [];
+  mirror.calls = [];
   powerApi.lidAwake = [];
   launchApi.created = [];
   launchApi.checkouts = [];
@@ -632,6 +640,30 @@ test("the composer textarea is observed, remeasured when code replaces its draft
   current = null;
   app.updated(new Map());
   assert.deepEqual(textarea.calls.slice(3), ["disconnect first"]);
+});
+
+test("the mirrored textarea is released when a render replaces it and when the app goes away", () => {
+  const app = shell();
+  let current: { id: string } | null = { id: "first" };
+  app.renderRoot = { querySelector: (selector) => selector === "textarea[data-composer-markdown]" ? current : null };
+  app.updated(new Map());
+  assert.deepEqual(mirror.calls, [], "the composer this render drew keeps its mirror");
+  // A rewind, a route change or a closed pane hands back a new textarea: the one it replaced must not stay reachable
+  // from `document.fonts` and a ResizeObserver.
+  current = { id: "second" };
+  app.updated(new Map());
+  assert.deepEqual(mirror.calls, ["disconnect first"]);
+  current = null;
+  app.updated(new Map());
+  assert.deepEqual(mirror.calls, ["disconnect first", "disconnect second"]);
+
+  // Leaving the page releases the one it still holds.
+  current = { id: "last" };
+  app.updated(new Map());
+  vi.stubGlobal("window", { clearTimeout: () => {}, clearInterval: () => {}, addEventListener: () => {}, removeEventListener: () => {} });
+  vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, removeEventListener: () => {} });
+  app.disconnectedCallback();
+  assert.deepEqual(mirror.calls.slice(2), ["disconnect last"]);
 });
 
 test("showing earlier rows preserves the retained row's fractional position, including native scroll anchoring", async () => {

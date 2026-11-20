@@ -68,6 +68,7 @@ import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { childSessionsByParent, customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
+import { disconnectComposerMirror } from "./lib/composer/composer-mirror.ts";
 import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
   deleteComposerDraft,
@@ -436,6 +437,9 @@ export class HuiApp extends HuiElement {
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
+  /** The textarea whose draft the mirror paints: its own listeners and observers have to be dropped when a render
+   * replaces it, or a discarded composer stays reachable from `document.fonts` and a ResizeObserver. */
+  private composerMirrorTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
     // The bot panel moves between the side and a sheet; what it reads follows.
@@ -631,6 +635,8 @@ export class HuiApp extends HuiElement {
     this.mobileNavMedia = undefined;
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
     this.composerTextarea = null;
+    if (this.composerMirrorTextarea) disconnectComposerMirror(this.composerMirrorTextarea);
+    this.composerMirrorTextarea = null;
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
@@ -822,6 +828,13 @@ export class HuiApp extends HuiElement {
       // Typing measures its own textarea in the input handler; only a draft that
       // code replaced under it needs a measuring pass after the render.
       scheduleTextareaHeightAdjustment(textarea);
+    }
+    // A composer this render replaced has to let go of the mirror's listeners and observers, or a discarded textarea
+    // stays reachable from `document.fonts` and a ResizeObserver for the life of the page.
+    const mirrorTextarea = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea[data-composer-markdown]");
+    if (mirrorTextarea !== this.composerMirrorTextarea) {
+      if (this.composerMirrorTextarea) disconnectComposerMirror(this.composerMirrorTextarea);
+      this.composerMirrorTextarea = mirrorTextarea;
     }
     if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
       this.composer.browseCommands(textarea);

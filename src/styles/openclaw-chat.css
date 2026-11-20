@@ -20,6 +20,7 @@
 
 @import "./chat-metrics.css";
 @import "./chat-run-status.css";
+@import "./composer-markdown.css";
 
 /* Keep compact tables intrinsic: forced column stretching can round their last cell past the scroll viewport in
    WebKit. Wide tables still scroll as a unit. This is HUI's adaptation, not a change to the reviewed snapshot. */

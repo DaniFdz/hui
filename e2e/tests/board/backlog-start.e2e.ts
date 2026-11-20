@@ -63,9 +63,13 @@ test("a backlog item's title, Options → Start session… and a drop on a stage
 
   await hui.open(`/sessions/${started!.id}`);
   const transcript = screen.getByTestId("transcript");
-  await expect(transcript).toContainText("# Started task");
-  await expect(transcript).toContainText("## Problem");
+  // The operator's own prompt renders its Markdown, so the task reads as headings and the source markers are gone.
+  await expect(transcript.getByRole("heading", { name: "Started task" })).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Problem" })).toBeVisible();
   await expect(transcript).toContainText(problem);
-  await expect(transcript).toContainText("## Proposed fix");
+  await expect(transcript.getByRole("heading", { name: "Proposed fix" })).toBeVisible();
   await expect(transcript).toContainText(fix);
+  await expect(transcript).not.toContainText("# Started task");
+  await expect(transcript).not.toContainText("## Problem");
+  await expect(transcript).not.toContainText("## Proposed fix");
 });
