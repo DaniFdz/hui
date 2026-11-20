@@ -1,15 +1,16 @@
 /**
- * OptChat's compactor (spec section 4): a pump builds tree nodes in a strict
- * order, at most `jobs` at once. A node starts when it is not built or running,
- * its sources exist (the message, or both children built), and every view line
- * before its end is a built summary (rule 3), except that a message starts while
- * fewer than `jobs` earlier ones still wait for theirs (revision 3c190e0), so the
- * next turn does not wait for a burst of messages summarized one by one. Messages
- * start in order and first, merges of finished parts take the jobs left, and a
- * call's context stops at the first line not built: the compactor never sees one.
+ * OptChat's compactor (spec section 4): a pump builds tree nodes at most `jobs`
+ * at once. A node starts when it is not built or running, its sources exist (the
+ * message, or both children built), and every view line before its end is a built
+ * summary (rule 3), except that a message starts while fewer than `jobs` earlier
+ * ones still wait for theirs (revision 3c190e0). Ready messages and merges take
+ * turns, even with one job, so neither backlog prevents the other from advancing.
+ * With multiple jobs, a ready kind keeps a slot while the other kind is running.
+ * Messages start in order; merges favor higher levels and are FIFO within each
+ * level. A call's context stops at the first line not built: it never sees one.
  * A source that already fits is its own node, with no model call. A failed node
- * is retried every `retryMs` forever (the next turn waits on it, so no backoff),
- * and only its first failure is reported. A call's context is the compaction
+ * retries with exponential backoff up to five minutes, and only its first failure
+ * is reported. A call's context is the compaction
  * view's lines before the node, a short view every call shares the start of, so
  * the calls read one another's prefix from the prompt cache.
  */
@@ -102,18 +103,30 @@ export type Failing = { readonly node: string; readonly error: string; readonly 
 
 const key = (l: number, i: number) => `${l}:${i}`;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+const MAX_RETRY_MS = 5 * 60 * 1_000;
 
 export class Compactor {
   readonly #host: CompactorHost;
   readonly #summarize: Summarize;
   readonly #options: CompactorOptions;
   readonly #abort = new AbortController();
-  /** Nodes running or waiting to retry. */
+  /** Nodes actively building; cooling nodes have timers but do not occupy a job. */
   #busy = new Set<string>();
   #failures = new Map<string, Failing>();
-  #retries = new Set<unknown>();
-  /** Per level, the first index that may not be built: everything before it is. */
+  #attempts = new Map<string, number>();
+  #retries = new Map<string, unknown>();
+  /** Retries whose timer fired; these take precedence over fresh paid nodes of their kind. */
+  #due = new Set<string>();
+  /** The first unbuilt leaf, or a merge scan cursor, rewound on a retry or when a child is built. */
   #frontier: number[] = [];
+  /** Earliest paid merge skipped while its kind's cooling limit was full. */
+  #blockedFrontier: number[] = [];
+  /** Highest built or started index per merge level, a conservative bound on possible parents. */
+  #lastSeen: number[] = [];
+  /** The preferred kind of the next node, retained between pumps. */
+  #next: "leaf" | "merge" = "leaf";
+  /** A due leaf retry keeps priority even if every job is still running. */
+  #retryLeaf = false;
   #closed = false;
 
   constructor(host: CompactorHost, summarize: Summarize, options: CompactorOptions) {
@@ -127,30 +140,97 @@ export class Compactor {
   get failing(): Failing | undefined { return this.#failures.values().next().value; }
 
   /** Starts every node that is ready (spec 4.1), up to `jobs` at once. */
-  pump(): void {
-    if (this.#closed) return;
-    const { tree, view } = this.#host;
+  pump(): void { this.#pump(false); }
+
+  #pump(retryLeaf: boolean): void {
+    this.#retryLeaf ||= retryLeaf;
+    if (this.#closed || this.#busy.size >= this.#options.jobs) return;
     const count = this.#host.length;
-    const first = view.first();
-    for (let l = 0; span(l) <= count; l++) {
-      let start = this.#frontier[l] ?? 0;
-      while (tree.has(l, start)) start++;
-      this.#frontier[l] = start;
-      for (let i = start, waiting = 0; (i + 1) * span(l) <= count; i++) {
-        if (this.#busy.size >= this.#options.jobs) return;
-        // Rule 3, relaxed for messages: either bound only grows with i, so no later node of this level is ready either.
-        if (l === 0 ? waiting >= this.#options.jobs : (i + 1) * span(l) > first) break;
-        if (tree.has(l, i)) continue;
-        if (l === 0) waiting++;
-        if (this.#busy.has(key(l, i))) continue;
-        if (l > 0 && !(tree.has(l - 1, 2 * i) && tree.has(l - 1, 2 * i + 1))) continue;
-        this.#start(l, i);
+    const first = this.#host.view.first();
+    const ready = { leaf: this.#ready(true, count, first), merge: this.#ready(false, count, first) };
+    while (this.#busy.size < this.#options.jobs) {
+      let kind = this.#retryLeaf ? "leaf" : this.#next;
+      // With more than one job, do not let one kind occupy every slot while the other can run. If it cannot, the
+      // fallback below still fills the slot. A due leaf retry keeps its original priority over merges.
+      if (!this.#retryLeaf && this.#options.jobs > 1 && this.#busy.size === this.#options.jobs - 1) {
+        let leaf = false;
+        let merge = false;
+        for (const id of this.#busy) {
+          if (id.startsWith("0:")) leaf = true;
+          else merge = true;
+        }
+        if (!leaf) kind = "leaf";
+        else if (!merge) kind = "merge";
+      }
+      let node = ready[kind].next();
+      if (node.done) {
+        kind = kind === "leaf" ? "merge" : "leaf";
+        node = ready[kind].next();
+      }
+      if (node.done) return;
+      if (kind === "leaf") this.#retryLeaf = false;
+      this.#next = kind === "leaf" ? "merge" : "leaf";
+      this.#start(...node.value);
+    }
+  }
+
+  /** The last built or started node at a merge level; starts overestimate what can be ready but never miss it. */
+  #last(l: number): number {
+    return this.#lastSeen[l] ??= this.#host.tree.level(l).at(-1)?.[0] ?? -1;
+  }
+
+  /** Leaves are FIFO; among merges, scan higher levels first, FIFO within each level. */
+  *#ready(leaves: boolean, count: number, first: number): Generator<readonly [number, number], void> {
+    const { tree } = this.#host;
+    // A failed provider must not sweep a whole backlog with paid attempts while its previous failures cool down.
+    // Keep separate limits so a failing merge cannot stop a leaf needed by a turn, or vice versa.
+    const cooling = [...this.#retries.keys()].filter((id) => id.startsWith("0:") === leaves).length;
+    const paidBlocked = cooling >= this.#options.jobs;
+    let start = this.#frontier[0] ?? 0;
+    while (tree.has(0, start)) start++;
+    this.#frontier[0] = start;
+    for (const id of this.#due) {
+      const [l, i] = id.split(":").map(Number) as [number, number];
+      if ((l === 0) !== leaves || this.#busy.has(id)) continue;
+      if (tree.has(l, i)) { this.#due.delete(id); continue; }
+      if (l === 0) {
+        let waiting = 0;
+        for (let j = start; j < i && waiting < this.#options.jobs; j++) if (!tree.has(0, j)) waiting++;
+        if (i >= count || waiting >= this.#options.jobs) continue;
+      } else if ((i + 1) * span(l) > first || !tree.has(l - 1, 2 * i) || !tree.has(l - 1, 2 * i + 1)) continue;
+      yield [l, i];
+    }
+    if (leaves) {
+      for (let i = start, waiting = 0; i < count && waiting < this.#options.jobs; i++) {
+        if (tree.has(0, i)) continue;
+        waiting++;
+        const id = key(0, i);
+        if (this.#busy.has(id) || this.#retries.has(id)) continue;
+        if (!paidBlocked || this.#free(0, i) !== undefined) yield [0, i];
+      }
+      return;
+    }
+    for (let l = Math.floor(Math.log2(Math.min(count, first))); l >= 1; l--) {
+      const lastChild = l === 1 ? count - 1 : this.#last(l - 1);
+      for (let i = this.#frontier[l] ?? 0; (i + 1) * span(l) <= first && 2 * i + 1 <= lastChild; i++) {
+        // A skipped parent is reconsidered when a child is built or its own retry becomes due.
+        this.#frontier[l] = i + 1;
+        const id = key(l, i);
+        if (tree.has(l, i) || this.#busy.has(id) || this.#retries.has(id)) continue;
+        if (!(tree.has(l - 1, 2 * i) && tree.has(l - 1, 2 * i + 1))) continue;
+        if (paidBlocked && this.#free(l, i) === undefined) {
+          this.#blockedFrontier[l] = Math.min(this.#blockedFrontier[l] ?? i, i);
+          continue;
+        }
+        yield [l, i];
       }
     }
   }
 
   #start(l: number, i: number): void {
     const id = key(l, i);
+    this.#due.delete(id);
+    if (l > 0) this.#lastSeen[l] = Math.max(this.#last(l), i);
     this.#busy.add(id);
     this.#build(l, i, id).then(() => {
       if (this.#closed) return;
@@ -158,17 +238,24 @@ export class Compactor {
       this.pump();
     }, (error: unknown) => {
       if (this.#closed) return;
+      this.#busy.delete(id);
       if (!this.#failures.has(id)) {
         this.#failures.set(id, { node: label([l, i]), error: message(error), since: this.#options.now().toISOString() });
         this.#host.failed(label([l, i]), error);
       }
+      const attempts = (this.#attempts.get(id) ?? 0) + 1;
+      this.#attempts.set(id, attempts);
+      const delay = Math.min(Math.max(MAX_RETRY_MS, this.#options.retryMs), this.#options.retryMs * 2 ** Math.min(attempts - 1, 30));
       const retry = this.#options.timers.set(() => {
-        this.#retries.delete(retry);
-        this.#busy.delete(id);
-        this.pump();
-      }, this.#options.retryMs);
-      this.#retries.add(retry);
+        this.#retries.delete(id);
+        this.#due.add(id);
+        this.#frontier[l] = Math.min(this.#frontier[l] ?? i, i);
+        this.#rewindBlocked();
+        this.#pump(l === 0);
+      }, delay);
+      this.#retries.set(id, retry);
       this.#host.changed();
+      this.pump();
     });
   }
 
@@ -178,6 +265,10 @@ export class Compactor {
     // No longer failing by the time anyone sees it built.
     this.#failures.delete(id);
     await this.#host.persist(l, i, text);
+    this.#attempts.delete(id);
+    const parent = Math.floor(i / 2);
+    const frontier = this.#frontier[l + 1];
+    if (frontier !== undefined) this.#frontier[l + 1] = Math.min(frontier, parent);
   }
 
   #free(l: number, i: number): string | undefined {
@@ -209,7 +300,7 @@ export class Compactor {
       const request = { system: this.#host.system(), messages: [...messages] };
       const reply = await (this.#options.limiter ? this.#options.limiter.run(() => this.#summarize(request, signal), signal) : this.#summarize(request, signal));
       const text = typeof reply === "string" ? reply : reply.text;
-      if (typeof reply !== "string" && reply.usage) this.#host.usage(reply.usage);
+      if (!this.#closed && typeof reply !== "string" && reply.usage) this.#host.usage(reply.usage);
       const line = text.trim();
       if (!line) throw new Error(`The compactor returned an empty line for ${label([l, i])}.`);
       tries.push(line);
@@ -220,11 +311,21 @@ export class Compactor {
     return tries.reduce((best, line) => bytes(line) < bytes(best) ? line : best);
   }
 
+  /** Revisit paid merges skipped while a kind's failure limit was full. */
+  #rewindBlocked(): void {
+    for (let l = 1; l < this.#blockedFrontier.length; l++) {
+      const i = this.#blockedFrontier[l];
+      if (i !== undefined) this.#frontier[l] = Math.min(this.#frontier[l] ?? i, i);
+    }
+    this.#blockedFrontier = [];
+  }
+
   /** Aborts running model calls and cancels retries; nothing is built afterwards. */
   close(): void {
     this.#closed = true;
     this.#abort.abort();
-    for (const retry of this.#retries) this.#options.timers.clear(retry);
+    for (const retry of this.#retries.values()) this.#options.timers.clear(retry);
     this.#retries.clear();
+    this.#due.clear();
   }
 }
