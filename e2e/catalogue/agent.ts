@@ -577,7 +577,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-075",
     title: "Take control of the agent's browser",
-    behaviour: "In the Browser view, Take control stops the conversation's running turn once, keeps the watched tab open and gives the operator its pointer, wheel and keys without a reload. The view says You have control. The agent is stopped. with I'm done — continue, the activity line reads You have control; the agent is stopped., and the conversation shows the turn stopped. A click on a page link navigates and a click focuses a text field. I'm done — continue releases the tab without resuming the agent; the tab stays and the next chat message continues. Take control is absent when the browser is stopped, paused or the view is disconnected. An agent-requested handoff keeps Your turn. and Take over.",
+    behaviour: "In the Browser view, Take control stops the conversation's running turn once, keeps the watched tab open and gives the operator its pointer, wheel and keys without a reload. The view says You have control. The agent is stopped. with I'm done — continue, the activity line reads You have control; the agent is stopped. A click on a page link navigates and a click focuses a text field. I'm done — continue releases the tab without resuming the agent; the tab stays and the next chat message continues. Take control is absent when the browser is stopped, paused or the view is disconnected.",
     spec: BROWSER,
     surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
     journeys: ["browser-tool"],
@@ -597,7 +597,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-077",
     title: "Paste with the keyboard while driving the browser",
-    behaviour: "Pressing Cmd/Ctrl+V while the operator drives the page inserts the clipboard text into the page's focused element. The app does not forward the chord as a keystroke, and a long value is sent once.",
+    behaviour: "Pressing Cmd/Ctrl+V while the operator drives the page inserts the clipboard text into the page's focused element, where the page's own input handler sees it.",
     spec: BROWSER,
     surfaces: ["route:WS /__hui/browser-stream", "work-view:browser"],
     journeys: ["browser-tool"],

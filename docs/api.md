@@ -5294,7 +5294,8 @@ click the page sees) and `{ action: "wheel", tabId, x, y, deltaX, deltaY }` (pag
 CSS pixels, from the view's scaled frame), `{ action: "key", tabId, key }` (a key
 name such as `Enter`, `Tab` or `a`, or a chord such as `Control+a`), `{ action:
 "insert", tabId, text }` for text the operator pasted into the page's focused
-element (1–1024 characters; it is never echoed in a state or action message) and
+element (1–1024 UTF-16 code units; it is never echoed in a state or action
+message) and
 `{ action: "continue", tabId }`, which ends it. Every other message leaves the
 view untouched, and a view that never selects a tab can only watch.
 
@@ -5440,18 +5441,19 @@ URL and a fresh snapshot, at most 8 000 characters, whose refs the agent acts on
 next), `timeout` (the operator may be away; the tab returns to the agent),
 `closed` (the tab went away under them) or `stopped` (the browser did). Input
 from the live view is applied to the handed-over tab only and is ignored once
-the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and stopping
-the turn settles the handoff with `closed`.
+the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and an ordinary
+Stop settles the handoff with `closed`; a takeover's stop keeps the tab until
+the operator continues.
 
 The operator can also take a tab without waiting for an agent: `takeover` stops
 the conversation's run once (a second takeover only asks for the tab again), and
 the tab survives the stop, so their click or paste still lands in it. Every
 other agent action is refused with 409 and told the operator has control. Their
-`insert` pastes into the page's focused element and is never echoed back. A
-takeover's Continue releases the tab without resuming anything: the result says
-the agent is stopped and that the operator writes in chat to continue. A lease
-lasts until the operator continues, the tab closes or the browser stops, and the
-ordinary Stop still closes the conversation's tabs.
+`insert` pastes into the page's focused element and is never echoed in a state,
+action or log. A takeover's Continue releases the tab without resuming
+anything: the view says the agent is stopped and that the operator writes in
+chat to continue. A lease lasts until the operator continues, the tab closes or
+the browser stops, and the ordinary Stop still closes the conversation's tabs.
 
 ### Files view API
 

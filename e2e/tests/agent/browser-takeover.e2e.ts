@@ -48,7 +48,7 @@ test("the operator takes the agent's browser, clicks through the page and pastes
 
   // A click on a link navigates the page, so the tab's own title and address change under the operator.
   await frame.click({ position: { x: box.width / 2, y: 20 } });
-  await expect(picker).toHaveAttribute("aria-label", /\/browser-fixture$/u);
+  await expect(pane.getByText(/\/browser-fixture$/u).first()).toBeVisible();
 
   // Continue releases the tab without resuming the stopped run.
   await pane.getByRole("button", "I'm done — continue").click();

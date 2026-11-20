@@ -147,7 +147,7 @@ test("a handoff card says whose turn it is and offers the way in", async () => {
   const lease = markup(preview.render());
   assert.match(lease, /<strong>You have control\.<\/strong> The agent is stopped\./u);
   assert.doesNotMatch(lease, /Your turn\./u, "a tab the operator took is not the agent's turn");
-  assert.match(lease, />Open browser view<\/button>/u, "the operator already has the tab");
+  assert.match(lease, />Open the view<\/button>/u, "the operator already has the tab");
   assert.doesNotMatch(lease, />Take over<\/button>/u);
 
   opens[0]!.socket.state({ tabId: "t1", message: "Sign in, then continue.", since: "2026-09-28T09:05:00.000Z", by: "agent" });

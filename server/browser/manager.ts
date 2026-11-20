@@ -741,9 +741,6 @@ export class ManagedBrowser {
   /** Each conversation's tab waiting for its operator; the agent's call waits with it, and a lease the
    * operator took holds it while the agent is stopped. */
   readonly #handoffs = new Map<string, Handoff>();
-  /** Each conversation's takeover still stopping the agent: one stop per lease, however often the
-   * operator's view asks for the tab. */
-  readonly #takeovers = new Map<string, Promise<void>>();
   /** Settings → Tools → Browser's origin allowlist, refreshed by every call; empty is anywhere. */
   #origins: readonly string[] = [];
   readonly #secrets: BrowserSecretStore | undefined;
@@ -861,19 +858,19 @@ export class ManagedBrowser {
       this.#changed(owner);
       return;
     }
-    if (this.#takeovers.has(owner)) return;
     const handoff: Handoff = {
       tabId: tab.id, message: TAKEOVER_MESSAGE, since: new Date().toISOString(), resolve: () => {}, by: "operator",
     };
     // The lease exists before the run stops, so an agent call landing in between sees a tab the
-    // operator holds instead of driving it.
+    // operator holds instead of driving it. The agent's idle clock stops with it.
+    clearTimeout(this.#idle.get(owner));
+    this.#idle.delete(owner);
     this.#handoffs.set(owner, handoff);
     for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = tab.id;
     this.#emitAction(tab, `You took control of tab ${tab.id}`);
     this.#changed(owner);
-    const run = this.#stopAgent(owner, tab);
-    this.#takeovers.set(owner, run);
-    void run.then(() => { if (this.#takeovers.get(owner) === run) this.#takeovers.delete(owner); });
+    // The lease makes every later takeover a no-op, so this is the one stop for it.
+    void this.#stopAgent(owner, tab);
   }
 
   /** Stops the agent's run once for the lease the operator holds. The lease stays even when the stop fails:
@@ -1070,13 +1067,20 @@ export class ManagedBrowser {
       return result;
     } finally {
       this.#calls -= 1;
-      if (this.#ownerTabs(owner).length) {
-        const timer = setTimeout(() => this.closeOwner(owner), this.#idleTabMs);
-        timer.unref();
-        this.#idle.set(owner, timer);
-      }
+      // A tab the operator holds is theirs until Continue, however long ago the agent last called.
+      if (!this.#handoffs.has(owner)) this.#armIdle(owner);
       this.#stopIfUnused();
     }
+  }
+
+  /** Restarts a conversation's idle clock: its tabs close after this long without a browser call or a lease. */
+  #armIdle(owner: string): void {
+    clearTimeout(this.#idle.get(owner));
+    this.#idle.delete(owner);
+    if (!this.#ownerTabs(owner).length) return;
+    const timer = setTimeout(() => this.closeOwner(owner), this.#idleTabMs);
+    timer.unref();
+    this.#idle.set(owner, timer);
   }
 
   #epoch(owner: string): number {
@@ -1218,16 +1222,16 @@ export class ManagedBrowser {
   /** Give one tab to the operator and wait for them. The live view forwards their input to that tab only;
    * the call returns what the page looks like once they continue, or why they did not. */
   async #handoff(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
-    const tab = this.#tabFor(owner, params["tabId"]);
-    this.#live();
-    const message = requiredText(params, "message", 500);
-    const timeoutMs = handoffTimeoutFrom(params["timeoutMs"]);
     const held = this.#handoffs.get(owner);
     if (held) {
       throw new BrowserToolError(held.by === "operator"
         ? `The operator has control of tab ${held.tabId}. Ask them in chat to continue.`
         : "A handoff is already waiting in this conversation.", 409);
     }
+    const tab = this.#tabFor(owner, params["tabId"]);
+    this.#live();
+    const message = requiredText(params, "message", 500);
+    const timeoutMs = handoffTimeoutFrom(params["timeoutMs"]);
     const since = new Date().toISOString();
     // Whoever was watching follows the agent, which is now this tab; an explicit pin is theirs to keep.
     for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = null;
@@ -1362,9 +1366,10 @@ export class ManagedBrowser {
     if (!handoff) return;
     if (handoff.timer) clearTimeout(handoff.timer);
     this.#handoffs.delete(owner);
-    // A lease that ended while its stop still ran no longer blocks a fresh takeover.
-    if (handoff.by === "operator") this.#takeovers.delete(owner);
     handoff.resolve(outcome);
+    // The conversation is idle again; its tabs keep the ordinary idle clock from here. A tab or
+    // browser that just went away has nothing to clock.
+    if (outcome !== "closed" && outcome !== "stopped") this.#armIdle(owner);
     // The view's activity line stops claiming the tab is waiting, and a late
     // viewer replays how the wait ended rather than the wait itself.
     const tab = this.#tabs.get(handoff.tabId);

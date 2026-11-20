@@ -88,7 +88,7 @@ export function browserViewTicket(owner: string): string {
 }
 
 export function attachBrowserTransport(server: EventEmitter, source: BrowserViewSource, allowedHosts?: ReadonlySet<string>): () => void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024, perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024, perMessageDeflate: false });
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== BROWSER_STREAM_PATH) return;

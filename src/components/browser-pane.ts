@@ -28,6 +28,8 @@ export class BrowserPane extends HuiElement {
   @state() private now = Date.now();
   private moveFrame: number | undefined;
   private pendingMove: (() => void) | undefined;
+  /** The button held on the page, kept across a pointercancel whose own button is -1. */
+  private pressedButton: "left" | "right" | undefined;
   private readonly browser = new BrowserViewController(this, connectBrowserView);
   /** The strip's text field: read where it is written, then emptied; never held as component state. */
   private readonly pasteField = createRef<HTMLInputElement>();
@@ -64,6 +66,7 @@ export class BrowserPane extends HuiElement {
     if (this.moveFrame !== undefined) cancelAnimationFrame(this.moveFrame);
     this.moveFrame = undefined;
     this.pendingMove = undefined;
+    this.pressedButton = undefined;
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
     super.disconnectedCallback();
@@ -109,20 +112,20 @@ export class BrowserPane extends HuiElement {
   }
 
   /** Their input reaches the browser only through the tab's wait, never by viewing it. */
-  private pointer(at: { clientX: number; clientY: number }, kind: "down" | "move" | "up", element: HTMLElement, button: number) {
+  private pointer(at: { clientX: number; clientY: number }, kind: "down" | "move" | "up", element: HTMLElement, button: "left" | "right") {
     const handoff = this.browser.view?.handoff;
     const frame = this.browser.frame?.tabId === handoff?.tabId ? this.browser.frame : undefined;
     if (!handoff || !frame) return;
     const point = operatorPoint(at, element.getBoundingClientRect(), frame);
     if (!point) return;
-    this.browser.send({ action: "pointer", tabId: handoff.tabId, kind, x: point.x, y: point.y, button: button === 2 ? "right" : "left" });
+    this.browser.send({ action: "pointer", tabId: handoff.tabId, kind, x: point.x, y: point.y, button });
   }
 
   /** Moves arrive faster than a phone link wants to carry them: one per frame. */
   private move(event: PointerEvent) {
     const element = event.currentTarget as HTMLElement;
     const at = { clientX: event.clientX, clientY: event.clientY };
-    const button = event.button;
+    const button = this.pressedButton ?? "left";
     this.pendingMove = () => this.pointer(at, "move", element, button);
     if (this.moveFrame !== undefined) return;
     this.moveFrame = requestAnimationFrame(() => {
@@ -160,13 +163,18 @@ export class BrowserPane extends HuiElement {
     const element = event.currentTarget as HTMLElement;
     element.focus();
     element.setPointerCapture?.(event.pointerId);
-    this.pointer(event, "down", element, event.button);
+    const button = event.button === 2 ? "right" : "left";
+    this.pressedButton = button;
+    this.pointer(event, "down", element, button);
   }
 
   private up(event: PointerEvent) {
     const element = event.currentTarget as HTMLElement;
     element.releasePointerCapture?.(event.pointerId);
-    this.pointer(event, "up", element, event.button);
+    // A cancel reports -1; the press still names the button the page holds.
+    const button = this.pressedButton ?? (event.button === 2 ? "right" : "left");
+    this.pressedButton = undefined;
+    this.pointer(event, "up", element, button);
   }
 
   override render() {

@@ -789,6 +789,44 @@ test("a takeover stops the agent's run once, and its tab survives for the operat
   for (const release of releases.splice(0)) release();
 });
 
+test("a taken tab outlives the agent's idle clock until the operator continues", {
+  skip: !detected.executable,
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-takeover-idle-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, idleTabMs: 1_000 });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  // The agent's call armed the clock; the lease must pause it before it fires.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  assert.equal(states.at(-1)?.tabs.length, 1, "the lease keeps the tab past the agent's idle clock");
+
+  // Continue starts the ordinary clock again.
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)?.tabs.length), (count) => count === 0, 4_000);
+});
+
 test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {
   skip: !detected.executable,
   timeout: 120_000,

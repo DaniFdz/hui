@@ -137,7 +137,7 @@ export class BrowserPreview extends HuiElement {
       ${handoff && notice
         ? html`<div class="hui-browser-preview__handoff">
             <span class="hui-browser-preview__handoff-text"><strong>${notice.lead}</strong> ${notice.detail}</span>
-            ${expand ? html`<button type="button" class="btn btn--sm" @click=${expand}>${handoff.by === "operator" ? "Open browser view" : "Take over"}</button>` : nothing}
+            ${expand ? html`<button type="button" class="btn btn--sm" @click=${expand}>${handoff.by === "operator" ? "Open the view" : "Take over"}</button>` : nothing}
           </div>`
         : nothing}
       ${action ? html`<div class="hui-browser-preview__footer">

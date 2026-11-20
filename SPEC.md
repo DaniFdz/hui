@@ -1325,7 +1325,8 @@ live view shows Your turn with the message and a Continue button, and every
 other agent action on the browser is refused. The browser view forwards the
 operator's pointer, wheel, keys and pasted text to that one tab over the
 existing live-view socket — a click is a press and its release, and a paste goes
-into the page's focused element without being echoed back. Nothing else about a
+into the page's focused element without HUI echoing it in a state, action or
+log. Nothing else about a
 view becomes interactive, and input is ignored once the wait ends. Continue
 returns the page as it is then — title, URL and a fresh snapshot — so the agent
 acts on current refs rather than guessing whether the human step worked. A wait
