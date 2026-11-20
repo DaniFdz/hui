@@ -412,11 +412,14 @@ durableHost().configureDurableBots(createDurableBots(durableHost(), {
   // A group chief works in its own folder, so its group's project lends its prompt the project's context file; a
   // worker's host asks for that directory too (`bot.project`).
   projectDir: async (botId) => (await groupForBot(botId))?.cwd,
+  // A chief's chat carries its delegation rule on every request (`hui_chief`), and an ordinary bot's carries none.
+  isChief: (botId) => bots.isChief(botId),
 }));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
-  return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
+  // The title with it: a chief's chat hosted there carries `hui_chief` only if this gateway says the bot is a chief.
+  return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null, chief: botId === undefined ? false : await bots.isChief(botId) };
 });
 // A bot's chat on a worker asks which directory its group's project is, so its prompt carries that project's context
 // file as a local chat's does; the same rule as `bot.section` answers only for a bot that runs on that worker, and a bot

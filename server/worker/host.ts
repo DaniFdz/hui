@@ -188,6 +188,9 @@ export class WorkerHost {
   #nextStep = 0;
   #secretFiles = new SecretFiles();
   #bots: ReturnType<typeof hostBots>;
+  /** Each bot's chat here and whether its title makes it a chief, as its gateway last said (`bot.section`): a chief's
+   * prompt carries `hui_chief`, an ordinary bot's none. */
+  #chiefs = new Map<string, boolean>();
   /** This machine's browser for its sessions, with a profile of its own: no page, cookie or login here is the
    * gateway's, whose browser serves the sessions on that machine. Stopped when the last tab closes, as there. */
   readonly #browser: ManagedBrowser;
@@ -235,6 +238,8 @@ export class WorkerHost {
       section: (botId, conversationId) => this.#botSection(botId, conversationId),
       // Its group's project is the gateway's too: its chat carries that project's context file, as a local chat's does.
       projectDir: (botId) => this.#botProject(botId),
+      // A chief's chat here carries its delegation rule too, as the gateway that owns the roster says.
+      isChief: (botId) => this.#botChief(botId),
       // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.
       operator: async () => operatorName((await readHuiSettings()).profileName),
       // The operator allowed a bot's request here: its lists are already in its document, which this host enforces;
@@ -667,12 +672,31 @@ export class WorkerHost {
     }
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
-      const reply = await peer.request<{ section?: unknown; name?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      const reply = await peer.request<{ section?: unknown; name?: unknown; chief?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
       // Its name with it: the soul section asks a bot still called "New Bot" for a real one.
       if (typeof reply?.name === "string") this.#bots.named(botId, reply.name);
+      // Its title too, which decides whether its prompt carries `hui_chief`.
+      if (typeof reply?.chief === "boolean") this.#chiefs.set(botId, reply.chief);
       if (typeof reply?.section === "string") return reply.section;
     }
     return undefined;
+  }
+
+  /** Whether a bot is a chief of staff, as the gateway that owns the roster answers: every `bot.section` reply already
+   * carries it, so this asks only while that answer has not arrived yet (the first prompt after this host started, or
+   * a gateway that predates the field, which answers for no chief). */
+  async #botChief(botId: string): Promise<boolean> {
+    const known = this.#chiefs.get(botId);
+    if (known !== undefined) return known;
+    for (const peer of [...this.#peers]) {
+      if (peer.closed) continue;
+      const reply = await peer.request<{ chief?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      if (reply === undefined) continue;
+      const chief = reply.chief === true;
+      this.#chiefs.set(botId, chief);
+      return chief;
+    }
+    return false;
   }
 
   /** A bot's group's project directory, from a connected gateway: only the one the bot runs for answers it, so the loop

@@ -15,7 +15,9 @@
  * draft pull request. A group chief's chat works in its own bot folder rather than
  * in the project its group names, so that project's context file joins the
  * folder's own on every request (`projectContextFor`); a conversation with no bot
- * or no group carries exactly the files it carried before.
+ * or no group carries exactly the files it carried before. A Chief of Staff
+ * bot's chat carries its delegation rule on every request (`hui_chief`), because
+ * the pack states it in a skill body no mechanism opens.
  */
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
@@ -105,7 +107,8 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra", "hui_autonomous",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_chief", "hui_goal", "hui_extensions", "hui_ultra",
+  "hui_autonomous",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -129,6 +132,21 @@ export function huiToolSections(
       : "No callable tools are active for this turn.",
     ...(guidance ? { hui_tool_guidelines: guidance } : {}),
   };
+}
+
+/**
+ * What a Chief of Staff's chat needs on every request, because its pack's routing rule sits in a skill body no
+ * mechanism opens: a child only for fast iteration, a real task as its own session and PR lead, and no code written in
+ * this chat that a worker or a session can write (`staff/skills/chief-mode/SKILL.md` §3 "Choose what runs where").
+ */
+export function chiefSection(): string {
+  return [
+    "## Delegate by default",
+    "You are a Chief of Staff. This chat leads: quick work goes to a child, every real task to a session of its own, and you write no code a worker or a session can write.",
+    "- Fast iteration is a child: a read-only probe, one command, one small independent check, one reply. Spawn it with `sessions_spawn`. Name the one reply it returns before you spawn; if you cannot, it is not a child. A child never owns a branch or a pull request.",
+    "- Everything else is a session: anything with more than one step, any change that writes code, a long build, test or e2e run, or anything that owns a branch or a pull request. Write the brief, then create it with `create_session`: it is the lead for one PR and HUI hands it the phase protocol. Never create another session for a phase.",
+    "- Read what comes back: the diff, the test output, the rendered screen. Never a summary in place of it.",
+  ].join("\n");
 }
 
 /** OpenClaw's Ultra guidance (`ultra-orchestration.ts`): delegation only where the request offers `sessions_spawn`. */
@@ -205,6 +223,8 @@ export class DurablePrompt {
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
   leadFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
+  /** Whether the conversation is a Chief of Staff bot's chat, which carries `chiefSection`. The Durable host answers. */
+  chiefFor: (conversationId: ConversationId) => Promise<boolean> = async () => false;
   /** Gateway extensions' static prompt text for every Durable conversation, capped when they load. */
   gatewayPrompt: () => Promise<string | undefined> = async () => undefined;
   readonly extension;
@@ -328,6 +348,7 @@ export class DurablePrompt {
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
     const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
     const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);
+    const chief = conversationId === undefined ? false : await this.chiefFor(conversationId);
     const projectFile = conversationId === undefined ? undefined : await this.projectContextFor(conversationId);
     const base = await this.options(cwd, selectedTools, extras?.contributions, {
       ...(bot ? { bot } : {}), skillDirs, ultra, autonomous, supervisedByChief: lead !== undefined,
@@ -336,6 +357,7 @@ export class DurablePrompt {
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
     if (lead) base.sections = { ...base.sections, hui_lead: lead };
+    if (chief) base.sections = { ...base.sections, hui_chief: chiefSection() };
     const gateway = await this.gatewayPrompt();
     if (gateway) base.sections = { ...base.sections, hui_extensions: gateway };
     const sections = buildSystemPromptSections(run?.options ? {

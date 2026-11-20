@@ -498,6 +498,9 @@ export type DurableBotsDeps = {
   /** The project directory of a bot's group, which its chat's prompt carries beside its own folder's context file; the
    * gateway answers from its session groups, and a host that keeps none leaves it. */
   projectDir?(botId: string): Promise<string | undefined>;
+  /** Whether the bot is a chief of staff, by the title the gateway keeps (`chief-title.ts`); a worker's host asks the
+   * gateway, which owns the roster. A host without it answers for no chief, and its chats carry no `hui_chief` section. */
+  isChief?(botId: string): boolean | Promise<boolean>;
 };
 
 /** The bots `host` runs (`DurableHost.configureDurableBots`): `message_bot`, `write_soul`, `set_profile`,
@@ -528,6 +531,7 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
     },
     state: (reader, conversationId) => conversationBotState(reader, conversationId, durableContext),
     mayCall: (state: BotState, action) => botMayCall(state, action),
+    isChief: async (state) => (await deps.isChief?.(state.bot)) === true,
     projectDir: async (state) => deps.projectDir ? deps.projectDir(state.bot) : undefined,
     skillsDir(state) {
       const home = deps.home?.home(state.bot);

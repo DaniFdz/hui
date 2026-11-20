@@ -5335,3 +5335,39 @@ waits, worked from the row that waits.
 This supersedes [Needs you counts every session that
 stopped](#needs-you-counts-every-session-that-stopped-2026-10-27) and [Needs you
 leads with the longest wait](#needs-you-leads-with-the-longest-wait-2026-11-04).
+
+### A chief's routing rule is always on the wire (2026-11-19)
+
+The owner reported chiefs that do not delegate: a real task stayed in the
+chief's own chat and no PR lead existed. The mechanism is structural. The pack's
+`chief-mode` reaches a chief's prompt as a name, a description and a path among
+22 skills, and nothing opens a skill body by itself: `alwaysOn` covers tools,
+`/skill:name` is the operator's, and there is no turn-start hook. SOUL.md is a
+one-shot seed, so its three delegation bullets were the only routing text on the
+wire, inside a 5,000-character persona that competes with 5,000 characters of
+skill pointers.
+
+- **A prompt section, not a loaded skill body.** A Chief of Staff bot's chat
+  carries `hui_chief` on every request (`server/runtimes/durable-prompt.ts`),
+  built like `hui_lead`: fast iteration is a child's (`sessions_spawn`: a
+  read-only probe, one command, one small independent check, one reply, and a
+  child never owns a branch or a pull request), everything else gets its own
+  session (`create_session`, which becomes the lead for one pull request), and a
+  chief writes no code a worker or a session can write. An ordinary bot's chat
+  carries none. The pack's `chief-mode` keeps the playbooks and the rest of its
+  method; only the "Choose what runs where" rule is stated where it cannot be
+  skipped, so the section and SOUL.md's delegation bullets agree.
+- **The title decides, not the pack.** `isChiefTitle`
+  (`server/bots/chief-title.ts`), the predicate that already gates
+  `create_session` and names the chief to watch a session, decides: the seeded
+  `Chief of Staff` and every `Chief of Staff · <group>`. The host that runs the
+  chat asks its gateway, so a group's chief whose chat lives on a worker carries
+  the section as a local chief does: `bot.section`'s answer says whether the bot
+  is a chief, and a gateway that predates the field leaves the section out.
+- **Nothing is written.** Neither the pack's SOUL.md nor its skills change, so a
+  chief created before this keeps its files and gains the section from the next
+  request on.
+
+This changes the "The chief's method is in the pack" bullet of [Autonomous mode
+drives a session to a draft pull
+request](#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12).

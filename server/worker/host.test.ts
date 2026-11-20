@@ -287,8 +287,9 @@ test("transcript search reads the worker's own session files", async () => {
 });
 
 /** A gateway's view of the host's bot operations: requests, and the frames the host sends it. `project` is its
- * answer to a bot's `bot.project`; without it the gateway predates that request. */
-async function botGateway(options: { project?: string | null } = {}) {
+ * answer to a bot's `bot.project`; `chief` its answer to `bot.section`'s title question. Without either the gateway
+ * predates that request. */
+async function botGateway(options: { project?: string | null; chief?: boolean } = {}) {
   const socket = connect(host.paths.socket);
   const peer = attachPeer(socket, socket);
   const frames: Frame[] = [];
@@ -301,6 +302,9 @@ async function botGateway(options: { project?: string | null } = {}) {
       projects.push(params);
       return { cwd: options.project };
     });
+  }
+  if (options.chief !== undefined) {
+    peer.handle("bot.section", (params) => ({ section: `Roster for ${String(params["botId"])}: none.`, name: "Chief", chief: options.chief }));
   }
   const hello = await peer.request<HostInfo>("hello");
   return { peer, frames, hello, projects, disconnect: () => socket.destroy() };
@@ -536,6 +540,33 @@ test("a bot's chat here carries its group's project file, as the gateway answers
       const chat = await other.peer.request<{ reference: string; cwd: string }>("bot.create", { botId, memory: { name: "Chief" }, soul: "# Who I am\nChief." });
       const prompt = await chatPrompt(other.peer, `${botId}-chat`, chat);
       assert.doesNotMatch(prompt, /<project_instructions|PROJECT_RULES/u, `${label} carries none`);
+    } finally {
+      other.disconnect();
+    }
+  }
+});
+
+test("a chief's chat here carries its delegation rule, as the gateway answers, and an ordinary bot's carries none", async () => {
+  const chief = await botGateway({ chief: true });
+  try {
+    const chat = await chief.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-chief", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(chief.peer, "chief-rules", chat);
+    assert.ok(prompt.length > 0, "the chat's prompt");
+    assert.match(prompt, /## Delegate by default/u);
+    assert.match(prompt, /- Fast iteration is a child:.*`sessions_spawn`/u);
+    assert.match(prompt, /- Everything else is a session:.*`create_session`.*lead for one PR/u);
+  } finally {
+    chief.disconnect();
+  }
+
+  // A title that is not a chief's, and a gateway too old to answer for one: no section.
+  for (const [label, options, botId] of [["an ordinary bot", { chief: false }, "bot-helper"], ["a gateway that predates the answer", {}, "bot-oldgateway"]] as const) {
+    const other = await botGateway(options);
+    try {
+      const chat = await other.peer.request<{ reference: string; cwd: string }>("bot.create", { botId, memory: { name: "Bot" }, soul: "# Who I am\nBot." });
+      const prompt = await chatPrompt(other.peer, `${botId}-rules`, chat);
+      assert.ok(prompt.length > 0, `the ${label}'s prompt`);
+      assert.doesNotMatch(prompt, /Delegate by default/u, `${label} carries none`);
     } finally {
       other.disconnect();
     }
