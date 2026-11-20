@@ -1652,6 +1652,32 @@ draft. A cached page must check its build against the reachable gateway before
 restoring live controls; a different build offers **Reload HUI** instead. Offline
 reload requires HTTPS or localhost, where browsers allow service workers.
 
+The boot screen never pretends to load forever. After six seconds it asks this page's
+own gateway for `GET /__hui/health` with a four-second deadline, and at ten seconds
+without the app it becomes the recovery card, whether or not the probe answered. The
+card is a second module entry that Vite folds into the page's entry chunk, so it keeps
+working when the app's own chunk or a request stalls; it cannot run when that entry
+chunk itself cannot load, and then the inline boot screen's **Reload** is all that is
+left. Both marks count from the page's own start, so a slow download moves neither. The
+card says **Can't reach this gateway.** — or **HUI is taking longer than usual to
+start.** when the gateway answered and the app has not painted — names the address this
+page came from, and offers **Retry**, every other gateway this device saved with
+**Switch**, and **Add a gateway** with **Name**, **Address** and **Add and switch**.
+Add refuses an address that is not `http(s)`, carries credentials, a query or a
+fragment, is this page's gateway, is already saved — including one another tab saved
+while the probe ran — or does not answer the identity handshake, and probes a new one
+exactly as the Add dialog does (SPEC.md "A device keeps
+a list of gateways"); a switch opens the chosen gateway in this page and carries this
+device's rows in its fragment. The card never navigates by itself, and never replaces the
+screen a failed module already drew. Once the app has painted, a gateway that stops
+answering marks the sidebar's footer **Offline** — the control reads `Gateway offline:
+<name>. Choose another gateway.`, where `<name>` is the gateway's name when known and
+otherwise the host it is reached at, because the boot entry cannot read `/__hui/health`
+while the gateway is down — and its menu keeps
+**Retry connection**, the other gateways and **Add a gateway…** until a status snapshot,
+a status stream the gateway answers (live, or a refusal), or a session list read it
+answered — a refusal included — names it again.
+
 Detailed chat connections receive an application heartbeat every 15 seconds.
 A heartbeat alone cannot make a conversation live, and 40 seconds without an
 incoming application frame after it is live causes a reconnect. A send unanswered for five seconds starts
@@ -2131,10 +2157,16 @@ with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
 data, trailing action instructions). Completions are batched until all active
-siblings finish and render as a system card, never as a "You" bubble. A
-child's task and `sessions_send` messages show as the sending session's. Delivery
-steers an active parent, prompts an idle one, or queues a follow-up if steering
-cannot be accepted. This does not abort the parent's current run. At most eight
+siblings finish and render as a system card, never as a "You" bubble. A child's
+run counts as completed only when it settles with a final assistant message. One
+that settles after a runtime error with no later answer is recorded `failed` with
+that error, or with `The subagent finished without a reply.` when the runtime
+reported none. A stored `completed` record that kept neither a non-blank
+summary nor an error is reported `failed` in its completion event and in
+`agents_wait`, never as an empty completion. A child's task and
+`sessions_send` messages show as the sending session's. Delivery steers an
+active parent, prompts an idle one, or queues a follow-up if steering cannot
+be accepted. This does not abort the parent's current run. At most eight
 ordinary descendants may be active in one tree.
 
 A spawn picks the child's model in one of three ways: a **route** name from the
@@ -2971,7 +3003,7 @@ everything the Bots tab can, through the same routes.
   and triggers, a line each with an enable switch and a + that opens their page
   on its add form; *Activity*, the latest runs of both, newest first; *Cost*,
   a Total of what its chat, the subagents under it and its memory summaries
-  (counted since HUI started) cost, read again whenever its chat changes state,
+  cost, read again whenever its chat changes state,
   that opens the cost per model (a bot on a worker says its cost is kept there;
   a cost no model reported reads *Not reported*, never $0.00); and
   *Setup*, a row each for Tagging (who may tag it), Model (its model and
@@ -4224,10 +4256,12 @@ seeds it once:
   until it is messaged. HUI records the seed in `staff.json`; deleting the bot
   is the opt-out and HUI never creates another. Its skills live in its own
   `skills/` folder, so only its chat and its workers see them.
-- **Hash-based upgrades.** The record holds the hash of every file HUI wrote.
-  A start replaces a skill whose files all still match, keeps an edited skill
-  whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
-  BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
+- **Hash-based upgrades.** The record holds the hash of every skill file HUI
+  wrote and of the SOUL.md it installed. A start replaces a skill whose files all
+  still match and a SOUL.md whose text still does, keeps an edited skill or soul
+  whole and reports it, records a soul that already matches the shipped text
+  instead of writing it, and adds only routes missing by name. USER.md, MEMORY.md
+  and BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
 - **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. A report is never queued behind a turn in the chief's chat: a busy chat refuses it and nothing is queued, and the pair is remembered, recomputed from the newest facts and delivered when that chat's turn ends, with the 15-minute scan as the fallback. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
@@ -5358,3 +5392,39 @@ waits, worked from the row that waits.
 This supersedes [Needs you counts every session that
 stopped](#needs-you-counts-every-session-that-stopped-2026-10-27) and [Needs you
 leads with the longest wait](#needs-you-leads-with-the-longest-wait-2026-11-04).
+
+### A chief's routing rule is always on the wire (2026-11-19)
+
+The owner reported chiefs that do not delegate: a real task stayed in the
+chief's own chat and no PR lead existed. The mechanism is structural. The pack's
+`chief-mode` reaches a chief's prompt as a name, a description and a path among
+22 skills, and nothing opens a skill body by itself: `alwaysOn` covers tools,
+`/skill:name` is the operator's, and there is no turn-start hook. SOUL.md is a
+one-shot seed, so its three delegation bullets were the only routing text on the
+wire, inside a 5,000-character persona that competes with 5,000 characters of
+skill pointers.
+
+- **A prompt section, not a loaded skill body.** A Chief of Staff bot's chat
+  carries `hui_chief` on every request (`server/runtimes/durable-prompt.ts`),
+  built like `hui_lead`: fast iteration is a child's (`sessions_spawn`: a
+  read-only probe, one command, one small independent check, one reply, and a
+  child never owns a branch or a pull request), everything else gets its own
+  session (`create_session`, which becomes the lead for one pull request), and a
+  chief writes no code a worker or a session can write. An ordinary bot's chat
+  carries none. The pack's `chief-mode` keeps the playbooks and the rest of its
+  method; only the "Choose what runs where" rule is stated where it cannot be
+  skipped, so the section and SOUL.md's delegation bullets agree.
+- **The title decides, not the pack.** `isChiefTitle`
+  (`server/bots/chief-title.ts`), the predicate that already gates
+  `create_session` and names the chief to watch a session, decides: the seeded
+  `Chief of Staff` and every `Chief of Staff · <group>`. The host that runs the
+  chat asks its gateway, so a group's chief whose chat lives on a worker carries
+  the section as a local chief does: `bot.section`'s answer says whether the bot
+  is a chief, and a gateway that predates the field leaves the section out.
+- **Nothing is written.** Neither the pack's SOUL.md nor its skills change, so a
+  chief created before this keeps its files and gains the section from the next
+  request on.
+
+This changes the "The chief's method is in the pack" bullet of [Autonomous mode
+drives a session to a draft pull
+request](#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12).

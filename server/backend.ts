@@ -116,18 +116,20 @@ export async function startBackend(options: BackendOptions = {}): Promise<void> 
   }));
   void secretFiles.sweep();
   await workers.list().catch(() => undefined);
-  // The staff pack's skills in the Chief of Staff and in every group chief: seeded once, then kept current except for
-  // what the operator edited. Installed before the Durable store resumes its runs, so a chief that resumes cannot be
-  // editing a skill while the pack writes it.
+  // The staff pack's skills and SOUL.md in the Chief of Staff and in every group chief: seeded once, then kept current
+  // except for what the operator edited. Installed before the Durable store resumes its runs, so a chief that resumes
+  // cannot be editing a skill or a soul while the pack writes it.
   await staff.ensure().then((outcome) => {
     if (!outcome.seeded && !outcome.bots.length && !outcome.routesAdded.length) return;
     const written = outcome.bots.reduce((total, bot) => total + bot.written.length, 0);
     const kept = outcome.bots.reduce((total, bot) => total + bot.kept.length, 0);
+    const soulsWritten = outcome.bots.filter((bot) => bot.soul === "written").length;
+    const soulsKept = outcome.bots.filter((bot) => bot.soul === "kept" || bot.soul === "unrecorded").length;
     recordDiagnosticEvent({
       area: "session", level: "info", action: "staff_pack_installed",
       summary: outcome.seeded
         ? `Seeded the Chief of Staff bot; ${written} skills installed and ${outcome.routesAdded.length} routes added`
-        : `Staff pack checked; ${written} skills written, ${kept} kept, ${outcome.routesAdded.length} routes added`,
+        : `Staff pack checked; ${written} skills written, ${kept} kept${soulsWritten ? `, ${soulsWritten} SOUL.md updated` : ""}${soulsKept ? `, ${soulsKept} SOUL.md kept` : ""}, ${outcome.routesAdded.length} routes added`,
     });
   }, (error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "staff_pack_failed",

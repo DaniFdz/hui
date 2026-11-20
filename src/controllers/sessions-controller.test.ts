@@ -11,6 +11,7 @@ type Handlers = {
   onStatus: (update: SessionStatusUpdate) => void;
   onSessions: (update: { revision: number; groups?: { label: string; ids: string[] }[]; upserts: SessionView[] }) => void;
   onStop?: () => void;
+  onConnection?: (state: "live" | "lost") => void;
   heldRevision: () => number;
 };
 /** A call the page made on a plugin of the fake phone bridge. */
@@ -397,6 +398,50 @@ test("a stopped status stream is opened again by a later refresh", async () => {
   await sessions.refresh();
   assert.equal(fake.streams.length, 2, "a refusal that ended the old stream does not disable the next one");
   sessions.stop();
+});
+
+test("a lost status stream marks the gateway offline until a snapshot or a live stream clears it", async () => {
+  fake.list = { revision: 1, groups: [group(session("a"))] };
+  const { sessions } = controller();
+  await sessions.refresh();
+  sessions.start();
+  const { handlers } = fake.streams[0]!;
+  assert.equal(sessions.unreachable, false, "a shell that has just read its list is online");
+
+  handlers.onConnection?.("lost");
+  assert.equal(sessions.unreachable, true, "a connect attempt that never became live is an outage");
+
+  handlers.onSnapshot([{ id: "a", status: "running" }]);
+  assert.equal(sessions.unreachable, false, "a snapshot proves the gateway answered");
+
+  handlers.onConnection?.("lost");
+  handlers.onConnection?.("live");
+  assert.equal(sessions.unreachable, false, "a live stream is the gateway answering again");
+  sessions.stop();
+});
+
+test("a list read the gateway never answered marks it offline, and a refusal answers it", async () => {
+  const { sessions } = controller();
+  fake.loadError = new TypeError("Failed to fetch");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, true, "nothing answered, so the footer can offer another gateway");
+
+  fake.loadError = new GatewayHttpError(403, "refused 403");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, false, "a 403 is the gateway answering, so the footer stops offering a switch");
+
+  fake.loadError = new TypeError("Failed to fetch");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, true, "silence marks it offline again");
+
+  fake.loadError = new GatewayHttpError(404, "refused 404");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, false, "a 404 answers too");
+
+  fake.loadError = undefined;
+  fake.list = { revision: 1, groups: [group(session("live"))] };
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, false, "the gateway answered, so the footer names it again");
 });
 
 test("a gateway that refuses the list shows its error, not the saved conversations", async () => {

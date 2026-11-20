@@ -211,6 +211,51 @@ test("the footer is this page's gateway, and its menu lists the others with the 
   vi.unstubAllGlobals();
 });
 
+test("a gateway that stopped answering says so in the footer and keeps Retry connection, the other gateways and Add", () => {
+  const switched: string[] = [];
+  let retried = 0;
+  const view = renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "",
+    groups: [], draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
+    importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
+    draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
+    groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+    onSwitchGateway: (url: string) => switched.push(url),
+    onAddGateway: () => undefined,
+    gatewayOffline: true,
+    onRetryGateway: () => { retried += 1; },
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+  const rendered = markup(view);
+  // The button says the gateway is offline instead of naming it as if it were serving the page.
+  assert.match(rendered, /data-testid="sidebar-gateway"[\s\S]{0,200}?aria-label=Gateway offline: Studio Mac\. Choose another gateway\./u);
+  assert.match(rendered, /class="sidebar-gateway__dot sidebar-gateway__dot--offline"/u);
+  assert.match(rendered, /class="sidebar-gateway__name">Studio Mac</u);
+  // The current row stays where it is and reads Offline; Retry connection is offered above the others.
+  assert.match(rendered, /data-url=http:\/\/127\.0\.0\.1:8787[\s\S]{0,160}?data-state=current[\s\S]{0,500}?>Offline</u);
+  assert.match(rendered, /value="retry"[\s\S]{0,400}?>Retry connection</u);
+  // The gateways this device saved and Add a gateway… are still there, exactly as before.
+  assert.match(rendered, /data-url=http:\/\/loft\.local:8787[\s\S]{0,160}?data-state=known/u);
+  assert.match(rendered, /data-url=http:\/\/attic\.local:8787[\s\S]{0,160}?data-state=offline[\s\S]{0,500}?>Offline</u);
+  assert.match(rendered, />Loft</u);
+  assert.match(rendered, />Add a gateway…</u);
+
+  const select = handlers(view, "@wa-select=").at(-1);
+  assert.equal(typeof select, "function", "the menu reports the chosen item");
+  const choose = (value: string) => select!({
+    currentTarget: { querySelector: () => null },
+    detail: { item: { value } },
+    preventDefault: () => undefined,
+  } as unknown as { preventDefault(): void });
+  // The drawer helpers need a DOM; this menu closes the phone drawer before it retries or navigates.
+  vi.stubGlobal("HTMLElement", class HTMLElement {});
+  choose("retry");
+  assert.equal(retried, 1, "Retry connection asks this page's gateway again");
+  choose("switch:http://loft.local:8787");
+  assert.deepEqual(switched, ["http://loft.local:8787"]);
+  vi.unstubAllGlobals();
+});
+
 test("settings navigation contains only the fifteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),

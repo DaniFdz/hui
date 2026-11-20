@@ -6,6 +6,7 @@ import type { SessionRecord } from "../sessions/sessions.ts";
 import { DEFAULT_SETTINGS } from "../hui-settings.ts";
 import type { Settings } from "../api/settings.ts";
 import { SubagentService } from "./subagents.ts";
+import { SUBAGENT_NO_REPLY } from "./subagent-completion.ts";
 import { GROUP_PROJECT_MISSING } from "../sessions/group-session-defaults.ts";
 import { chiefGroupLabel } from "../bots/chief-title.ts";
 import { workers, type RemoteSessionSink } from "../workers.ts";
@@ -1287,4 +1288,150 @@ test("a child whose runtime fails as it starts is recorded as failed, not left r
   const waited = await service.handle("parent", "agents_wait", { ids: ["task-x"], timeoutSeconds: 30 }) as { completed: Array<{ status: string }> };
   assert.deepEqual(waited.completed.map(({ status }) => status), ["failed"]);
   assert.equal(state.sessions.get("child-x")?.prompts.length ?? 0, 0, "never prompted");
+});
+
+const QUOTA = "400 You exceeded your current quota. Please check your plan and billing details.";
+
+/** A parent and one ordinary child whose runtime is manual: the test decides how the child's run ends. */
+async function manualChild() {
+  const parent = record("parent");
+  const state = harness([parent], { manual: () => true });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  await state.service.handle(parent.id, "sessions_spawn", { task: "Inspect the implementation" });
+  await waitForStatus(state.manager, "child-1", "running");
+  return { ...state, parent, child: state.sessions.get("child-1")!, parentRuntime: state.sessions.get(parent.id)! };
+}
+
+const childOutcome = (state: { records: () => readonly SessionRecord[] }) =>
+  state.records().find((item) => item.id === "child-1")?.subagent;
+
+test("a child whose run dies is recorded failed with its runtime's error, never completed", async (t) => {
+  const state = await manualChild();
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  // Durable's shape: the error comes before the settle, and that settle replaces the history that held its entry.
+  state.child.emit({ type: "error", message: QUOTA });
+  state.child.emit({ type: "settled" });
+
+  await waitForTask(state.manager, state.parent.id, "failed");
+  const record = childOutcome(state);
+  assert.equal(record?.status, "failed");
+  assert.equal(record?.error, QUOTA);
+  const event = await announcement;
+  assert.match(event, /status: failed/);
+  assert.ok(event.includes(QUOTA), `the parent reads the child's own error:\n${event}`);
+  assert.doesNotMatch(event, /Subagent ended with status completed\.|status: completed/);
+});
+
+test("a child whose history holds an error and no answer failed with that error", async (t) => {
+  const state = await manualChild();
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  state.child.history.push({ kind: "error", message: QUOTA });
+  state.child.emit({ type: "settled" });
+
+  await waitForTask(state.manager, state.parent.id, "failed");
+  assert.equal(childOutcome(state)?.status, "failed");
+  assert.equal(childOutcome(state)?.error, QUOTA);
+  const event = await announcement;
+  assert.match(event, /status: failed/);
+  assert.ok(event.includes(QUOTA), event);
+});
+
+test("a child whose run ended with no answer and no error failed without a reply", async (t) => {
+  const state = await manualChild();
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  state.child.emit({ type: "settled" });
+
+  await waitForTask(state.manager, state.parent.id, "failed");
+  assert.equal(childOutcome(state)?.status, "failed");
+  assert.equal(childOutcome(state)?.error, SUBAGENT_NO_REPLY);
+  const event = await announcement;
+  assert.match(event, /status: failed/);
+  assert.ok(event.includes("finished without a reply"), event);
+});
+
+test("a child that answers after its runtime error completed with the answer", async (t) => {
+  const state = await manualChild();
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  state.child.emit({ type: "error", message: QUOTA });
+  state.child.finish("Answer");
+
+  await waitForTask(state.manager, state.parent.id, "completed");
+  assert.equal(childOutcome(state)?.status, "completed");
+  assert.equal(childOutcome(state)?.summary, "Answer");
+  assert.equal(childOutcome(state)?.error, undefined);
+  const event = await announcement;
+  assert.match(event, /status: completed/);
+  assert.match(event, /Answer/);
+  assert.ok(!event.includes(QUOTA), event);
+});
+
+test("a child that answers after an error entry in its history completed with the answer", async (t) => {
+  const state = await manualChild();
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  state.child.history.push({ kind: "error", message: QUOTA });
+  state.child.finish("Answer");
+
+  await waitForTask(state.manager, state.parent.id, "completed");
+  assert.equal(childOutcome(state)?.status, "completed");
+  assert.equal(childOutcome(state)?.summary, "Answer");
+  const event = await announcement;
+  assert.match(event, /status: completed/);
+  assert.match(event, /Answer/);
+  assert.ok(!event.includes(QUOTA), event);
+});
+
+test("a collected child killed by its provider reads failed with its error through agents_wait", async (t) => {
+  const state = await swarm(1);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await waitForStatus(state.manager, "child-0", "running");
+  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0"] }) as Promise<{
+    completed: Array<{ taskId: string; sessionKey: string; label: string; status: string; result?: string; error?: string }>;
+    pending: string[];
+  }>;
+  const child = state.sessions.get("child-0")!;
+  child.emit({ type: "error", message: QUOTA });
+  child.emit({ type: "settled" });
+  assert.deepEqual(await waited, {
+    completed: [{ taskId: "task-0", sessionKey: "child-0", label: "Part 0", status: "failed", error: QUOTA }],
+    pending: [],
+  });
+});
+
+test("a legacy completed child with no result is reported failed, never as an empty completion", async (t) => {
+  const legacy = (id: string): SessionRecord => record(id, { parentId: "parent", subagent: {
+    taskId: `task-${id}`, task: "Review", status: "completed", startedAt: timestamp, updatedAt: timestamp,
+    endedAt: timestamp, completionDelivery: "pending",
+  } });
+  const parent = record("parent");
+  const state = harness([parent, legacy("legacy"), legacy("delivered")]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const announcement = state.sessions.get(parent.id)!.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  const waited = await state.service.handle(parent.id, "agents_wait", { ids: ["task-legacy"] }) as {
+    completed: Array<{ status: string; result?: string; error?: string }>;
+  };
+  assert.deepEqual(waited.completed.map(({ status, error }) => ({ status, error })), [
+    { status: "failed", error: SUBAGENT_NO_REPLY },
+  ]);
+
+  await state.service.flushCompletions();
+  const event = await announcement;
+  assert.match(event, /status: failed/);
+  assert.ok(event.includes(SUBAGENT_NO_REPLY), event);
+  assert.doesNotMatch(event, /Subagent ended with status completed\.|status: completed/);
 });
