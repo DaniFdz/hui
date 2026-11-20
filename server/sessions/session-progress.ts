@@ -1,6 +1,6 @@
 /**
  * Keeps every session's Task progress card current: one refresh at a time, queued
- * by each settled turn and by a timer over the sessions whose turn is still going.
+ * by each settled turn, the operator's recompute and a timer over sessions whose turn is still going.
  * Generating the card itself lives in `progress-card.ts`.
  */
 import { homedir } from "node:os";
@@ -16,6 +16,15 @@ const PROGRESS_REFRESH_MS = 5 * 60_000;
 
 /** The registry facts a refresh needs about a session; nothing else is read from it. */
 export type ProgressSession = { cwd: string; worker?: string; parentId?: string };
+
+/** A recompute cannot overtake a queued or running refresh of the same card. */
+export class SessionProgressBusyError extends Error {}
+
+type TranscriptRead = () => readonly TranscriptEntry[] | Promise<readonly TranscriptEntry[]>;
+type Refresh = {
+  transcript: TranscriptRead;
+  completion?: { resolve: () => void; reject: (error: unknown) => void };
+};
 
 export type SessionProgressDeps = {
   settings: () => Promise<Settings>;
@@ -34,7 +43,8 @@ export type SessionProgressDeps = {
 export class SessionProgress {
   #deps: SessionProgressDeps;
   /** The newest transcript waiting for a refresh, per session; bounded by the sessions that exist. */
-  #waiting = new Map<string, readonly TranscriptEntry[]>();
+  #waiting = new Map<string, Refresh>();
+  #active: string | undefined;
   #draining = false;
   #timer: ReturnType<typeof setInterval> | undefined;
 
@@ -47,6 +57,18 @@ export class SessionProgress {
     this.#enqueue(id, transcript);
   }
 
+  /** Recomputes on demand, reserving the card before reading even a cold transcript. A successful answer means the
+   * new card was saved; an unavailable model, unusable answer or failed read/call/save rejects, leaving the old card. */
+  async refresh(id: string, transcript: TranscriptRead = () => this.#deps.transcript(id)): Promise<void> {
+    if (this.#active === id || this.#waiting.has(id)) {
+      throw new SessionProgressBusyError("This session's progress is already being refreshed. Try again when it finishes.");
+    }
+    return new Promise<void>((resolve, reject) => {
+      this.#waiting.set(id, { transcript, completion: { resolve, reject } });
+      this.#startDrain();
+    });
+  }
+
   /** Starts asking again for every session still running. */
   start(): void {
     if (this.#timer) return;
@@ -57,7 +79,12 @@ export class SessionProgress {
   }
 
   #enqueue(id: string, transcript: readonly TranscriptEntry[]): void {
-    this.#waiting.set(id, transcript);
+    // A manual read gets the latest transcript when it starts and must keep its completion promise.
+    if (!this.#waiting.get(id)?.completion) this.#waiting.set(id, { transcript: () => transcript });
+    this.#startDrain();
+  }
+
+  #startDrain(): void {
     if (this.#draining) return;
     this.#draining = true;
     void this.#drain();
@@ -65,11 +92,14 @@ export class SessionProgress {
 
   async #drain(): Promise<void> {
     try {
-      for (const [id, transcript] of this.#waiting) {
+      for (const [id, refresh] of this.#waiting) {
         this.#waiting.delete(id);
+        this.#active = id;
         try {
-          await this.#update(id, transcript);
+          await this.#update(id, await refresh.transcript(), refresh.completion !== undefined);
+          refresh.completion?.resolve();
         } catch (error) {
+          refresh.completion?.reject(error);
           recordDiagnosticEvent({
             area: "session",
             level: "warning",
@@ -80,14 +110,18 @@ export class SessionProgress {
         }
       }
     } finally {
+      this.#active = undefined;
       this.#draining = false;
     }
   }
 
-  async #update(id: string, transcript: readonly TranscriptEntry[]): Promise<void> {
+  async #update(id: string, transcript: readonly TranscriptEntry[], required: boolean): Promise<void> {
     // A subagent's card is its parent's work, and costs a model call nobody reads.
     const session = await this.#deps.session(id);
-    if (!session || session.parentId) return;
+    if (!session || session.parentId) {
+      if (required) throw new Error("Progress can only be recomputed for an existing top-level conversation.");
+      return;
+    }
     const card = await generateProgressCard({
       // A remote session's checkout is not on this machine; the utility call runs here.
       cwd: session.worker ? homedir() : session.cwd,
@@ -96,5 +130,6 @@ export class SessionProgress {
       ...(this.#deps.run ? { run: this.#deps.run } : {}),
     });
     if (card) await this.#deps.save(id, card);
+    else if (required) throw new Error("Could not recompute progress. Check the utility model and try again with a conversation to summarize.");
   }
 }

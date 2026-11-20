@@ -1,12 +1,12 @@
 /**
  * The chat header's Run status: the compact summary of a conversation's goal,
- * its Task progress plan and the latest batch of helpers, the numbers the
+ * its Task progress plan, child sessions and the latest batch of helpers, the numbers the
  * trigger and its popover print, and whether that popover is open. The view in
  * `views/chat/run-status.ts` owns the markup and the app owns the state behind it.
  * The popover opens only when the operator opens it: a run never opens or closes
  * it, and neither does the width of the window.
  */
-import type { ProgressCard, ProgressStep, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
+import type { ProgressCard, ProgressStep, SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import type { Watcher } from "../../api/watchers.ts";
 import { latestSubagentBatch, subagentVisualState } from "../subagent-activity.ts";
 
@@ -40,18 +40,24 @@ export type RunStatusHelpers = {
   allSucceeded: boolean;
 };
 
+/** Live side work, keyed by its stable active set rather than by streamed output. */
+export type RunStatusActivity = { count: number; signature: string };
+
 export type RunStatusModel = {
   /** Nothing to report: draw no trigger at all. */
   visible: boolean;
   tone: RunStatusTone;
   /** The trigger's word and the popover's state. */
   label: string;
-  /** The compact trailing count on the trigger, `1/2`; absent when there is no plan or batch. */
-  count: string | undefined;
+  /** Unit-bearing live work facts; plan completion belongs only in the Plan section. */
+  detail: string | undefined;
   goal: SessionGoal | undefined;
   plan: RunStatusPlan | undefined;
   helpers: RunStatusHelpers | undefined;
+  childSessions: readonly SessionView[];
+  liveSessions: number;
   watchers: RunStatusWatchers | undefined;
+  activity: RunStatusActivity;
   /** Blocks, failures and an unanswered question: the trigger carries a warn/danger mark. */
   attention: boolean;
   /** What the trigger is announced as, including the parts its visible word leaves out. */
@@ -136,10 +142,9 @@ function corner(value: number, height: number): number {
 
 /**
  * The morph's two ends: the trigger's own box — so the first frame is the pill, not a picture of it — and the panel's
- * settled box. Both are the panel's own box in viewport pixels, and the panel settles on the pill's top-right corner, so
- * the top and right edges do not travel: the box only grows left and down into the content it holds. Nothing here is a
- * transform or a scale, and nothing is clamped: a placement that moved the panel would make the two corners disagree,
- * which the tests that read the settled box must fail on.
+ * settled box at the actions group's top-right. The top stays pinned while the right edge travels from the leftmost
+ * trigger to the group's fixed right edge. Both are measured viewport boxes: no transform, scale or clamping can hide
+ * a placement error from the tests that read the settled box.
  */
 export function runStatusMorphBoxes(input: {
   pill: RunStatusMorphRect | undefined;
@@ -247,6 +252,8 @@ export function runStatus(options: {
   goal: SessionGoal | undefined;
   progress: ProgressCard | undefined;
   subagents: readonly SubagentTaskView[];
+  /** Preindexed ordinary children, already ordered by live status; never the whole registry. */
+  childSessions?: readonly SessionView[];
   /** HUI-run background watchers; a settled one writes its own transcript event and stays here until dismissed. */
   watchers?: readonly Watcher[];
   streaming: boolean;
@@ -265,7 +272,16 @@ export function runStatus(options: {
       finished: options.watchers.filter((watcher) => watcher.state !== "running").length,
     } satisfies RunStatusWatchers
     : undefined;
-  const visible = Boolean(goal || plan || helpers || watchers);
+  const childSessions = options.childSessions ?? [];
+  const runningSessions = childSessions.filter((session) => session.status === "running");
+  const liveSessions = runningSessions.length;
+  const activeIds = [
+    ...options.subagents.filter((task) => ["running", "queued"].includes(subagentVisualState(task.status))).map((task) => `helper:${task.taskId}`),
+    ...runningSessions.map((session) => `session:${session.id}`),
+    ...(options.watchers ?? []).filter((watcher) => watcher.state === "running").map((watcher) => `watcher:${watcher.id}`),
+  ].sort();
+  const activity: RunStatusActivity = { count: activeIds.length, signature: activeIds.join("|") };
+  const visible = Boolean(goal || plan || helpers || childSessions.length || watchers || options.streaming || options.waiting);
   const attention = Boolean(goal?.status === "blocked" || helpers?.failed || watchers?.failed || options.waiting);
 
   let tone: RunStatusTone = "idle";
@@ -276,7 +292,7 @@ export function runStatus(options: {
   } else if (goal?.status === "blocked") {
     tone = "blocked";
     label = "Goal blocked";
-  } else if (options.streaming || (helpers && !helpers.allFinished) || watchers?.running) {
+  } else if (options.streaming || (helpers && !helpers.allFinished) || liveSessions || watchers?.running) {
     tone = "running";
     label = "Working";
   } else if (watchers?.failed) {
@@ -298,13 +314,13 @@ export function runStatus(options: {
     label = "Done";
   }
 
-  const count = plan?.total
-    ? `${plan.done}/${plan.total}`
-    : helpers
-      ? `${helpers.allFinished ? helpers.completed : helpers.finished}/${helpers.total}`
-      : watchers
-        ? `${watchers.running ? watchers.running : watchers.finished}/${watchers.total}`
-        : undefined;
+  const liveHelpers = options.subagents.filter((task) => ["running", "queued"].includes(subagentVisualState(task.status))).length;
+  const details: string[] = [];
+  if (goal && !label.toLowerCase().includes("goal")) details.push("goal");
+  if (liveHelpers) details.push(`${liveHelpers} ${liveHelpers === 1 ? "helper" : "helpers"}`);
+  if (liveSessions) details.push(`${liveSessions} ${liveSessions === 1 ? "session" : "sessions"}`);
+  if (watchers?.running) details.push(`${watchers.running} ${watchers.running === 1 ? "watcher" : "watchers"}`);
+  const detail = details.length ? details.join(" · ") : undefined;
 
   const parts = [label];
   // The name says the goal's state once too: a head that already is the goal's state does not repeat it.
@@ -315,6 +331,7 @@ export function runStatus(options: {
       ? `${helpers.completed} of ${helpers.total} helpers completed`
       : `${helpers.running + helpers.queued} of ${helpers.total} helpers active`);
   }
+  if (liveSessions) parts.push(`${liveSessions} ${liveSessions === 1 ? "session" : "sessions"} running`);
   if (watchers) {
     parts.push(watchers.running
       ? `${watchers.running} of ${watchers.total} watchers running`
@@ -324,11 +341,14 @@ export function runStatus(options: {
     visible,
     tone,
     label,
-    count,
+    detail,
     goal,
     plan,
     helpers,
+    childSessions,
+    liveSessions,
     watchers,
+    activity,
     attention,
     summary: `Run status: ${parts.join(", ")}`,
   };

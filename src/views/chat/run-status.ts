@@ -1,13 +1,13 @@
 /**
  * The chat header's Run status: the compact trigger and the popover that holds a
  * conversation's goal (with its controls and editor), its Task progress plan, the
- * latest batch of helpers and its background watchers. The popover is HUI's only
- * home for those four surfaces, and it opens only when the operator opens it: a
+ * latest batch of helpers, child sessions and background watchers. The popover is HUI's only
+ * home for those surfaces, and it opens only when the operator opens it: a
  * run never opens or closes it, and neither does the width of the window. The
  * trigger stays out of the transcript so a phone keeps the whole conversation.
  * The pill morphs into the panel and back as one painted box: the panel's width
- * and height grow out of the trigger's box from the same top-right corner, so the
- * box only grows left and down, and the pill is not drawn at all while the panel is
+ * and height grow out of the trigger's box to the actions group's pinned top-right.
+ * The top stays fixed while the right edge travels; the pill is not drawn at all while the panel is
  * out — the panel's first line is its own title, the pill's mark, one state word and
  * count at the card's left padding, and its chevron, now the close, at the box's
  * right edge. Left-aligned copy inside a box growing to the left would glide with
@@ -20,7 +20,10 @@
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
+import { keyed } from "lit/directives/keyed.js";
 import type { SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
+import { sessionStatusLabel } from "../../lib/session/labels.ts";
+import { runStatusChildRows } from "../../lib/session/sidebar-sessions.ts";
 import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
 import {
   goalSectionStatus,
@@ -53,6 +56,10 @@ export type RunStatusProps = {
   id: string;
   session: SessionView;
   subagents: readonly SubagentTaskView[];
+  childSessions: readonly SessionView[];
+  /** Lazy rows follow the popover's own show/after-hide events, retaining content through its close morph. */
+  panelOpen: boolean;
+  onPanelOpenChange: (open: boolean) => void;
   /** Background watchers, when this conversation has any. */
   watchers?: WatcherActivityProps;
   /** The conversation is still opening/starting: nothing live to report yet. */
@@ -63,8 +70,8 @@ export type RunStatusProps = {
   sending: boolean;
   connectionLive: boolean;
   goalPanel: GoalPanelState;
-  /** "Collapse task progress": the plan starts folded inside the popover. */
-  collapsePlan: boolean;
+  progressRefresh: { pending: boolean; error: string | undefined };
+  onRecomputeProgress: () => void;
   onGoalChange: (kind: "pause" | "resume" | "clear") => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
@@ -84,6 +91,13 @@ function renderRunStatusMark(tone: RunStatusTone): TemplateResult {
   if (tone === "waiting") return icons.messageSquare;
   if (tone === "done") return icons.check;
   return goalTargetIcon;
+}
+
+/** Only a changed active set remounts the one-shot ring; streamed frames retain its animation and node. */
+function renderActivity(model: RunStatusModel) {
+  if (model.activity.count === 0) return nothing;
+  const activity = model.activity;
+  return html`<span class="chat-run-status__activity-dot" aria-hidden="true">${keyed(activity.signature, html`<span class="chat-run-status__activity-ping"></span>`)}</span>`;
 }
 
 function subagentSnippet(task: SubagentTaskView): string {
@@ -176,33 +190,46 @@ function renderHelpers(props: RunStatusProps, model: RunStatusModel, id: string)
   </section>`;
 }
 
+function renderChildSessions(props: RunStatusProps, model: RunStatusModel) {
+  if (!props.panelOpen || !model.childSessions.length) return nothing;
+  const { rows, more } = runStatusChildRows(model.childSessions);
+  return html`<section class="chat-run-status__section" aria-label="Sessions">
+    <div class="chat-run-status__section-head"><span class="chat-run-status__section-title">Sessions</span></div>
+    <div class="chat-run-status__helpers-list">${rows.map((session) => html`<button
+      type="button" class="chat-run-status__helper chat-run-status__session" data-child-session-id=${session.id}
+      aria-label=${`Open session ${session.title}`}
+      @click=${(event: Event) => {
+        ((event.currentTarget as Element).closest("wa-popover") as RunStatusPopover | null)?.hide();
+        props.onSelectSubagent(session.id);
+      }}>
+      <span class="chat-run-status__helper-copy"><span class="chat-run-status__helper-title">${session.title}</span></span>
+      <span class="chat-run-status__meta">${sessionStatusLabel(session)}</span>
+    </button>`)}</div>
+    ${more ? html`<p class="chat-run-status__note">+${more} more</p>` : nothing}
+  </section>`;
+}
+
 function renderPlan(props: RunStatusProps, model: RunStatusModel, id: string) {
   const plan = model.plan;
   if (!plan) return nothing;
-  const folded = props.collapsePlan || plan.allComplete;
   const body = html`
     ${plan.steps.length > 0 ? html`<div class="chat-run-status__steps-region" role="region" aria-label="Task progress steps" data-testid="task-progress-steps"><ol class="chat-run-status__steps">${plan.steps.map((step) => html`<li class="chat-run-status__step" data-status=${step.status} data-testid="task-progress-step">
       <span class="chat-run-status__step-mark" aria-hidden="true">${step.status === "completed" ? icons.check : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : icons.circle}</span>
       <span>${step.step}</span>
     </li>`)}</ol></div>` : nothing}
     ${plan.markdown ? html`<div class="chat-run-status__plan-note">${renderMarkdown(plan.markdown)}</div>` : nothing}`;
-  // A plan with no steps is a summary only: there is nothing for a fold to hide.
-  if (plan.steps.length === 0) {
-    return html`<section class="chat-run-status__section" aria-label="Task progress">
-      <div class="chat-run-status__section-head"><span class="chat-run-status__section-title">Plan</span></div>
-      ${body}
-    </section>`;
-  }
-  return html`<section class="chat-run-status__section" aria-labelledby=${`${id}-plan-title`}>
-    <details class="chat-run-status__plan" data-testid="task-progress" aria-label="Task progress" ?open=${!folded}>
-      <summary class="chat-run-status__section-head chat-run-status__plan-summary">
-        <span class="chat-run-status__section-title" id=${`${id}-plan-title`}>Plan</span>
-        ${plan.current ? html`<span class="chat-run-status__plan-current">${plan.current.step}</span>` : nothing}
-        <span class="chat-run-status__meta">${plan.done} of ${plan.total}</span>
-        <span class="chat-run-status__chevron" aria-hidden="true">${icons.chevronDown}</span>
-      </summary>
-      ${body}
-    </details>
+  return html`<section class="chat-run-status__section chat-run-status__plan" data-testid="task-progress" aria-label="Task progress">
+    <div class="chat-run-status__section-head">
+      <span class="chat-run-status__section-title" id=${`${id}-plan-title`}>Plan</span>
+      ${plan.current ? html`<span class="chat-run-status__plan-current">${plan.current.step}</span>` : nothing}
+      <span class="chat-run-status__meta">${plan.done} of ${plan.total}</span>
+      <button type="button" class="btn btn--ghost chat-run-status__recompute"
+        data-hui-tooltip="Ask HUI to recompute the plan from what is actually done and running"
+        ?disabled=${props.progressRefresh.pending || !props.connectionLive || props.loading || !["idle", "running"].includes(props.session.status)}
+        @click=${props.onRecomputeProgress}>${props.progressRefresh.pending ? "Recomputing…" : "Recompute"}</button>
+    </div>
+    ${props.progressRefresh.error ? html`<p class="chat-run-status__note" role="alert">Could not recompute the plan: ${props.progressRefresh.error}</p>` : nothing}
+    ${body}
   </section>`;
 }
 
@@ -283,6 +310,7 @@ function renderGoal(props: RunStatusProps, model: RunStatusModel, id: string) {
 type RunStatusPopover = HTMLElement & {
   open: boolean;
   distance: number;
+  skidding: number;
   hide: () => Promise<void> | void;
   popup?: { reposition: () => void };
 };
@@ -353,14 +381,15 @@ function applyRunStatusPanel(trigger: HTMLElement, panelId: string, state: RunSt
 }
 
 /**
- * Puts the panel's settled top-right corner on the pill's. Web Awesome hands `distance` to floating-ui's
- * `offset({ mainAxis })`, so overlapping the anchor by the trigger's own height lands the panel's top edge on the
- * trigger's and leaves its right edge there; the box then only grows left and down. The height is read while the trigger
- * is laid out, so the popover carries no second copy of the stylesheet's 28px.
+ * Pins the panel at the actions group's top-right, leaving the phone navigation toggle clear. Web Awesome hands
+ * distance and skidding to floating-ui's main/cross axis offsets: overlap by the trigger's height, then travel right by
+ * the gap to the group's fixed edge. Both are measured, not second copies of CSS dimensions.
  */
 function pinRunStatusPanel(popover: RunStatusPopover, trigger: HTMLElement): void {
   const height = trigger.offsetHeight;
   if (height > 0) popover.distance = -height;
+  const actionsGroup = trigger.closest(".chat-pane__header-actions");
+  popover.skidding = actionsGroup ? actionsGroup.getBoundingClientRect().right - trigger.getBoundingClientRect().right : 0;
 }
 
 /** Whether this window asked for no motion; a morph then never starts and the panel opens and closes at once. */
@@ -722,6 +751,7 @@ export function renderRunStatus(props: RunStatusProps) {
     goal: props.session.goal,
     progress: props.session.progress,
     subagents: props.subagents,
+    childSessions: props.childSessions,
     ...(props.watchers ? { watchers: props.watchers.watchers } : {}),
     streaming: props.streaming,
     waiting: props.waiting,
@@ -752,7 +782,8 @@ export function renderRunStatus(props: RunStatusProps) {
     >
       <span class="chat-run-status__mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
       <span class="chat-run-status__label">${model.label}</span>
-      ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
+      ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
+      ${renderActivity(model)}
       <span class="chat-run-status__trigger-chevron" aria-hidden="true">${icons.chevronDown}</span>
     </button>
     <wa-popover
@@ -761,13 +792,16 @@ export function renderRunStatus(props: RunStatusProps) {
       for=${triggerId}
       placement="bottom-end"
       without-arrow
+      @wa-show=${() => props.onPanelOpenChange(true)}
+      @wa-after-hide=${() => props.onPanelOpenChange(false)}
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
         <header class="chat-run-status__head">
           <span class="chat-run-status__state" data-tone=${model.tone}>
             <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
             <span class="chat-run-status__label">${model.label}</span>
-            ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
+            ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
+            ${renderActivity(model)}
           </span>
           <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__collapse" aria-label="Close run status" @click=${closePanel}>${icons.chevronDown}</button>
         </header>
@@ -775,6 +809,7 @@ export function renderRunStatus(props: RunStatusProps) {
           ${renderGoal(props, model, panelId)}
           ${renderPlan(props, model, panelId)}
           ${renderHelpers(props, model, panelId)}
+          ${renderChildSessions(props, model)}
           ${renderWatchers(props)}
         </div>
       </div>

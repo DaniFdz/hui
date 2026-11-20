@@ -483,12 +483,6 @@ function renderChatSection(props: SettingsProps) {
           (value) => props.onChangeChat({ ...chat, messageWidth: value as ChatAppearance["messageWidth"] })),
       )}
       ${renderRow(
-        "Collapse task progress",
-        "Start active task progress cards collapsed.",
-        renderSettingsToggle("Collapse task progress", chat.collapseTaskProgress,
-          (checked) => props.onChangeChat({ ...chat, collapseTaskProgress: checked })),
-      )}
-      ${renderRow(
         "Send shortcut",
         "Choose whether Enter sends or inserts a new line.",
         renderSettingsPicker("Send shortcut", chat.sendShortcut,

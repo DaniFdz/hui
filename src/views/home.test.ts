@@ -278,7 +278,7 @@ test("Task progress lives in the Run status popover and never draws in the trans
   // still carries the whole state. The morph is what makes that one control visible as both.
   assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
-  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
+  assert.doesNotMatch(html, /class="chat-run-status__count"/u, "plan completion stays in the Plan section");
   // One box: the head's chevron — the pill's, turned up — is the close, and the head's copy is exposed inside the dialog,
   // because the pill itself is not painted while the panel is out.
   assert.match(html, /class="chat-run-status__head"[\s\S]*?chat-run-status__collapse" aria-label="Close run status"/u);
@@ -304,6 +304,91 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.match(html, /Wiring the card\./u);
   assert.doesNotMatch(html, /session-progress-card/u, "the old composer card is gone");
   assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
+});
+
+test("side work uses a keyed dot-only badge and the plan is always open", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "idle", progress: {
+    markdown: "Plan", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const subagents = [{ taskId: "a", sessionId: "child", parentSessionId: "s", title: "Helper", status: "running", startedAt: new Date().toISOString() }];
+  const html = await renderWorkerSession("idle", { session, subagents, mobileNavLayout: true,
+    bot: { bot: { id: "b", name: "Ada" }, panelOpen: false, onTogglePanel: () => {}, onAction: () => {} },
+    call: { inCall: false, onCall: () => {} }, onClosePane: () => {},
+  });
+  assert.equal(html.match(/class="chat-run-status__activity-dot" aria-hidden="true"/gu)?.length, 2);
+  assert.equal(html.match(/class="chat-run-status__count"> · 1 helper</gu)?.length, 2);
+  assert.doesNotMatch(html, /side task active|1 active/u);
+  assert.match(html, /<section class="chat-run-status__section chat-run-status__plan" data-testid="task-progress"/u);
+  assert.doesNotMatch(html, /<details class="chat-run-status__plan"/u);
+  const done = await renderWorkerSession("idle", { session: { ...session, progress: { markdown: "Done", steps: [{ step: "Verify", status: "completed" }] } } });
+  assert.match(done, /data-testid="task-progress-steps"/u, "completed steps stay visible");
+  assert.doesNotMatch(done, /<details class="chat-run-status__plan"/u);
+  assert.match(await renderWorkerSession("idle", { subagents }), /class="chat-run-status__activity-dot"/u, "live work needs no plan");
+  assert.doesNotMatch(await renderWorkerSession("idle", { session, subagents: [] }), /class="chat-run-status__activity-dot"/u);
+  const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
+  assert.match(view, /keyed\(activity\.signature, html/u);
+  assert.match(view, /skidding = actionsGroup \? actionsGroup\.getBoundingClientRect\(\)\.right - trigger\.getBoundingClientRect\(\)\.right : 0/u);
+  const css = readStyles("../styles/chat-run-status.css");
+  assert.match(css, /\.chat-run-status__activity-dot \{[^}]*display: inline-flex;[^}]*flex: none;/su);
+  assert.match(css, /\.chat-run-status__activity-ping \{[^}]*position: absolute;/su);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chat-run-status__activity-ping \{ animation: none;/su);
+  const actions = html.slice(html.indexOf('class="chat-pane__actions chat-pane__header-actions"'));
+  const controls = ['data-testid="run-status-trigger"', 'aria-label=Call Ada', 'bot-panel-toggle', 'bot-header-menu__trigger', 'aria-label="Continue without a prompt"', 'aria-label="Close session pane"', 'aria-label="Open navigation"'];
+  let previous = -1;
+  for (const control of controls) {
+    const index = actions.indexOf(control);
+    assert.ok(index > previous, "header control follows its predecessor: " + control);
+    previous = index;
+  }
+  const leading = html.slice(html.indexOf('class="chat-pane__header-leading"'), html.indexOf('class="chat-pane__header-trailing"'));
+  assert.doesNotMatch(leading, /Open navigation/u);
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
+});
+
+test("Run status counts live child sessions while closed and draws capped session rows only while open", async () => {
+  const { childSessionsByParent } = await import("../lib/session/sidebar-sessions.ts");
+  const childSessions = childSessionsByParent([{ label: "", sessions: Array.from({ length: 10 }, (_, i) => ({
+    id: `child-${i}`, title: `Operator child ${i}`, parentId: "s", status: i === 9 ? "running" : "idle",
+    tool: "durable", cwd: "/repo", displayCwd: "", group: "", stage: "investigation", stageOrigin: "default", createdAt: "", updatedAt: "",
+  })) }]).get("s")!;
+  const subagents = [{ taskId: "a", sessionId: "helper", parentSessionId: "s", title: "Helper title", status: "running", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+  const watchers = { expanded: new Set(), pending: new Set(), errors: {}, onExpanded: () => {}, onAction: () => {}, watchers: [{ id: "w", purpose: "Watcher purpose", target: "", outcome: "", command: "true", pid: null, logPath: "", state: "running", startedAt: new Date().toISOString(), lastLine: "" }] };
+  const closed = await renderWorkerSession("idle", { childSessions, subagents, watchers });
+  assert.match(closed, /class="chat-run-status__count"> · 1 helper · 1 session · 1 watcher</u);
+  assert.match(closed, /1 session running/u);
+  assert.doesNotMatch(closed, /Operator child|aria-label="Sessions"/u, "closed panels do not construct child rows");
+  const open = await renderWorkerSession("idle", { childSessions, subagents, watchers, runStatusPanelOpen: true });
+  const helper = open.indexOf('>Helpers<');
+  const sessions = open.indexOf('aria-label="Sessions"');
+  const watcher = open.indexOf('>Watchers<');
+  assert.ok(helper > 0 && sessions > helper && watcher > sessions, "Sessions sits between Helpers and Watchers");
+  assert.equal(open.match(/aria-label=Open session Operator child/gu)?.length, 8);
+  assert.ok(open.indexOf('>Operator child 9<') < open.indexOf('>Operator child 0<'), "running child sorts first");
+  assert.match(open, />Running</u);
+  assert.match(open, />Idle</u);
+  assert.match(open, /class="chat-run-status__note">\+2 more</u);
+  assert.doesNotMatch(open, />Operator child [78]</u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { runStatusPanelOpen: true, subagents }), /aria-label="Sessions"/u);
+});
+
+test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "running", progress: {
+    markdown: "Keep this card", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const normal = await renderWorkerSession("running", { session, streaming: true });
+  assert.match(normal, /data-hui-tooltip="Ask HUI to recompute the plan from what is actually done and running"/u);
+  assert.match(normal, /\?disabled=false[^>]*>Recompute</u);
+  const pending = await renderWorkerSession("running", { session, progressRefresh: { pending: true, error: undefined } });
+  assert.match(pending, /\?disabled=true[^>]*>Recomputing…</u);
+  const offline = await renderWorkerSession("idle", { session, connection: "reconnecting" });
+  assert.match(offline, /\?disabled=true[^>]*>Recompute</u);
+  const waiting = await renderWorkerSession("waiting", { session: { ...session, status: "waiting" } });
+  assert.match(waiting, /\?disabled=true[^>]*>Recompute</u, "the button agrees with the controller's status guard");
+  const failed = await renderWorkerSession("idle", { session, progressRefresh: { pending: false, error: "utility unavailable" } });
+  assert.match(failed, /role="alert">Could not recompute the plan: utility unavailable</u);
+  assert.match(failed, /Keep this card/u);
+  assert.match(failed, /data-testid="task-progress-steps"/u);
 });
 
 test("only the operator's press opens the Run status popover", () => {
@@ -636,8 +721,10 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    childSessions: [], runStatusPanelOpen: false,
     goalPanel: { editing: false, error: "" },
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
+    progressRefresh: { pending: false, error: undefined }, onRecomputeProgress: () => {},
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
@@ -975,7 +1062,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },
