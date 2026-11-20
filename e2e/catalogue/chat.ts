@@ -1086,6 +1086,28 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "The shared test drives the wide layout's 1440px morph geometry, which a phone has no room for; a phone's own header is SHELL-047 and its Run status controls are the shared ones (CHAT-073, AGENT-053).", decision: "SPEC.md#run-status-opens-only-when-the-operator-opens-it-2026-11-17" },
   },
+  {
+    id: "CHAT-091",
+    title: "See a draft's Markdown in the composer and the sent prompt",
+    behaviour:
+      "While the operator types, the composer paints the draft's Markdown in a paint-only layer under the textarea — bold, italic, inline code, a fenced block, and a bullet with an ordered item nested under it — while the textarea's value stays the exact Markdown and every source marker stays visible but dimmed. The paint is the textarea's own box, so the two widths match and a multi-line draft grows the composer. Sending renders that operator prompt as real Markdown — bold, italic, code, the fence's code and a nested list — with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "CHAT-092",
+    title: "Shape a list and wrap text from the composer keyboard",
+    behaviour:
+      "On a keyboard, Tab adds three spaces of indent to a list line and Shift+Tab takes them back, three presses nest the line three levels deep, and Tab in a draft that holds no list leaves the composer. Enter on an empty list item ends the list: the draft empties and nothing is sent. Cmd/Ctrl+B wraps the selection in bold, and Cmd/Ctrl+Z puts the draft back as it was.",
+    spec: ["SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: { excluded: "A keyboard-only affordance: a phone has no hardware keyboard for Tab, Enter on an empty item or the wrap chord, and no visible control reaches these edits; the composer's own keys a phone does have are CHAT-002's.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+  },
 ];
 
 export default cases;
