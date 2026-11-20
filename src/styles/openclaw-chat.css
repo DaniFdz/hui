@@ -305,9 +305,10 @@
    width, the title ellipsizing and the chip keeping the rest of the room for itself. */
 .chat-pane__title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* The title takes only the room its text needs, so the chip follows it instead of ending up at the header's edge; it
-   still ellipsizes when the two together outgrow the line. A phone's panel chooser keeps the line's own width. */
+   still ellipsizes when the two together outgrow the line. A phone's panel chooser keeps its own width — its picker
+   writes `min-width` inline, so no rule here can shrink it — and the chip takes the room that is left. */
 .chat-pane__title-line > .transcript__title { flex: 0 1 auto; min-width: 0; }
-.chat-pane__title-line > .picker-select { flex: 1 1 auto; min-width: 0; }
+.chat-pane__title-line > .picker-select { flex: 1 1 auto; }
 .chat-pane__creator {
   display: inline-flex;
   flex: 0 1 auto;

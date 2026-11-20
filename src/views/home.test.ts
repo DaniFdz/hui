@@ -55,7 +55,18 @@ test("an open chat names the bot that started it, on the title's own line", asyn
   assert.match(header, /bot-avatar--emoji/u, "the chip carries the bot's own small face");
   assert.match(header, /data-testid="session-title"/u, "the title keeps its place");
   assert.ok(header.indexOf('data-testid="session-title"') < header.indexOf('data-testid="chat-pane-creator"'), "the title comes first on the line");
-  assert.match(header, /title=Build/u, "the title still ellipsizes by its own attribute");
+  // The line is only a flex row: the title and the chip are its two siblings, the title first and the chip after it, so
+  // the chip follows the title instead of landing at the header's edge. The title keeps its identity and, in the sheet,
+  // the rule that ellipsizes it; the line declares no overflow of its own.
+  const titleLine = header.match(/<div class="chat-pane__title-line">(.*?)<\/div>/u)?.[1] ?? "";
+  assert.match(titleLine, /^<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=Build>Build<\/h2><a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u,
+    "the title and the chip are siblings in the title line, the chip after the title");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.transcript__head \.transcript__title,\s*\.transcript__head \.transcript__meta \{ display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/u,
+    "the title still ellipsizes by the header's own rule");
+  const titleInLine = styles.match(/\.chat-pane__title-line > \.transcript__title \{([^}]*)\}/u)?.[1] ?? "";
+  assert.match(titleInLine, /min-width: 0;/u, "the title may shrink on the line, so its own ellipsis still applies");
+  assert.doesNotMatch(titleInLine, /overflow|white-space/u, "the line lays out only; it never re-declares the title's ellipsis");
 
   // Nothing at all without a creator, and nothing on a bot's own chat.
   assert.doesNotMatch(headerOf(await renderWorkerSession("idle", { bots: [ADA], onOpenBot: () => {} })), /chat-pane-creator/u);

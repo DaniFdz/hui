@@ -148,7 +148,11 @@ test("a session view names the bot that started it, and only while that bot exis
   const gone = views.toView(record("gone", { createdByBot: "deleted-bot" }), "idle");
   assert.equal("createdBy" in gone, false, "a creator bot outside the registry leaves an ordinary session");
 
-  const own = views.toView(record("own-chat", { bot: creator.id }), "idle");
+  // The record holds both fields, as a bot may create its own forever chat: the bot field is what omits the creator,
+  // so the same creator id on a record without one still reports it.
+  const own = views.toView(record("own-chat", { bot: creator.id, createdByBot: creator.id }), "idle");
   assert.deepEqual(own.bot, creator);
   assert.equal("createdBy" in own, false, "a bot's own chat carries its bot, never a creator");
+  const startedBySameBot = views.toView(record("started", { createdByBot: creator.id }), "idle");
+  assert.deepEqual(startedBySameBot.createdBy, creator, "the same creator id without a bot field is still reported");
 });

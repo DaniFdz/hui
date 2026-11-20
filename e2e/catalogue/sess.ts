@@ -783,7 +783,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-081",
     title: "See which bot started a session",
-    behaviour: "A session a Chief of Staff started with create_session shows that bot's face in its sidebar row and a \"Started by <name>\" chip in its chat header. The face is a link of its own, named \"Open <name>'s chat\", between the title and the pull request marks: clicking it opens that bot's chat, while clicking the row's title still opens the session. The chip leads there too, and a session with no recorded creator, or one whose bot is no longer in the roster, draws neither. Neither costs the row its height: the face's target is 32px with a fine pointer and 44px on a phone, and the row keeps its 30px (44px on a phone).",
+    behaviour: "A session a Chief of Staff started with create_session shows that bot's face in its sidebar row and a \"Started by <name>\" chip in its chat header. The face is a link of its own, named \"Open <name>'s chat\", drawn beside the title and leading to that bot's chat: clicking it opens that chat, while clicking the row's title still opens the session. The chip is drawn in the session's header, named \"Started by <name>\" and leading to the same chat, and clicking it opens that chat too.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#shapes", "docs/api.md#bots"],
     surfaces: ["nav:session", "nav:bot"],
     journeys: ["bots"],

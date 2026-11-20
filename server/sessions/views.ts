@@ -205,7 +205,9 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.parentId ? { parentId: record.parentId } : {}),
       ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
-      ...(createdBy ? { createdBy } : {}),
+      // A bot's own forever chat never reports a creator: `createdByBot` on such a record would say the bot started
+      // itself, so the bot field itself, not the roster, decides.
+      ...(createdBy && !bot ? { createdBy } : {}),
       ...effectiveSessionStage(record, pullRequests),
       ...(record.goal ? { goal: record.goal } : {}),
       createdAt: record.createdAt,
