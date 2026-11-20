@@ -1,17 +1,20 @@
 /**
  * The browser Work view: the larger live view of one session's agent browser, inside a Work pane tab. Streaming, tabs
  * and pointer marks come from the shared browser view controller; this element fits the frame to the view and stops
- * streaming while the view is hidden. It watches, and while the agent has handed a tab over it is also where the
- * operator takes that tab: their pointer, wheel and keys go to it, and Continue ends the wait. The Work pane owns
- * the tab, its caption and closing (`views/work/browser.ts`).
+ * streaming while the view is hidden. It watches, and while a tab waits for its operator it is also where they drive
+ * it: their pointer, wheel and keys go to it, the strip's field and a paste on the frame send typed text into the
+ * page's focused element, and Continue ends the wait. With no wait holding the tab, the toolbar offers to take it,
+ * which stops the agent's run and leaves the tab open for the operator. The Work pane owns the tab, its caption and
+ * closing (`views/work/browser.ts`).
  */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
+import { createRef, ref } from "lit/directives/ref.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { connectBrowserView } from "../api/browser.ts";
 import { BrowserViewController } from "../controllers/browser-view-controller.ts";
-import { browserTabOptions, browserViewEmptyMessage, browserViewStatus, fitFrame, operatorDriving, operatorKey, operatorPoint, relativeTime, type Size } from "../lib/browser-view.ts";
+import { browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, relativeTime, takeoverAvailable, type Size } from "../lib/browser-view.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 
 /** The larger live view beside the chat: follows the agent's current tab
@@ -26,6 +29,8 @@ export class BrowserPane extends HuiElement {
   private moveFrame: number | undefined;
   private pendingMove: (() => void) | undefined;
   private readonly browser = new BrowserViewController(this, connectBrowserView);
+  /** The strip's text field: read where it is written, then emptied; never held as component state. */
+  private readonly pasteField = createRef<HTMLInputElement>();
   private clock: ReturnType<typeof setInterval> | undefined;
   private resizeObserver: ResizeObserver | undefined;
 
@@ -68,7 +73,43 @@ export class BrowserPane extends HuiElement {
     this.browser.select(tabId);
   }
 
-  /** Their input reaches the browser only through the handoff the agent opened. */
+  /** The operator takes the watched tab: the agent's run stops and the tab waits for them. */
+  private takeControl() {
+    const tabId = this.browser.view?.watching;
+    if (!tabId) return;
+    this.browser.send({ action: "takeover", tabId });
+  }
+
+  /**
+   * Sends what the operator typed into the page's focused element. The value is read from the field and cleared
+   * here, so no copy of it reaches Lit state, a log, a tooltip or a text node.
+   */
+  private insert(field: HTMLInputElement | undefined) {
+    const tabId = this.browser.view?.handoff?.tabId;
+    const text = field ? insertableText(field.value) : undefined;
+    if (field) field.value = "";
+    if (!tabId || !text) return;
+    this.browser.send({ action: "insert", tabId, text });
+  }
+
+  /** Enter in the field sends it; no key typed there reaches the frame's own handler. */
+  private pasteKey(event: KeyboardEvent) {
+    event.stopPropagation();
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    this.insert(event.currentTarget as HTMLInputElement);
+  }
+
+  /** Text pasted onto the driving frame goes into the page's focused element, not into this view. */
+  private paste(event: ClipboardEvent) {
+    const tabId = this.browser.view?.handoff?.tabId;
+    const text = insertableText(event.clipboardData?.getData("text") ?? "");
+    if (!tabId || !text) return;
+    event.preventDefault();
+    this.browser.send({ action: "insert", tabId, text });
+  }
+
+  /** Their input reaches the browser only through the tab's wait, never by viewing it. */
   private pointer(at: { clientX: number; clientY: number }, kind: "down" | "move" | "up", element: HTMLElement, button: number) {
     const handoff = this.browser.view?.handoff;
     const frame = this.browser.frame?.tabId === handoff?.tabId ? this.browser.frame : undefined;
@@ -106,6 +147,8 @@ export class BrowserPane extends HuiElement {
   private key(event: KeyboardEvent) {
     const handoff = this.browser.view?.handoff;
     if (!handoff) return;
+    // The browser's own paste event is what the page answers, so this chord is left alone.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") return;
     const key = operatorKey(event);
     if (!key) return;
     // The page gets Tab, Enter and the arrows; the app keeps none of them while the operator drives.
@@ -137,6 +180,11 @@ export class BrowserPane extends HuiElement {
     const live = connection === "live" && Boolean(view?.running && view.watching);
     const handoff = view?.handoff;
     const driving = operatorDriving(view);
+    const notice = handoff ? handoffNotice(handoff) : undefined;
+    // Only while the operator holds the tab: the words say whether the agent waits or was stopped.
+    const activity = driving && handoff ? drivingActivity(handoff) : undefined;
+    const frameLabel = driving && handoff ? drivingLabel(handoff) : undefined;
+    const activityText = activity?.line ?? action?.text;
     // The tab caption already says "Browser"; the strip appears once there is a tab to choose or to stop watching.
     const picking = Boolean(view && view.tabs.length > 0 && view.watching);
     return html`${picking || (view && !view.following) ? html`<div class="hui-browser-toolbar">
@@ -153,6 +201,7 @@ export class BrowserPane extends HuiElement {
           : nothing}
       </div>
       <div class="hui-browser-actions">
+        ${takeoverAvailable(view, connection) ? html`<button type="button" class="btn btn--ghost btn--sm" @click=${this.takeControl}>Take control</button>` : nothing}
         ${view && !view.following ? html`<button type="button" class="btn btn--ghost btn--sm" @click=${() => this.select(null)}>Follow agent</button>` : nothing}
       </div>
     </div>` : nothing}
@@ -160,11 +209,13 @@ export class BrowserPane extends HuiElement {
       <span class="hui-browser-url" data-hui-tooltip=${watching?.url || nothing}>${watching?.url || "No page"}</span>
       <span role="status" class="hui-browser-status">${live ? html`<span class="hui-browser-status__dot" aria-hidden="true"></span>` : nothing}${status}</span>
     </div>
-    ${handoff
+    ${handoff && notice
       ? html`<div class="hui-browser-handoff">
-          <p class="hui-browser-handoff__text"><strong>Your turn.</strong> ${handoff.message}</p>
+          <p class="hui-browser-handoff__text"><strong>${notice.lead}</strong> ${notice.detail}</p>
           ${driving
-            ? html`<button type="button" class="btn btn--sm hui-browser-handoff__done" @click=${() => this.browser.send({ action: "continue", tabId: handoff.tabId })}>I'm done — continue</button>`
+            ? html`<button type="button" class="btn btn--sm hui-browser-handoff__done" @click=${() => this.browser.send({ action: "continue", tabId: handoff.tabId })}>I'm done — continue</button>
+              <input ${ref(this.pasteField)} type="password" class="hui-browser-paste" aria-label="Text to send into the page" placeholder="Paste into the page" autocomplete="off" maxlength="1024" @keydown=${this.pasteKey} />
+              <button type="button" class="btn btn--sm hui-browser-handoff__send" @click=${() => this.insert(this.pasteField.value)}>Send</button>`
             : html`<button type="button" class="btn btn--sm" @click=${() => this.select(handoff.tabId)}>Show tab ${handoff.tabId}</button>`}
         </div>`
       : nothing}
@@ -172,13 +223,14 @@ export class BrowserPane extends HuiElement {
       ${frame && size && watching
         ? html`<div class="hui-browser-frame ${driving ? "hui-browser-frame--driving" : ""}" style=${`width:${size.width}px;height:${size.height}px`}
             tabindex=${driving ? 0 : nothing}
-            aria-label=${driving ? "Your turn: the agent is waiting" : nothing}
+            aria-label=${frameLabel ?? nothing}
             @pointerdown=${driving ? this.down : nothing}
             @pointermove=${driving ? this.move : nothing}
             @pointerup=${driving ? this.up : nothing}
             @pointercancel=${driving ? this.up : nothing}
             @wheel=${driving ? this.wheel : nothing}
             @keydown=${driving ? this.key : nothing}
+            @paste=${driving ? this.paste : nothing}
             @contextmenu=${driving ? (event: Event) => event.preventDefault() : nothing}>
             <img src=${frame.src} alt=${`Live view of ${watching.title || watching.url}`} draggable="false" />
             ${pointer ? keyed(pointer.key, html`<span class="hui-browser-pointer" aria-hidden="true" style=${`left:${pointer.left}%;top:${pointer.top}%`}></span>`) : nothing}
@@ -186,8 +238,8 @@ export class BrowserPane extends HuiElement {
         : html`<p class="hui-browser-empty">${browserViewEmptyMessage(view, connection, this.enabled)}</p>`}
     </div>
     <div class="hui-browser-activity" aria-live="polite">
-      ${action
-        ? html`<span class="hui-browser-activity__text" data-hui-tooltip=${driving ? "You have control of this tab; the agent waits." : action.text}>${driving ? "You have control; the agent waits." : action.text}</span><time datetime=${action.at}>${relativeTime(action.at, Math.max(this.now, Date.parse(action.at) || 0))}</time>`
+      ${activityText
+        ? html`<span class="hui-browser-activity__text" data-hui-tooltip=${activity?.tooltip ?? action?.text}>${activityText}</span>${action ? html`<time datetime=${action.at}>${relativeTime(action.at, Math.max(this.now, Date.parse(action.at) || 0))}</time>` : nothing}`
         : html`<span>View only · the agent controls this browser</span>`}
     </div>
     ${connection === "disconnected" ? html`<button type="button" class="btn btn--sm hui-browser-reconnect" @click=${() => this.browser.connect(this.ownerSessionId, "stream")}>Reconnect</button>` : nothing}`;

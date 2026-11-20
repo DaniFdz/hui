@@ -1323,14 +1323,20 @@ with one sentence saying what to do and waits: ten minutes by default, at most
 thirty. That tab is the operator's until they continue. It stays open, the
 live view shows Your turn with the message and a Continue button, and every
 other agent action on the browser is refused. The browser view forwards the
-operator's pointer, wheel and keys to that one tab over the existing live-view
-socket; nothing else about a view becomes interactive, and input is ignored once
-the wait ends. Continue returns the page as it is then — title, URL and a fresh
-snapshot — so the agent acts on current refs rather than guessing whether the
-human step worked. A wait nobody answers ends with the tab back in the agent's
-control and a result saying the operator may be away; a tab that closes or a
-browser that stops ends it too. The chat's preview card carries the same
-message and opens the browser view where the operator can act.
+operator's pointer, wheel, keys and pasted text to that one tab over the
+existing live-view socket — a click is a press and its release, and a paste goes
+into the page's focused element without being echoed back. Nothing else about a
+view becomes interactive, and input is ignored once the wait ends. Continue
+returns the page as it is then — title, URL and a fresh snapshot — so the agent
+acts on current refs rather than guessing whether the human step worked. A wait
+nobody answers ends with the tab back in the agent's control and a result saying
+the operator may be away; a tab that closes or a browser that stops ends it too.
+The chat's preview card carries the same message and opens the browser view
+where the operator can act. The operator need not wait for the agent to offer
+the tab either: taking it stops the conversation's run once, keeps the tab open
+for their own click or paste, and refuses the agent the browser until they
+continue, which releases the tab without resuming the stopped run — writing in
+chat is how the work resumes.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a

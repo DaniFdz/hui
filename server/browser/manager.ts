@@ -13,8 +13,10 @@
  * launch after the mirror's.
  *
  * A `handoff` gives one tab to the operator: the agent waits, the live view
- * forwards their pointer and keys to that tab over the same CDP session, and
- * the call returns a fresh snapshot once they continue.
+ * forwards their pointer, keys and pasted text to that tab over the same CDP
+ * session, and the call returns a fresh snapshot once they continue. A
+ * `takeover` is theirs without waiting for the agent: it stops the run once,
+ * keeps the tab open, and their input lands until they continue.
  *
  * Page-sourced output (snapshots, text, console entries) travels between
  * markers carrying a nonce minted for that result, so a caller can tell HUI's
@@ -98,6 +100,8 @@ const IDLE_TAB_MS = 10 * 60_000;
 const DEFAULT_HANDOFF_MS = 10 * 60_000;
 const MAX_HANDOFF_MS = 30 * 60_000;
 const MIN_HANDOFF_MS = 5_000;
+/** What the operator sees when they take a tab: the agent's run stops and the tab stays for them. */
+const TAKEOVER_MESSAGE = "You took control. The agent is stopped.";
 /** A click that navigates starts doing so within a few frames. */
 const NAVIGATION_START_MS = 300;
 const CONSOLE_LIMIT = 200;
@@ -158,13 +162,16 @@ type Tab = {
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
 type Screencast = { viewers: number; ackedAt: number; timers: Set<ReturnType<typeof setTimeout>> };
 
-/** One tab waiting for its operator. `resolve` settles the agent's call. */
+/** One tab held for its operator. `resolve` settles the agent's call; a takeover's lease settles nothing. */
 type Handoff = {
   tabId: string;
   message: string;
   since: string;
   resolve: (outcome: HandoffOutcome) => void;
-  timer: ReturnType<typeof setTimeout>;
+  /** Who holds the tab: an agent waiting on it, or the operator who took it from a stopped run. */
+  by: "agent" | "operator";
+  /** Only an agent's wait expires; an operator's lease lasts until they continue. */
+  timer?: ReturnType<typeof setTimeout>;
   /** The mouse button the operator is holding down, for the moves between press and release. */
   button?: "left" | "right";
 };
@@ -229,6 +236,9 @@ export type ManagedBrowserOptions = {
   env?: NodeJS.ProcessEnv;
   window?: { width: number; height: number };
   idleTabMs?: number;
+  /** Stops a conversation's running turn when its operator takes a tab. The gateway passes one that keeps the
+   * browser tabs open, so the tab the operator just took is not the first thing the stop closes. */
+  stopRun?: (owner: string) => Promise<void>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -704,6 +714,7 @@ export class ManagedBrowser {
   readonly #idleTabMs: number;
   readonly #mirror: BrowserStateMirror | undefined;
   readonly #pending: BrowserPendingImport | undefined;
+  readonly #stopRun: ((owner: string) => Promise<void>) | undefined;
   /** Every transaction on the pending import's file, one after another: a read, a merge and a write are one step. */
   #pendingQueue: Promise<unknown> = Promise.resolve();
   #mirrorTimer: ReturnType<typeof setInterval> | undefined;
@@ -727,8 +738,12 @@ export class ManagedBrowser {
   readonly #epochs = new Map<string, number>();
   readonly #idle = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #viewers = new Set<Viewer>();
-  /** Each conversation's tab waiting for its operator; the agent's call waits with it. */
+  /** Each conversation's tab waiting for its operator; the agent's call waits with it, and a lease the
+   * operator took holds it while the agent is stopped. */
   readonly #handoffs = new Map<string, Handoff>();
+  /** Each conversation's takeover still stopping the agent: one stop per lease, however often the
+   * operator's view asks for the tab. */
+  readonly #takeovers = new Map<string, Promise<void>>();
   /** Settings → Tools → Browser's origin allowlist, refreshed by every call; empty is anywhere. */
   #origins: readonly string[] = [];
   readonly #secrets: BrowserSecretStore | undefined;
@@ -750,6 +765,7 @@ export class ManagedBrowser {
     this.#mirror = options.mirror;
     this.#pending = options.pending;
     this.#secrets = options.secrets;
+    this.#stopRun = options.stopRun;
   }
 
   get running(): boolean {
@@ -790,10 +806,12 @@ export class ManagedBrowser {
     };
   }
 
-  /** Operator input for a tab the agent handed over. Anything outside that tab's pending handoff is
+  /** Operator input for a tab the agent handed over or the operator took. Anything outside that tab's lease is
    * ignored: viewing never gives a conversation control over the browser. */
   operator(owner: string, control: BrowserViewControl): void {
     if (control.action === "select") return;
+    // A takeover comes before the lease: that is the request that creates it.
+    if (control.action === "takeover") { this.#takeover(owner, control.tabId); return; }
     const handoff = this.#handoffs.get(owner);
     const instance = this.#instance;
     if (!handoff || !instance || instance.connection.closed) return;
@@ -802,19 +820,70 @@ export class ManagedBrowser {
     if (!tab || tab.owner !== owner) return;
     if (control.action === "continue") { this.#settleHandoff(owner, "continued"); return; }
     if (control.action === "key") { void this.#operatorKey(instance, tab, control.key); return; }
+    if (control.action === "insert") {
+      // The operator pastes into the page: the text goes to the focused element and never
+      // comes back out, so neither the action line nor a log carries it.
+      if (!control.text) return;
+      void instance.connection.send("Input.insertText", { text: control.text }, tab.session, 5_000)
+        .then(() => this.#emitAction(tab, "Inserted text into the page"))
+        .catch(() => undefined);
+      return;
+    }
     if (control.action === "wheel") {
       void instance.connection.send("Input.dispatchMouseEvent", {
         type: "mouseWheel", x: control.x, y: control.y, deltaX: control.deltaX, deltaY: control.deltaY,
       }, tab.session, 5_000).catch(() => undefined);
       return;
     }
-    const held = control.kind === "down" ? control.button : control.kind === "up" ? undefined : handoff.button;
-    if (control.kind === "down") handoff.button = control.button;
-    else if (control.kind === "up") handoff.button = undefined;
+    // A press and a release name their button and the moves between them name what is held: Blink
+    // synthesizes the click from that pair, and a released "none" never becomes one.
+    const held = control.kind === "move" ? handoff.button : control.button;
+    const buttons = held === "left" ? 1 : held === "right" ? 2 : 0;
     void instance.connection.send("Input.dispatchMouseEvent", {
       type: control.kind === "down" ? "mousePressed" : control.kind === "up" ? "mouseReleased" : "mouseMoved",
-      x: control.x, y: control.y, button: held ?? "none", buttons: held === "left" ? 1 : held === "right" ? 2 : 0, clickCount: 1,
+      x: control.x, y: control.y, button: control.kind === "move" ? "none" : control.button,
+      buttons: control.kind === "up" ? 0 : buttons, clickCount: control.kind === "move" ? 0 : 1,
     }, tab.session, 5_000).catch(() => undefined);
+    // Only after the release is sent: the press is what the moves in between carry.
+    if (control.kind === "down") handoff.button = control.button;
+    else if (control.kind === "up") handoff.button = undefined;
+  }
+
+  /** The operator takes a tab from the agent: one lease, one stopped run, and the tab stays open so their
+   * click or paste lands. A tab already held, or a stop still running, is not taken twice. */
+  #takeover(owner: string, tabId: string): void {
+    const tab = this.#tabs.get(tabId);
+    if (!tab || tab.owner !== owner) return;
+    // Whatever already holds the tab keeps it: a takeover only makes sure the operator's view shows it.
+    const held = this.#handoffs.get(owner);
+    if (held) {
+      for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = held.tabId;
+      this.#changed(owner);
+      return;
+    }
+    if (this.#takeovers.has(owner)) return;
+    const handoff: Handoff = {
+      tabId: tab.id, message: TAKEOVER_MESSAGE, since: new Date().toISOString(), resolve: () => {}, by: "operator",
+    };
+    // The lease exists before the run stops, so an agent call landing in between sees a tab the
+    // operator holds instead of driving it.
+    this.#handoffs.set(owner, handoff);
+    for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = tab.id;
+    this.#emitAction(tab, `You took control of tab ${tab.id}`);
+    this.#changed(owner);
+    const run = this.#stopAgent(owner, tab);
+    this.#takeovers.set(owner, run);
+    void run.then(() => { if (this.#takeovers.get(owner) === run) this.#takeovers.delete(owner); });
+  }
+
+  /** Stops the agent's run once for the lease the operator holds. The lease stays even when the stop fails:
+   * an agent HUI could not stop still may not use the tab. */
+  async #stopAgent(owner: string, tab: Tab): Promise<void> {
+    try {
+      await this.#stopRun?.(owner);
+    } catch {
+      this.#emitAction(tab, "The agent could not be stopped, and it cannot use this tab.");
+    }
   }
 
   async status(ownerTitle: (sessionId: string) => string = () => ""): Promise<BrowserStatus> {
@@ -1032,7 +1101,9 @@ export class ManagedBrowser {
     // A tab the operator is working in is theirs until they continue.
     if (name !== "status" && name !== "tabs" && name !== "handoff" && this.#handoffs.has(owner)) {
       const waiting = this.#handoffs.get(owner)!;
-      throw new BrowserToolError(`The operator has taken over ${waiting.tabId}. Call handoff to wait for them, or stop and tell the user.`, 409);
+      throw new BrowserToolError(waiting.by === "operator"
+        ? `The operator has control of tab ${waiting.tabId}. Ask them in chat to continue.`
+        : `The operator has taken over ${waiting.tabId}. Call handoff to wait for them, or stop and tell the user.`, 409);
     }
     switch (name) {
       case "status": return this.#statusResult(owner, settings);
@@ -1156,11 +1227,9 @@ export class ManagedBrowser {
     // Whoever was watching follows the agent, which is now this tab; an explicit pin is theirs to keep.
     for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = null;
     const outcome = await new Promise<HandoffOutcome>((resolve) => {
-      const handoff: Handoff = {
-        tabId: tab.id, message, since, resolve,
-        timer: setTimeout(() => this.#settleHandoff(owner, "timeout"), timeoutMs),
-      };
-      handoff.timer.unref();
+      const timer = setTimeout(() => this.#settleHandoff(owner, "timeout"), timeoutMs);
+      timer.unref();
+      const handoff: Handoff = { tabId: tab.id, message, since, resolve, by: "agent", timer };
       this.#handoffs.set(owner, handoff);
       this.#emitAction(tab, `Waiting for you in tab ${tab.id}: ${message}`);
       this.#changed(owner);
@@ -1286,14 +1355,16 @@ export class ManagedBrowser {
   #settleHandoff(owner: string, outcome: HandoffOutcome): void {
     const handoff = this.#handoffs.get(owner);
     if (!handoff) return;
-    clearTimeout(handoff.timer);
+    if (handoff.timer) clearTimeout(handoff.timer);
     this.#handoffs.delete(owner);
     handoff.resolve(outcome);
     // The view's activity line stops claiming the tab is waiting, and a late
     // viewer replays how the wait ended rather than the wait itself.
     const tab = this.#tabs.get(handoff.tabId);
     if (tab && tab.owner === owner && (outcome === "continued" || outcome === "timeout")) {
-      this.#emitAction(tab, outcome === "continued" ? "You finished; the agent is back in control" : "No answer; the agent has the tab back");
+      // A lease belongs to an agent that was stopped, so finishing it resumes nothing.
+      const finished = handoff.by === "operator" ? "You finished; the agent is stopped. Write in chat to continue." : "You finished; the agent is back in control";
+      this.#emitAction(tab, outcome === "continued" ? finished : "No answer; the agent has the tab back");
     }
     this.#changed(owner);
   }
@@ -1670,7 +1741,7 @@ export class ManagedBrowser {
       current,
       watching: viewer.watching,
       following: viewer.pinned === null,
-      handoff: handoff ? { tabId: handoff.tabId, message: handoff.message, since: handoff.since } : null,
+      handoff: handoff ? { tabId: handoff.tabId, message: handoff.message, since: handoff.since, by: handoff.by } : null,
     };
     this.#notify(viewer, (listener) => listener.state(state));
     if (replay) this.#notify(viewer, (listener) => listener.action(replay));

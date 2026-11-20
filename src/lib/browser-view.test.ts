@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { BrowserViewState } from "../api/schema/browser.ts";
-import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, fitFrame, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime } from "./browser-view.ts";
+import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeoverAvailable } from "./browser-view.ts";
 
 const state: BrowserViewState = {
   running: true, mode: "headless",
@@ -59,9 +59,12 @@ test("the chat preview shows frames, a placeholder only while the agent browses,
 });
 
 test("the operator's view takes the tab only while its handoff waits", () => {
-  const handoff = { tabId: "t1", message: "Sign in.", since: "2026-09-28T09:00:00.000Z" };
+  const handoff = { tabId: "t1", message: "Sign in.", since: "2026-09-28T09:00:00.000Z", by: "agent" as const };
+  const lease = { tabId: "t1", message: "You took control. The agent is stopped.", since: "2026-09-28T09:00:00.000Z", by: "operator" as const };
   assert.equal(operatorDriving({ ...state, handoff }), true);
+  assert.equal(operatorDriving({ ...state, handoff: lease }), true, "a tab the operator took is theirs to drive too");
   assert.equal(operatorDriving({ ...state, handoff, watching: "t4" }), false, "another tab stays view-only");
+  assert.equal(operatorDriving({ ...state, handoff: lease, watching: "t4" }), false);
   assert.equal(operatorDriving(state), false);
   assert.equal(browserViewStatus({ ...state, handoff }, "live"), "Your turn");
 
@@ -79,4 +82,31 @@ test("the operator's view takes the tab only while its handoff waits", () => {
   assert.equal(operatorKey({ key: "ArrowLeft", metaKey: true }), "Meta+ArrowLeft");
   assert.equal(operatorKey({ key: " " }), " ");
   for (const key of ["Shift", "Control", "Meta", "AltGraph", "Dead", "Unidentified"]) assert.equal(operatorKey({ key }), undefined);
+});
+
+test("a tab is the operator's to take, and each kind of wait has its own words", () => {
+  const wait = { tabId: "t1", message: "Sign in.", since: "2026-09-28T09:00:00.000Z", by: "agent" as const };
+  const lease = { ...wait, message: "You took control. The agent is stopped.", by: "operator" as const };
+  assert.equal(takeoverAvailable(state, "live"), true);
+  assert.equal(takeoverAvailable({ ...state, following: false, watching: "t4" }, "live"), true, "a pinned tab can be taken too");
+  assert.equal(takeoverAvailable({ ...state, handoff: wait }, "live"), false, "a wait already holds the tab");
+  assert.equal(takeoverAvailable({ ...state, handoff: lease }, "live"), false);
+  assert.equal(takeoverAvailable({ ...state, running: false }, "live"), false, "a stopped browser has no tab to take");
+  assert.equal(takeoverAvailable({ ...state, watching: null }, "live"), false);
+  assert.equal(takeoverAvailable(undefined, "live"), false);
+  for (const connection of ["idle", "connecting", "reconnecting", "disconnected"] as const) {
+    assert.equal(takeoverAvailable(state, connection), false, `a ${connection} view has no tab to take`);
+  }
+
+  assert.deepEqual(handoffNotice(wait), { lead: "Your turn.", detail: "Sign in." }, "an agent's own words while it waits");
+  assert.deepEqual(handoffNotice(lease), { lead: "You have control.", detail: "The agent is stopped." }, "the server's message is not the one for a lease");
+  assert.deepEqual(drivingActivity(wait), { line: "You have control; the agent waits.", tooltip: "You have control of this tab; the agent waits." });
+  assert.deepEqual(drivingActivity(lease), { line: "You have control; the agent is stopped.", tooltip: "You have control of this tab; the agent is stopped." });
+  assert.equal(drivingLabel(wait), "Your turn: the agent is waiting");
+  assert.equal(drivingLabel(lease), "You have control of the page");
+
+  assert.equal(insertableText("hello"), "hello");
+  assert.equal(insertableText(" "), " ", "a space is text the page may need");
+  assert.equal(insertableText(""), undefined, "an empty paste sends nothing");
+  assert.equal(insertableText("a".repeat(2_000)), "a".repeat(1_024), "one insert carries at most 1024 code units");
 });

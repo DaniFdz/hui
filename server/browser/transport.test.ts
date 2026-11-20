@@ -7,7 +7,20 @@ import { readFile } from "node:fs/promises";
 import { BrowserViewMessage, type BrowserViewControl } from "../api/browser.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 import type { BrowserViewListener } from "./manager.ts";
-import { attachBrowserTransport, browserViewTicket, type BrowserViewSource } from "./transport.ts";
+import { attachBrowserTransport, browserViewTicket, parseBrowserViewControl, type BrowserViewSource } from "./transport.ts";
+
+test("a takeover and a pasted value parse, and an empty or oversized paste is ignored", () => {
+  assert.deepEqual(parseBrowserViewControl({ action: "takeover", tabId: "t1" }), { action: "takeover", tabId: "t1" });
+  assert.equal(parseBrowserViewControl({ action: "takeover", tabId: "page" }), undefined);
+  assert.deepEqual(parseBrowserViewControl({ action: "insert", tabId: "t1", text: "a".repeat(1_024) }), { action: "insert", tabId: "t1", text: "a".repeat(1_024) });
+  for (const insert of [
+    { action: "insert", tabId: "t1", text: "" },
+    { action: "insert", tabId: "t1", text: "a".repeat(1_025) },
+    { action: "insert", tabId: "t1" },
+    { action: "insert", tabId: "t1", text: 42 },
+    { action: "insert", tabId: "page", text: "x" },
+  ]) assert.equal(parseBrowserViewControl(insert), undefined, JSON.stringify(insert));
+});
 
 test("one-use, same-origin tickets bind a view-only stream to one conversation", { timeout: 20_000 }, async (t) => {
   const watched: string[] = [];
@@ -19,7 +32,7 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
     watch(owner, next) {
       watched.push(owner);
       listener = next;
-      next.state({ running: true, mode: "headless", tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }], current: "t1", watching: "t1", following: true, handoff: { tabId: "t1", message: "Finish the login.", since: "2026-09-28T07:00:00.000Z" } });
+      next.state({ running: true, mode: "headless", tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }], current: "t1", watching: "t1", following: true, handoff: { tabId: "t1", message: "Finish the login.", since: "2026-09-28T07:00:00.000Z", by: "agent" } });
       next.frame({ tabId: "t1", width: 1280, height: 800, seq: 7, image: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) });
       return { select: (tabId) => selected.push(tabId), close: () => { closed += 1; } };
     },
@@ -60,7 +73,7 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
   assert.deepEqual(watched, ["alpha"]);
   assert.deepEqual(messages[0]!.text, {
     type: "state", running: true, mode: "headless", tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }],
-    current: "t1", watching: "t1", following: true, handoff: { tabId: "t1", message: "Finish the login.", since: "2026-09-28T07:00:00.000Z" },
+    current: "t1", watching: "t1", following: true, handoff: { tabId: "t1", message: "Finish the login.", since: "2026-09-28T07:00:00.000Z", by: "agent" },
   });
   const fixture = JSON.parse(await readFile(new URL("./transport.fixture.json", import.meta.url), "utf8"));
   assert.equal(messages[1]!.binary!.toString("hex"), fixture.frame);
@@ -80,15 +93,21 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
   ws.send(JSON.stringify({ action: "key", tabId: "t1", key: "Enter" }));
   ws.send(JSON.stringify({ action: "wheel", tabId: "t1", x: 10, y: 10, deltaX: 0, deltaY: 240 }));
   ws.send(JSON.stringify({ action: "continue", tabId: "t1" }));
+  ws.send(JSON.stringify({ action: "takeover", tabId: "t1" }));
+  ws.send(JSON.stringify({ action: "insert", tabId: "t1", text: "pasted sign-in code" }));
+  ws.send(JSON.stringify({ action: "insert", tabId: "t1", text: "" }));
+  ws.send(JSON.stringify({ action: "insert", tabId: "t1", text: "x".repeat(1_025) }));
   ws.send(JSON.stringify({ action: "pointer", tabId: "t1", kind: "down", x: 1, y: 2 }));
   ws.send(JSON.stringify({ action: "key", tabId: "t1", key: "" }));
-  await until(() => selected.length >= 2 && controls.length >= 4);
+  await until(() => selected.length >= 2 && controls.length >= 6);
   assert.deepEqual(selected, ["t3", null]);
   assert.deepEqual(controls, [
     { action: "pointer", tabId: "t1", kind: "move", x: 12.5, y: -3, button: "left" },
     { action: "key", tabId: "t1", key: "Enter" },
     { action: "wheel", tabId: "t1", x: 10, y: 10, deltaX: 0, deltaY: 240 },
     { action: "continue", tabId: "t1" },
+    { action: "takeover", tabId: "t1" },
+    { action: "insert", tabId: "t1", text: "pasted sign-in code" },
   ]);
   await rejected(ticket, origin);
 

@@ -1829,6 +1829,28 @@ test("abort stops the turn but keeps the session usable", async () => {
   assert.equal(started.length, 1);
 });
 
+test("the stop behind a browser takeover keeps the tabs the operator took", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const aborted: string[] = [];
+  manager.setAbortListener((id) => aborted.push(id));
+  manager.ensure(recordFor("taken"));
+  await waitForBoot(manager, "taken");
+
+  await manager.prompt("taken", "sign in for me");
+  started[0]?.emit({ type: "turn_start" });
+  await manager.abort("taken", { keepBrowserTabs: true });
+  assert.equal(started[0]?.aborts, 1);
+  assert.deepEqual(aborted, [], "the tab the operator is working in is not closed under them");
+
+  // An ordinary Stop still releases the tabs it held.
+  await manager.prompt("taken", "long job");
+  started[0]?.emit({ type: "turn_start" });
+  await manager.abort("taken");
+  assert.equal(started[0]?.aborts, 2);
+  assert.deepEqual(aborted, ["taken"]);
+});
+
 test("rewind refreshes the authoritative transcript and broadcasts a snapshot", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

@@ -149,20 +149,41 @@ button.hui-browser-preview__screen:focus-visible { outline: 2px solid var(--ring
   .hui-browser-preview__dot { animation: none; }
 }
 
-/* ── The agent handed the tab over ──────────────────────────────────────────
- * The pane is the operator's browser for that tab until they continue. */
+/* ── The tab waits for the operator ───────────────────────────────────────
+ * The pane is the operator's browser for that tab until they continue: an agent that handed it over waits, and one
+ * whose tab they took is stopped. The strip wraps rather than overflowing a phone-wide pane. */
 .hui-browser-handoff {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 10%, var(--background));
 }
-.hui-browser-handoff__text { min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
+.hui-browser-handoff__text { flex: 1 1 140px; min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
 .hui-browser-handoff__text strong { color: var(--accent-text, var(--accent)); }
-.hui-browser-handoff__done { flex: none; }
+.hui-browser-handoff__done, .hui-browser-handoff__send { flex: none; }
+/* What the operator types is sent straight into the page's focused element; the field keeps no copy. */
+.hui-browser-paste {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--text, var(--foreground));
+  font: inherit;
+  font-size: 12px;
+}
+.hui-browser-paste::placeholder { color: var(--muted-foreground, var(--muted)); }
+.hui-browser-paste:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) {
+  /* A smaller field makes iOS zoom the whole pane when it takes focus. */
+  .hui-browser-paste { font-size: 16px; }
+}
 .hui-browser-frame--driving { cursor: default; outline: none; box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgb(0 0 0 / 10%); }
 .hui-browser-frame--driving:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .hui-browser-frame--driving img { cursor: default; }

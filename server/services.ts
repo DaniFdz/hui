@@ -517,6 +517,12 @@ export const managedBrowser = new ManagedBrowser({
   readSettings: async () => (await readHuiSettings()).browser,
   secrets: siteSecrets,
   pending: browserPendingImport,
+  // The operator taking a tab stops the agent's turn, but not the tab they just took: the
+  // browser's own idle clock and their next Stop (or closing the tab) are what close it.
+  stopRun: async (owner) => {
+    if (liveSessions.status(owner) !== "running") return;
+    await liveSessions.abort(owner, { keepBrowserTabs: true });
+  },
   mirror: {
     read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
     write: (state) => {

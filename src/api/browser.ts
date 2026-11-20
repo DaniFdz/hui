@@ -38,7 +38,7 @@ function handoff(value: unknown): BrowserHandoff | null {
   const tabId = tabRef(value["tabId"]);
   const message = text(value["message"], 500).trim();
   if (!tabId || !message) return null;
-  return { tabId, message, since: text(value["since"], 64) };
+  return { tabId, message, since: text(value["since"], 64), by: value["by"] === "operator" ? "operator" : "agent" };
 }
 
 

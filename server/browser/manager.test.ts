@@ -610,6 +610,176 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   assert.match((await call({ action: "snapshot" })).text, /heading|button|textbox/u);
 });
 
+test("the operator's click fires the page's handler, so the release carries its button", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-click-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+
+  const opened = await call({ action: "open", url: `${origin}/form` });
+  const greet = /button "Greet" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(greet, opened.text);
+  // Where the button is, read before the tab becomes the operator's.
+  const box = (await call({ action: "get", what: "box", ref: greet })).details["box"] as { x: number; y: number; width: number; height: number };
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  const waiting = call({ action: "handoff", message: "Click Greet.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  // Nothing focuses the name field: only the button's own click handler can set #out.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: at.x, y: at.y, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: at.x, y: at.y, button: "left" });
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  const finished = await waiting;
+  assert.equal(finished.details["outcome"], "continued");
+
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("Hello, "),
+    3_000,
+  );
+  assert.equal(rendered, "Hello, !", "the press and release pair became a click");
+});
+
+test("a pasted value reaches the focused element and never comes back in an action line", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-insert-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const actions: BrowserViewAction[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: (action) => actions.push(action) });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  const waiting = call({ action: "handoff", message: "Paste the code, then continue.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  // A click puts the caret in the field; the paste then goes to the focused element.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 10, y: 110, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 10, y: 110, button: "left" });
+  const pasted = "a long generated value 0f3a9c-11c5-4b0e-9f27-7d6a1e5b8c34";
+  browser.operator("alpha", { action: "insert", tabId: "t1", text: pasted });
+  await eventually(() => Promise.resolve(actions.map((action) => action.text)), (texts) => texts.includes("Inserted text into the page"));
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  const finished = await waiting;
+  assert.equal(finished.details["outcome"], "continued");
+
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("typed "),
+    3_000,
+  );
+  assert.equal(rendered, `typed ${pasted}`, "the pasted value landed in the focused field");
+  assert.ok(actions.some((action) => action.text === "Inserted text into the page"));
+  assert.deepEqual(actions.filter((action) => action.text.includes(pasted)), [], "the value is never echoed to the view");
+});
+
+test("a takeover stops the agent's run once, and its tab survives for the operator", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-takeover-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const stopped: string[] = [];
+  // The gateway's stop keeps the tabs (`keepBrowserTabs`); this stub must not close one either.
+  const browser = new ManagedBrowser({
+    profileDir: join(dir, "profile"), readSettings: async () => settings,
+    stopRun: async (owner) => { stopped.push(owner); },
+  });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const actions: BrowserViewAction[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: (action) => actions.push(action) });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  // The view can ask twice (a double click, a reconnect): the run stops once.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(stopped.length), (count) => count > 0);
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  assert.deepEqual(stopped, ["alpha"], "one takeover stops the run exactly once");
+  assert.deepEqual(states.at(-1)?.handoff, {
+    tabId: "t1", message: "You took control. The agent is stopped.", since: states.at(-1)!.handoff!.since, by: "operator",
+  });
+  // Their tab is the one the view shows. It is already the agent's current tab, so the view keeps
+  // following rather than holding a pin that would say otherwise.
+  assert.equal(states.at(-1)?.watching, "t1", "the view shows the tab they took");
+  assert.equal(actions.at(-1)?.text, "You took control of tab t1");
+  // The agent may not drive a tab the operator holds, and says so in their terms.
+  await assert.rejects(call({ action: "snapshot" }), /The operator has control of tab t1\. Ask them in chat to continue\./u);
+  assert.match((await call({ action: "tabs" })).text, /^t1/u, "the tab is still open");
+
+  // Their input is accepted: the click focuses the field and their keys type into it.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 10, y: 110, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 10, y: 110, button: "left" });
+  for (const key of ["o", "k"]) browser.operator("alpha", { action: "key", tabId: "t1", key });
+
+  // Continue releases the tab and stops nothing again; the agent has it back.
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff === null);
+  assert.equal(states.at(-1)?.handoff, null);
+  assert.deepEqual(stopped, ["alpha"]);
+  assert.ok(actions.some((action) => action.text === "You finished; the agent is stopped. Write in chat to continue."));
+  assert.match((await call({ action: "tabs" })).text, /^t1/u, "the released tab is still open");
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("typed "),
+    3_000,
+  );
+  assert.equal(rendered, "typed ok", "the operator's input reached the page while they held it");
+});
+
 test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {
   skip: !detected.executable,
   timeout: 120_000,
