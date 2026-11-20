@@ -654,7 +654,7 @@ function renderCost(props: BotPanelProps) {
   const reported = usage && (usage.costUsd !== null || memory > 0);
   const rows = [
     ...(usage?.models ?? []).map(({ model, costUsd }) => ({ name: model, cost: costUsd })).toSorted((a, b) => b.cost - a.cost),
-    ...(memory > 0 ? [{ name: "Memory summaries, since HUI started", cost: memory }] : []),
+    ...(memory > 0 ? [{ name: "Memory summaries", cost: memory }] : []),
   ];
   const subagents = Math.max(0, (usage?.sessions ?? 1) - 1);
   return html`<section class="bot-overview__section" aria-labelledby=${`${props.id}-overview-cost`}>

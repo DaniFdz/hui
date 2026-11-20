@@ -68,7 +68,8 @@ test("the overview totals a bot's cost, its memory summaries' included, and list
   const page = markup(renderBotPanel(props));
   assert.match(page, /<summary[^>]*>.*Total.*\$1\.75/su);
   assert.match(page, /anthropic\/opus.*\$1\.25.*openai\/mini.*<\$0\.01/su);
-  assert.match(page, /Memory summaries, since HUI started.*\$0\.50/su);
+  assert.match(page, />Memory summaries<.*\$0\.50/su);
+  assert.doesNotMatch(page, /Memory summaries, since HUI started/u);
   assert.match(page, /Includes 2 subagents/);
   const remote = markup(renderBotPanel({ ...props, bot: { ...props.bot, worker: { id: "w", name: "Box" } } }));
   assert.match(remote, /cost is kept on Box/);

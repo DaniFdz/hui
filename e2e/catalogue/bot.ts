@@ -664,7 +664,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-067",
     title: "See what a bot cost, per model",
-    behaviour: "The bot panel's overview has a Cost section whose Total is what its chat and the subagents under it cost, with \"Includes one subagent.\" (or N subagents) when it has some. Choosing Total opens Cost per model: one row per model with its amount.",
+    behaviour: "The bot panel's overview has a Cost section whose Total is what its chat, the subagents under it and its memory summaries cost, with \"Includes one subagent.\" (or N subagents) when it has some. Choosing Total opens Cost per model: one row per model with its amount, plus a \"Memory summaries\" row when those summaries cost anything.",
     spec: ["SPEC.md#bots", "docs/api.md#get-__huibotsidusage"],
     surfaces: ["route:GET /__hui/bots/:id/usage"],
     journeys: ["bots"],
