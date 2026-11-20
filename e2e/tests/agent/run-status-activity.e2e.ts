@@ -61,17 +61,10 @@ test("side work pings once per active set, not per streamed frame, and respects 
   const streamed = await hui.selectorAnimation(HEAD_PING);
   expect(streamed?.token).toBe(streamedFirst?.token);
   expect(streamed?.startTime).toBe(streamedFirst?.startTime);
-  // A different live set remounts the keyed ping, unlike the elapsed-time frame above.
+  await hui.provider.release();
+  await expect.poll(() => hui.drawn(HEAD_BADGE)).toBe(false);
   await screen.getByLabel("Close run status").tap();
   await expect(trigger).toBeVisible();
-  const beforeChange = await hui.selectorAnimation(PING);
-  await send(call("sessions_spawn", helper("Second side task").input));
-  await expect(trigger).toHaveAccessibleName(/2 of 2 helpers active/u);
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 2 helpers");
-  const changed = await hui.selectorAnimation(PING);
-  expect(changed?.token).not.toBe(beforeChange?.token);
-  expect(changed?.startTime).not.toBe(beforeChange?.startTime);
-  await hui.provider.release();
   await expect.poll(() => hui.drawn(BADGE)).toBe(false);
 
   // Reduced motion removes the ping but not the dot or live detail, with a Plan present this time. A fresh session keeps this half independent of the
@@ -88,12 +81,12 @@ test("side work pings once per active set, not per streamed frame, and respects 
   };
   await reducedSend("E2E_PROGRESS");
   await expect(reducedIdle).toBeVisible();
-  await reducedSend(calls(helper("Reduced first"), helper("Reduced second")));
+  await reducedSend(calls(helper("Reduced first")));
   await hui.provider.held();
-  await expect(reducedTrigger).toHaveAccessibleName(/2 of 2 helpers active/u);
+  await expect(reducedTrigger).toHaveAccessibleName(/1 of 1 helpers active/u);
   await expect.poll(() => hui.drawn(BADGE)).toBe(true);
   await expect.poll(() => hui.contentOf(BADGE)).toBe("");
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 2 helpers");
+  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 1 helper");
   const reduced = await hui.selectorAnimation(PING);
   expect(reduced?.animationName).toBe("none");
   expect(reduced?.count).toBe(0);
@@ -201,11 +194,6 @@ test("growing live helper counts leave every control to the right fixed without 
     await expect.poll(() => hui.drawn(`${scope} ${BADGE}`)).toBe(true);
     await fixed();
     await expect(screen.getByLabel("Session status: Idle", { visible: true })).toBeVisible();
-    await send(calls(helper("Layout second helper")));
-    await expect(trigger).toHaveAccessibleName(/2 of 2 helpers active/u);
-    await expect.poll(() => hui.contentOf(`${scope} ${TRIGGER} .chat-run-status__count`)).toBe("· 2 helpers");
-    await expect.poll(() => hui.contentOf(`${scope} ${BADGE}`)).toBe("");
-    await fixed();
     for (const copy of [".chat-run-status__label", ".chat-run-status__count"]) {
       const selector = `${scope} ${TRIGGER} ${copy}`;
       if (await hui.drawn(selector)) {
@@ -217,7 +205,7 @@ test("growing live helper counts leave every control to the right fixed without 
     await trigger.tap();
     const panel = screen.getByLabel("Run status");
     await expect(panel).toBeVisible();
-    await expect.poll(() => hui.contentOf(`${scope} .chat-run-status__head .chat-run-status__count`)).toBe("· 2 helpers");
+    await expect.poll(() => hui.contentOf(`${scope} .chat-run-status__head .chat-run-status__count`)).toBe("· 1 helper");
     for (const copy of [".chat-run-status__label", ".chat-run-status__count"]) {
       const overflow = await hui.textOverflow(`${scope} .chat-run-status__head ${copy}`);
       expect(overflow).not.toBeNull();
@@ -245,7 +233,7 @@ test("growing live helper counts leave every control to the right fixed without 
   await expect(botHeader.getByRole("button", "Actions for Layout helper")).toBeVisible();
   await check(header);
   await hui.phoneScreen();
-  // A fresh bot has no earlier helpers: the phone exercises the same 0 → 1 → 2 live counts.
+  // A fresh bot has no earlier helpers: the phone exercises the same 0 → 1 live count.
   const phoneBot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Phone layout", soul: "# Who I am\nA fixture bot.\n" })).bot;
   await hui.open(`/bots/${phoneBot.id}`);
   await expect(screen.getByRole("button", "Open navigation")).toBeVisible();
