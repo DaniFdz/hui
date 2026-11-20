@@ -236,6 +236,8 @@ export type Hui = {
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
+  /** Drags across a target's box from one fraction of it to another, selecting page text. */
+  dragWithin(target: Locator, from: { x: number; y: number }, to: { x: number; y: number }): Promise<void>;
   /** Drags the pointer from a target's centre by a pixel offset, holding it there for `whileOver` before letting go. */
   dragBy(target: Locator, offset: { dx: number; dy: number }, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
@@ -720,6 +722,23 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      dragWithin: async (target, from, to) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("hui.dragWithin: the target is not laid out");
+        const page = browser();
+        const point = (step: number) => ({
+          x: box.x + box.width * (from.x + (to.x - from.x) * step / 4),
+          y: box.y + box.height * (from.y + (to.y - from.y) * step / 4),
+        });
+        const start = point(0);
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        for (let step = 1; step <= 4; step += 1) {
+          const next = point(step);
+          await page.mouse.move(next.x, next.y);
+        }
+        await page.mouse.up();
+      },
       paste: async (text) => {
         const page = browser();
         const wrote = await page.evaluate(async (value) => {

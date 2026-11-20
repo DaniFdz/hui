@@ -114,6 +114,9 @@ const PAGES: Record<string, string> = {
       <button type="submit">Sign in</button>
     </form>
     <p id="out">idle</p>`,
+  "/selectable": `<!doctype html><title>Selectable page</title>
+    <h1 style="margin:24px 32px">HUI handoff fixture</h1>
+    <p style="margin:24px 32px">Select this fixture text.</p>`,
   "/handoff": `<!doctype html><title>Handoff page</title>
     <style>body{margin:0} #go{position:absolute;left:0;top:0;width:200px;height:60px}</style>
     <button id="go" onclick="document.getElementById('out').textContent = 'clicked'">Go</button>
@@ -825,6 +828,60 @@ test("a taken tab outlives the agent's idle clock until the operator continues",
   // Continue starts the ordinary clock again.
   browser.operator("alpha", { action: "continue", tabId: "t1" });
   await eventually(() => Promise.resolve(states.at(-1)?.tabs.length), (count) => count === 0, 4_000);
+});
+
+test("a pointer drag, double click and triple click select page text, and copy returns it", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-select-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const copy = () => new Promise<string>((resolve) => {
+    browser.operator("alpha", { action: "copy", tabId: "t1" }, resolve);
+  });
+
+  assert.match((await call({ action: "open", url: `${origin}/selectable` })).text, /Opened tab t1/u);
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+
+  // A drag across the heading selects its text, not the field under a click.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 40, y: 40, button: "left", clickCount: 1 });
+  for (let x = 40; x <= 460; x += 40) {
+    browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "move", x, y: 40, button: "left", clickCount: 1 });
+  }
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 460, y: 40, button: "left", clickCount: 1 });
+  const dragged = await copy();
+  assert.match(dragged, /HUI handoff fixture/u, "the drag selected the page's heading text");
+
+  // A double click selects one word; a triple selects the line.
+  for (const clickCount of [2, 3]) {
+    for (let click = 1; click <= clickCount; click += 1) {
+      browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 100, y: 40, button: "left", clickCount: click });
+      browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 100, y: 40, button: "left", clickCount: click });
+    }
+    const selected = await copy();
+    if (clickCount === 2) assert.ok(selected.length > 0 && selected.length < dragged.length, `a double click selects a word, got "${selected}"`);
+    else assert.match(selected, /HUI handoff fixture/u, "a triple click selects the line");
+  }
 });
 
 test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {

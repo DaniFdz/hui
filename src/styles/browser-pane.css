@@ -36,6 +36,8 @@ hui-browser-pane {
   background: color-mix(in srgb, var(--bg-hover, var(--border)) 45%, var(--background));
 }
 .hui-browser-frame { position: relative; overflow: hidden; border-radius: 6px; background: #fff; box-shadow: 0 0 0 1px var(--border), 0 4px 16px rgb(0 0 0 / 10%); }
+/* A touch drag selects page text instead of scrolling the pane. */
+.hui-browser-frame--driving { touch-action: none; }
 .hui-browser-frame img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
 /* Where the agent clicked: a solid dot inside an expanding ring. */
 .hui-browser-pointer {
@@ -164,26 +166,7 @@ button.hui-browser-preview__screen:focus-visible { outline: 2px solid var(--ring
 }
 .hui-browser-handoff__text { flex: 1 1 140px; min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
 .hui-browser-handoff__text strong { color: var(--accent-text, var(--accent)); }
-.hui-browser-handoff__done, .hui-browser-handoff__send { flex: none; }
-/* What the operator types is sent straight into the page's focused element; the field keeps no copy. */
-.hui-browser-paste {
-  flex: 1 1 160px;
-  min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--background);
-  color: var(--text, var(--foreground));
-  font: inherit;
-  font-size: 12px;
-}
-.hui-browser-paste::placeholder { color: var(--muted-foreground, var(--muted)); }
-.hui-browser-paste:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-@media (pointer: coarse) {
-  /* A smaller field makes iOS zoom the whole pane when it takes focus. */
-  .hui-browser-paste { font-size: 16px; }
-}
+.hui-browser-handoff__done { flex: none; }
 .hui-browser-frame--driving { cursor: default; outline: none; box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgb(0 0 0 / 10%); }
 .hui-browser-frame--driving:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .hui-browser-frame--driving img { cursor: default; }

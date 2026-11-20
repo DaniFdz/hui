@@ -57,6 +57,9 @@ export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | unde
       handoff: handoff(raw["handoff"]),
     };
   }
+  if (raw["type"] === "clipboard" && typeof raw["text"] === "string") {
+    return { type: "clipboard", text: text(raw["text"], 64_000) };
+  }
   if (raw["type"] === "action" && typeof raw["tabId"] === "string" && TAB_ID.test(raw["tabId"]) && typeof raw["text"] === "string") {
     const point = isRecord(raw["point"]) && Number.isFinite(raw["point"]["x"]) && Number.isFinite(raw["point"]["y"])
       ? { x: Number(raw["point"]["x"]), y: Number(raw["point"]["y"]) }

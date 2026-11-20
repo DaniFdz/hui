@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { BrowserViewState } from "../api/schema/browser.ts";
-import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeInsertText, takeoverAvailable } from "./browser-view.ts";
+import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeoverAvailable } from "./browser-view.ts";
 
 const state: BrowserViewState = {
   running: true, mode: "headless",
@@ -110,8 +110,4 @@ test("a tab is the operator's to take, and each kind of wait has its own words",
   assert.equal(insertableText(" "), " ", "a space is text the page may need");
   assert.equal(insertableText(""), undefined, "an empty paste sends nothing");
   assert.equal(insertableText("a".repeat(2_000)), "a".repeat(1_024), "one insert carries at most 1024 code units");
-  const field = { value: "long generated value" };
-  assert.equal(takeInsertText(field), "long generated value");
-  assert.equal(field.value, "", "the strip keeps no copy after sending");
-  assert.equal(takeInsertText(field), undefined, "an emptied strip sends nothing");
 });

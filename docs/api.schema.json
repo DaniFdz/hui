@@ -4004,6 +4004,22 @@
         }
       }
     },
+    "BrowserViewClipboard": {
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "clipboard"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserViewConnection": {
       "type": "object",
       "required": [
@@ -4050,6 +4066,22 @@
             "action": {
               "type": "string",
               "const": "takeover"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "copy"
             },
             "tabId": {
               "type": "string"
@@ -4127,6 +4159,9 @@
                   "const": "right"
                 }
               ]
+            },
+            "clickCount": {
+              "type": "number"
             }
           }
         },
@@ -4312,6 +4347,9 @@
               "type": "string"
             }
           }
+        },
+        {
+          "$ref": "#/$defs/BrowserViewClipboard"
         }
       ]
     },
@@ -15633,6 +15671,7 @@
       "BrowserStatus",
       "BrowserTabView",
       "BrowserViewAction",
+      "BrowserViewClipboard",
       "BrowserViewConnection",
       "BrowserViewControl",
       "BrowserViewMessage",

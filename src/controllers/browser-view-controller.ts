@@ -51,6 +51,8 @@ export class BrowserViewController implements ReactiveController {
   connection: BrowserViewConnection = "idle";
   frame: BrowserFrameImage | undefined;
   action: BrowserViewAction | undefined;
+  /** The page selection the operator copied, for the pane to write to their clipboard. */
+  clipboard: { text: string; seq: number } | undefined;
   pointer: { left: number; top: number; key: number } | undefined;
   readonly #host: ReactiveControllerHost;
   readonly #open: BrowserViewSocketFactory;
@@ -61,6 +63,7 @@ export class BrowserViewController implements ReactiveController {
   #retries = 0;
   #retry: ReturnType<typeof setTimeout> | undefined;
   #pointerTimer: ReturnType<typeof setTimeout> | undefined;
+  #clipboardSeq = 0;
   #snapshotTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(host: ReactiveControllerHost, open: BrowserViewSocketFactory) {
@@ -179,6 +182,11 @@ export class BrowserViewController implements ReactiveController {
       }
       const message = parseBrowserViewMessage(raw);
       if (!message) return;
+      if (message.type === "clipboard") {
+        this.clipboard = { text: message.text, seq: ++this.#clipboardSeq };
+        this.#host.requestUpdate();
+        return;
+      }
       if (message.type === "state") {
         const { type: _type, ...view } = message;
         this.view = view;

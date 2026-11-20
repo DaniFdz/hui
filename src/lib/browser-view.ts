@@ -147,12 +147,6 @@ export function insertableText(value: string): string | undefined {
   return text === "" ? undefined : text;
 }
 
-/** Reads the strip's value and clears it in the same step, so no copy stays behind. */
-export function takeInsertText(field: { value: string }): string | undefined {
-  const text = insertableText(field.value);
-  field.value = "";
-  return text;
-}
 
 /** A pointer position in the operator's view as a page coordinate in the frame. */
 export function operatorPoint(

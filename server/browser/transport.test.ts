@@ -102,7 +102,7 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
   await until(() => selected.length >= 2 && controls.length >= 6);
   assert.deepEqual(selected, ["t3", null]);
   assert.deepEqual(controls, [
-    { action: "pointer", tabId: "t1", kind: "move", x: 12.5, y: -3, button: "left" },
+    { action: "pointer", tabId: "t1", kind: "move", x: 12.5, y: -3, button: "left", clickCount: 1 },
     { action: "key", tabId: "t1", key: "Enter" },
     { action: "wheel", tabId: "t1", x: 10, y: 10, deltaX: 0, deltaY: 240 },
     { action: "continue", tabId: "t1" },

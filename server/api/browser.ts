@@ -46,9 +46,13 @@ export const BrowserViewAction = Type.Object({
 }, { $id: "BrowserViewAction" });
 export type BrowserViewAction = Static<typeof BrowserViewAction>;
 
+export const BrowserViewClipboard = Type.Object({ type: Type.Literal("clipboard"), text: Type.String() }, { $id: "BrowserViewClipboard" });
+export type BrowserViewClipboard = Static<typeof BrowserViewClipboard>;
+
 export const BrowserViewMessage = Type.Union([
   Type.Object({ type: Type.Literal("state"), ...BrowserViewState.properties }),
   Type.Object({ type: Type.Literal("action"), ...BrowserViewAction.properties }),
+  BrowserViewClipboard,
 ], { $id: "BrowserViewMessage" });
 export type BrowserViewMessage = Static<typeof BrowserViewMessage>;
 
@@ -57,12 +61,14 @@ export type BrowserViewMessage = Static<typeof BrowserViewMessage>;
 export const BrowserViewControl = Type.Union([
   Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }),
   Type.Object({ action: Type.Literal("takeover"), tabId: Type.String() }),
+  Type.Object({ action: Type.Literal("copy"), tabId: Type.String() }),
   // The published schema has no length keywords; the transport enforces 1–1024 code units.
   Type.Object({ action: Type.Literal("insert"), tabId: Type.String(), text: Type.String() }),
   Type.Object({
     action: Type.Literal("pointer"), tabId: Type.String(),
     kind: Type.Union([Type.Literal("move"), Type.Literal("down"), Type.Literal("up")]),
     x: Type.Number(), y: Type.Number(), button: Type.Union([Type.Literal("left"), Type.Literal("right")]),
+    clickCount: Type.Optional(Type.Number()),
   }),
   Type.Object({ action: Type.Literal("wheel"), tabId: Type.String(), x: Type.Number(), y: Type.Number(), deltaX: Type.Number(), deltaY: Type.Number() }),
   Type.Object({ action: Type.Literal("key"), tabId: Type.String(), key: Type.String() }),

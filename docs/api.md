@@ -5275,6 +5275,9 @@ terminal streams. The server sends JSON text messages:
   contains typed text; `point` is the viewport CSS pixel of a click or hover.
   On connect, the conversation's latest action is sent once right after the
   first state and before any frame, without `point`.
+- `{ type: "clipboard", text }` is the page's selected text, sent only to the
+  view that asked to copy it. The pane writes it to the device's clipboard; it is
+  never stored in the conversation.
 
 Frames are binary messages: a big-endian `u32` header length, a JSON header
 `{ tabId, width, height, seq }` (`width`/`height` are the viewport in CSS
@@ -5289,13 +5292,16 @@ the operator: their view stops the agent's run once, keeps the tab open and
 shows it, and asks again without stopping anything a second time. The rest
 reach the page only while that tab belongs to the operator, only for the
 conversation that owns it: `{ action: "pointer", tabId, kind: "move" | "down" |
-"up", x, y, button: "left" | "right" }` (a press and its release become the
-click the page sees) and `{ action: "wheel", tabId, x, y, deltaX, deltaY }` (page
-CSS pixels, from the view's scaled frame), `{ action: "key", tabId, key }` (a key
-name such as `Enter`, `Tab` or `a`, or a chord such as `Control+a`), `{ action:
+"up", x, y, button: "left" | "right", clickCount? }` (a press, its moves and its
+release become the click, drag or double/triple click the page sees) and
+`{ action: "wheel", tabId, x, y, deltaX, deltaY }` (page CSS pixels, from the
+view's scaled frame), `{ action: "key", tabId, key }` (a key name such as
+`Enter`, `Tab`, `Backspace` or `a`, or a chord such as `Control+a`), `{ action:
 "insert", tabId, text }` for text the operator pasted into the page's focused
 element (1–1024 UTF-16 code units; it is never echoed in a state or action
-message) and
+message; if the page has no editable focus, the field at the last press is
+focused first), `{ action: "copy", tabId }` to read the page's selected text and
+answer with a `clipboard` message and
 `{ action: "continue", tabId }`, which ends it. Every other message leaves the
 view untouched, and a view that never selects a tab can only watch.
 

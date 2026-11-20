@@ -174,6 +174,8 @@ type Handoff = {
   timer?: ReturnType<typeof setTimeout>;
   /** The mouse button the operator is holding down, for the moves between press and release. */
   button?: "left" | "right";
+  /** The last press in page CSS pixels, so a paste can focus the field the operator clicked. */
+  lastPoint?: { x: number; y: number };
 };
 /** `continued`: the operator finished. `timeout`: nobody came. `closed`: the tab went away under them.
  * `stopped`: the browser did. */
@@ -805,7 +807,7 @@ export class ManagedBrowser {
 
   /** Operator input for a tab the agent handed over or the operator took. Anything outside that tab's lease is
    * ignored: viewing never gives a conversation control over the browser. */
-  operator(owner: string, control: BrowserViewControl): void {
+  operator(owner: string, control: BrowserViewControl, reply?: (text: string) => void): void {
     if (control.action === "select") return;
     // A takeover comes before the lease: that is the request that creates it.
     if (control.action === "takeover") { this.#takeover(owner, control.tabId); return; }
@@ -817,13 +819,20 @@ export class ManagedBrowser {
     if (!tab || tab.owner !== owner) return;
     if (control.action === "continue") { this.#settleHandoff(owner, "continued"); return; }
     if (control.action === "key") { void this.#operatorKey(instance, tab, control.key); return; }
+    if (control.action === "copy") { void this.#copySelection(instance, tab, reply); return; }
     if (control.action === "insert") {
       // The operator pastes into the page: the text goes to the focused element and never
       // comes back out, so neither the action line nor a log carries it.
       if (!control.text) return;
-      void instance.connection.send("Input.insertText", { text: control.text }, tab.session, 5_000)
-        .then(() => this.#emitAction(tab, "Inserted text into the page"))
-        .catch(() => undefined);
+      void (async () => {
+        if (!await this.#focusEditable(instance, tab, handoff)) {
+          this.#emitAction(tab, "Click the page's field first");
+          return;
+        }
+        await instance.connection.send("Input.insertText", { text: control.text }, tab.session, 5_000)
+          .then(() => this.#emitAction(tab, "Inserted text into the page"))
+          .catch(() => undefined);
+      })();
       return;
     }
     if (control.action === "wheel") {
@@ -838,12 +847,51 @@ export class ManagedBrowser {
     const buttons = held === "left" ? 1 : held === "right" ? 2 : 0;
     void instance.connection.send("Input.dispatchMouseEvent", {
       type: control.kind === "down" ? "mousePressed" : control.kind === "up" ? "mouseReleased" : "mouseMoved",
-      x: control.x, y: control.y, button: control.kind === "move" ? "none" : control.button,
-      buttons: control.kind === "up" ? 0 : buttons, clickCount: control.kind === "move" ? 0 : 1,
+      x: control.x, y: control.y, button: control.button,
+      buttons: control.kind === "up" ? 0 : buttons,
+      clickCount: control.kind === "move" ? 0 : Math.min(3, Math.max(1, Math.round(control.clickCount ?? 1))),
     }, tab.session, 5_000).catch(() => undefined);
     // Only after the release is sent: the press is what the moves in between carry.
-    if (control.kind === "down") handoff.button = control.button;
-    else if (control.kind === "up") handoff.button = undefined;
+    if (control.kind === "down") {
+      handoff.button = control.button;
+      handoff.lastPoint = { x: control.x, y: control.y };
+    } else if (control.kind === "up") handoff.button = undefined;
+  }
+
+  /** The selection the page holds: a field's selected text, or the document's selection. */
+  async #copySelection(instance: Instance, tab: Tab, reply?: (text: string) => void): Promise<void> {
+    if (!reply) return;
+    const result = await instance.connection.send("Runtime.evaluate", {
+      expression: `(() => {
+        const element = document.activeElement;
+        if (element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA")
+            && typeof element.selectionStart === "number" && element.selectionStart !== element.selectionEnd) {
+          return element.value.slice(element.selectionStart, element.selectionEnd);
+        }
+        return String(window.getSelection ? window.getSelection().toString() : "");
+      })()`,
+      returnByValue: true,
+    }, tab.session, 5_000).catch(() => undefined);
+    const value = result && isRecord(result["result"]) ? str(result["result"]["value"]) : "";
+    reply(value.slice(0, 64_000));
+  }
+
+  /** Focus the page's editable active element, or the field at the last press, before inserting. */
+  async #focusEditable(instance: Instance, tab: Tab, handoff: Handoff): Promise<boolean> {
+    const point = handoff.lastPoint;
+    const hit = point ? `const hit = document.elementFromPoint(${Math.round(point.x)}, ${Math.round(point.y)});
+      const target = hit && (editable(hit) ? hit : hit.closest && hit.closest("input, textarea, [contenteditable=''], [contenteditable='true']"));
+      if (editable(target)) { target.focus(); return true; }` : "";
+    const result = await instance.connection.send("Runtime.evaluate", {
+      expression: `(() => {
+        const editable = (element) => !!element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable === true);
+        if (editable(document.activeElement)) return true;
+        ${hit}
+        return false;
+      })()`,
+      returnByValue: true,
+    }, tab.session, 5_000).catch(() => undefined);
+    return Boolean(result && isRecord(result["result"]) && result["result"]["value"] === true);
   }
 
   /** The operator takes a tab from the agent: one lease, one stopped run, and the tab stays open so their

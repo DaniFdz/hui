@@ -193,8 +193,9 @@ const TAKEOVER_FIXTURE_PAGE = `<!doctype html>
     body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
     #next { display: block; height: 80px; line-height: 80px; text-align: center; background: #0969da; color: #fff; font-weight: 600; }
     input { position: fixed; left: 50%; width: 320px; height: 48px; box-sizing: border-box; transform: translateX(-50%); padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font: inherit; }
-    #name { top: calc(40% - 24px); }
-    #password { top: calc(60% - 24px); }
+    #name { top: calc(30% - 24px); }
+    #password { top: calc(75% - 24px); }
+    #selectable { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; font-size: 22px; }
     #report { position: fixed; left: 12px; bottom: 12px; margin: 0; color: #57606a; }
   </style>
 </head>
@@ -202,6 +203,7 @@ const TAKEOVER_FIXTURE_PAGE = `<!doctype html>
   <a id="next" href="/browser-fixture">Next page</a>
   <input id="name" aria-label="Name" autocomplete="off">
   <input id="password" aria-label="Password" type="password" autocomplete="off">
+  <p id="selectable">Copy this fixture text.</p>
   <p id="report" role="status">idle</p>
   <script>
     const name = document.getElementById("name");
@@ -216,6 +218,16 @@ const TAKEOVER_FIXTURE_PAGE = `<!doctype html>
     name.addEventListener("input", () => report("typed " + name.value.length));
     password.addEventListener("focus", () => report("password focused"));
     password.addEventListener("input", () => report("pasted " + password.value.length));
+    let menuUntil = 0;
+    document.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      menuUntil = Date.now() + 1_000;
+      report("menu");
+    });
+    document.addEventListener("selectionchange", () => {
+      const selected = String(document.getSelection ? document.getSelection().toString() : "");
+      if (selected && Date.now() >= menuUntil) report("selected " + selected.length);
+    });
   </script>
 </body>
 </html>`;

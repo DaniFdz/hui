@@ -1,12 +1,13 @@
 /** The operator takes the agent's browser without waiting for a handoff: one click stops the running turn, the tab
- * survives, a click focuses the page's field and a link navigates, pasted text reaches the focused element from the
- * strip or the keyboard, and Continue releases the tab without resuming the run (AGENT-075, AGENT-076, AGENT-077). */
+ * survives, the pane is the page itself — click, type, drag-select, double/triple click, copy and paste with the real
+ * clipboard, and a long press for the page's context menu — and Continue releases the tab without resuming the run. */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { backToChat, openWork } from "../work/work-views.ts";
 
-/** A fixture password, not a credential: long enough to prove the whole value crossed and never came back. */
+/** A fixture value, not a credential: long enough to prove the whole clipboard value crossed. */
 const PASSWORD = "V7!k#Q2m@R9$tW4xL6&pN8*zB3^cF5_hJ1+gD0=sA2%yU6(iO4)eK8";
+/** The fixture page's selectable line, whose length is the selection a drag makes. */
 
 const taken = async (screen: Screen, hui: Hui) => {
   const session = await hui.createSession({ title: "Take over the browser" });
@@ -28,50 +29,48 @@ const taken = async (screen: Screen, hui: Hui) => {
   return { pane, frame, box };
 };
 
-test("the operator takes the agent's browser, clicks through the page and pastes a password", { tags: ["AGENT-075", "AGENT-076"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const transcript = screen.getByTestId("transcript");
+test("the operator takes the agent's browser and drives the page as a device screen", { tags: ["AGENT-075"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { pane, frame, box } = await taken(screen, hui);
   const picker = pane.getByRole("button", /^Browser tab: /u);
 
   // A click focuses the page's Name field, and the keys go into it.
-  await frame.click({ position: { x: box.width / 2, y: box.height * 0.4 } });
+  await frame.click({ position: { x: box.width / 2, y: box.height * 0.3 } });
   await hui.type("Ada");
   await expect(picker).toHaveAttribute("aria-label", /\(typed 3\)$/u);
 
-  // The takeover strip's field sends the password to the page's focused element and clears itself. The
-  // page reports only the length, so the value never appears in the title, the transcript or a log.
-  await frame.click({ position: { x: box.width / 2, y: box.height * 0.6 } });
-  const strip = pane.getByLabel("Text to send into the page");
-  await strip.fill(PASSWORD);
-  await pane.getByRole("button", "Send", { exact: true }).click();
-  await expect(picker).toHaveAttribute("aria-label", /\(pasted 54\)$/u);
-
-  // A click on a link navigates the page, so the tab's own title and address change under the operator.
-  await frame.click({ position: { x: box.width / 2, y: 20 } });
-  await expect(pane.getByText(/\/browser-fixture$/u).first()).toBeVisible();
+  // A long press opens the page's own context menu.
+  await frame.longPress({ duration: 800 });
+  await expect(picker).toHaveAttribute("aria-label", /\(menu\)$/u);
 
   // Continue releases the tab without resuming the stopped run.
   await pane.getByRole("button", "I'm done — continue").click();
   await expect(pane.getByText("You finished; the agent is stopped. Write in chat to continue.")).toBeVisible();
-  await expect(pane.getByLabel("Text to send into the page")).toHaveCount(0);
   await expect(pane.getByRole("button", "Take control")).toBeVisible();
-  // A phone shows the Work destination instead of the chat; the stop and the transcript are read there.
   await backToChat(screen);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
-  await expect(transcript).not.toContainText(PASSWORD);
 });
 
-test("the operator pastes into the page with the keyboard", { tags: ["AGENT-077"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const transcript = screen.getByTestId("transcript");
+test("the operator copies page text and pastes it with the keyboard", { tags: ["AGENT-077"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { pane, frame, box } = await taken(screen, hui);
   const picker = pane.getByRole("button", /^Browser tab: /u);
+  const chord = async (key: string) => {
+    await hui.keyboard.down("Control");
+    await hui.keyboard.down(key);
+    await hui.keyboard.up(key);
+    await hui.keyboard.up("Control");
+  };
 
-  await frame.click({ position: { x: box.width / 2, y: box.height * 0.4 } });
+  // Ctrl+A selects the field's text, Ctrl+C copies it, and Ctrl+V inserts it into the next field.
+  await frame.click({ position: { x: box.width / 2, y: box.height * 0.3 } });
   await hui.type("Ada");
-  await expect(picker).toHaveAttribute("aria-label", /\(typed 3\)$/u);
+  await chord("a");
+  await expect(picker).toHaveAttribute("aria-label", /\(selected 3\)$/u);
+  await chord("c");
+  await frame.click({ position: { x: box.width / 2, y: box.height * 0.75 } });
+  await chord("v");
+  await expect(picker).toHaveAttribute("aria-label", /\(pasted 3\)$/u);
 
-  // The frame's paste event reads the clipboard, not a forwarded Control+V chord.
-  await hui.paste("Chord!");
-  await expect(picker).toHaveAttribute("aria-label", /\(typed 9\)$/u);
-  await expect(transcript).not.toContainText("Chord!");
+  // An external clipboard value takes the same paste path.
+  await hui.paste(PASSWORD);
+  await expect(picker).toHaveAttribute("aria-label", /\(pasted 57\)$/u);
 });

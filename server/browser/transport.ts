@@ -29,7 +29,7 @@ const TICKET_MS = 15_000;
 export type BrowserViewSource = {
   watch(owner: string, listener: BrowserViewListener): BrowserViewHandle;
   /** Operator input for a tab its agent handed over; ignored for every other tab. */
-  operator(owner: string, control: BrowserViewControl): void;
+  operator(owner: string, control: BrowserViewControl, reply?: (text: string) => void): void;
 };
 
 const TAB_ID = /^t\d{1,6}$/u;
@@ -52,6 +52,7 @@ export function parseBrowserViewControl(value: unknown): BrowserViewControl | un
     typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) <= MAX_COORDINATE ? raw : undefined;
   if (action === "continue") return { action: "continue", tabId };
   if (action === "takeover") return { action: "takeover", tabId };
+  if (action === "copy") return { action: "copy", tabId };
   if (action === "insert") {
     const text = record["text"];
     return typeof text === "string" && text.length >= 1 && text.length <= MAX_INSERTED ? { action: "insert", tabId, text } : undefined;
@@ -73,7 +74,9 @@ export function parseBrowserViewControl(value: unknown): BrowserViewControl | un
   if (kind !== "move" && kind !== "down" && kind !== "up") return undefined;
   const button = record["button"];
   if (button !== "left" && button !== "right") return undefined;
-  return { action: "pointer", tabId, kind, x, y, button };
+  const rawCount = record["clickCount"];
+  const clickCount = typeof rawCount === "number" && Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 3 ? rawCount : 1;
+  return { action: "pointer", tabId, kind, x, y, button, clickCount };
 }
 
 const tickets = new Map<string, { owner: string; expires: number }>();
@@ -131,7 +134,7 @@ export function attachBrowserTransport(server: EventEmitter, source: BrowserView
           const control = parseBrowserViewControl(JSON.parse(data.toString()) as unknown);
           if (!control) return;
           if (control.action === "select") view.select(control.tabId);
-          else source.operator(ticket.owner, control);
+          else source.operator(ticket.owner, control, (text) => sendText({ type: "clipboard", text }));
         } catch {
           // Malformed control messages are ignored; the view stays as it is.
         }
