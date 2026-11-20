@@ -3721,7 +3721,8 @@
       "required": [
         "tabId",
         "message",
-        "since"
+        "since",
+        "by"
       ],
       "properties": {
         "tabId": {
@@ -3732,6 +3733,18 @@
         },
         "since": {
           "type": "string"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "agent"
+            },
+            {
+              "type": "string",
+              "const": "operator"
+            }
+          ]
         }
       }
     },
@@ -3991,6 +4004,22 @@
         }
       }
     },
+    "BrowserViewClipboard": {
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "clipboard"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserViewConnection": {
       "type": "object",
       "required": [
@@ -4024,6 +4053,58 @@
                   "type": "null"
                 }
               ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "takeover"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "copy"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "text"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "insert"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
             }
           }
         },
@@ -4078,6 +4159,9 @@
                   "const": "right"
                 }
               ]
+            },
+            "clickCount": {
+              "type": "number"
             }
           }
         },
@@ -4263,6 +4347,9 @@
               "type": "string"
             }
           }
+        },
+        {
+          "$ref": "#/$defs/BrowserViewClipboard"
         }
       ]
     },
@@ -15584,6 +15671,7 @@
       "BrowserStatus",
       "BrowserTabView",
       "BrowserViewAction",
+      "BrowserViewClipboard",
       "BrowserViewConnection",
       "BrowserViewControl",
       "BrowserViewMessage",

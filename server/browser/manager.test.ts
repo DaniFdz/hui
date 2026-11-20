@@ -114,6 +114,9 @@ const PAGES: Record<string, string> = {
       <button type="submit">Sign in</button>
     </form>
     <p id="out">idle</p>`,
+  "/selectable": `<!doctype html><title>Selectable page</title>
+    <h1 style="margin:24px 32px">HUI handoff fixture</h1>
+    <p style="margin:24px 32px">Select this fixture text.</p>`,
   "/handoff": `<!doctype html><title>Handoff page</title>
     <style>body{margin:0} #go{position:absolute;left:0;top:0;width:200px;height:60px}</style>
     <button id="go" onclick="document.getElementById('out').textContent = 'clicked'">Go</button>
@@ -608,6 +611,281 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   assert.equal(timedOut.details["outcome"], "timeout");
   assert.match(timedOut.text, /did not take over tab t1 within 5 seconds/u);
   assert.match((await call({ action: "snapshot" })).text, /heading|button|textbox/u);
+});
+
+test("the operator's click fires the page's handler, so the release carries its button", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-click-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+
+  const opened = await call({ action: "open", url: `${origin}/form` });
+  const greet = /button "Greet" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(greet, opened.text);
+  // Where the button is, read before the tab becomes the operator's.
+  const box = (await call({ action: "get", what: "box", ref: greet })).details["box"] as { x: number; y: number; width: number; height: number };
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  const waiting = call({ action: "handoff", message: "Click Greet.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  // Nothing focuses the name field: only the button's own click handler can set #out.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: at.x, y: at.y, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: at.x, y: at.y, button: "left" });
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  const finished = await waiting;
+  assert.equal(finished.details["outcome"], "continued");
+
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("Hello, "),
+    3_000,
+  );
+  assert.equal(rendered, "Hello, !", "the press and release pair became a click");
+});
+
+test("a pasted value reaches the focused element and never comes back in an action line", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-insert-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const actions: BrowserViewAction[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: (action) => actions.push(action) });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  const waiting = call({ action: "handoff", message: "Paste the code, then continue.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  // A click puts the caret in the field; the paste then goes to the focused element.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 10, y: 110, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 10, y: 110, button: "left" });
+  const pasted = "a long generated value 0f3a9c-11c5-4b0e-9f27-7d6a1e5b8c34";
+  browser.operator("alpha", { action: "insert", tabId: "t1", text: pasted });
+  await eventually(() => Promise.resolve(actions.map((action) => action.text)), (texts) => texts.includes("Inserted text into the page"));
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  const finished = await waiting;
+  assert.equal(finished.details["outcome"], "continued");
+
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("typed "),
+    3_000,
+  );
+  assert.equal(rendered, `typed ${pasted}`, "the pasted value landed in the focused field");
+  assert.ok(actions.some((action) => action.text === "Inserted text into the page"));
+  assert.deepEqual(actions.filter((action) => action.text.includes(pasted)), [], "the value is never echoed to the view");
+});
+
+test("a takeover stops the agent's run once, and its tab survives for the operator", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-takeover-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const stopped: string[] = [];
+  const releases: (() => void)[] = [];
+  // The gateway's stop keeps the tabs (`keepBrowserTabs`); this stub must not close one either. It never
+  // settles by itself, so a lease can be continued while its stop is still unwinding.
+  const browser = new ManagedBrowser({
+    profileDir: join(dir, "profile"), readSettings: async () => settings,
+    stopRun: (owner) => { stopped.push(owner); return new Promise<void>((resolve) => releases.push(resolve)); },
+  });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const actions: BrowserViewAction[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: (action) => actions.push(action) });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  // The view can ask twice (a double click, a reconnect): the run stops once.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(stopped.length), (count) => count > 0);
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  assert.deepEqual(stopped, ["alpha"], "one takeover stops the run exactly once");
+  assert.deepEqual(states.at(-1)?.handoff, {
+    tabId: "t1", message: "You took control. The agent is stopped.", since: states.at(-1)!.handoff!.since, by: "operator",
+  });
+  // Their tab is the one the view shows. It is already the agent's current tab, so the view keeps
+  // following rather than holding a pin that would say otherwise.
+  assert.equal(states.at(-1)?.watching, "t1", "the view shows the tab they took");
+  assert.equal(actions.at(-1)?.text, "You took control of tab t1");
+  // The agent may not drive a tab the operator holds, and says so in their terms.
+  await assert.rejects(call({ action: "snapshot" }), /The operator has control of tab t1\. Ask them in chat to continue\./u);
+  assert.match((await call({ action: "tabs" })).text, /^t1/u, "the tab is still open");
+
+  // Their input is accepted: the click focuses the field and their keys type into it.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 10, y: 110, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 10, y: 110, button: "left" });
+  for (const key of ["o", "k"]) browser.operator("alpha", { action: "key", tabId: "t1", key });
+
+  // Continue releases the tab and stops nothing again; the agent has it back.
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff === null);
+  assert.equal(states.at(-1)?.handoff, null);
+  assert.deepEqual(stopped, ["alpha"]);
+  assert.ok(actions.some((action) => action.text === "You finished; the agent is stopped. Write in chat to continue."));
+  assert.match((await call({ action: "tabs" })).text, /^t1/u, "the released tab is still open");
+  const rendered = await eventually(
+    () => call({ action: "text", selector: "#out" }).then((result) => pageText(result.text)),
+    (text) => text.startsWith("typed "),
+    3_000,
+  );
+  assert.equal(rendered, "typed ok", "the operator's input reached the page while they held it");
+
+  // The first lease ended while its stop was still unwinding; a fresh takeover is a fresh lease, and
+  // only the second stop is issued for it.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  assert.deepEqual(stopped, ["alpha", "alpha"], "each takeover stops its own run once");
+  for (const release of releases.splice(0)) release();
+});
+
+test("a taken tab outlives the agent's idle clock until the operator continues", {
+  skip: !detected.executable,
+  timeout: 60_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-takeover-idle-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, idleTabMs: 1_000 });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+  // The agent's call armed the clock; the lease must pause it before it fires.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  assert.equal(states.at(-1)?.tabs.length, 1, "the lease keeps the tab past the agent's idle clock");
+
+  // Continue starts the ordinary clock again.
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)?.tabs.length), (count) => count === 0, 4_000);
+});
+
+test("a pointer drag, double click and triple click select page text, and copy returns it", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-select-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const copy = () => new Promise<string>((resolve) => {
+    browser.operator("alpha", { action: "copy", tabId: "t1" }, resolve);
+  });
+
+  assert.match((await call({ action: "open", url: `${origin}/selectable` })).text, /Opened tab t1/u);
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+
+  // A drag across the heading selects its text, not the field under a click.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 40, y: 40, button: "left", clickCount: 1 });
+  for (let x = 40; x <= 460; x += 40) {
+    browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "move", x, y: 40, button: "left", clickCount: 1 });
+  }
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 460, y: 40, button: "left", clickCount: 1 });
+  // The copy is a separate CDP command; wait for the renderer to report the selection it made.
+  const selectedText = (matches: (text: string) => boolean) => eventually(() => copy(), matches, 5_000);
+  const dragged = await selectedText((text) => /HUI handoff fixture/u.test(text));
+  assert.match(dragged, /HUI handoff fixture/u, "the drag selected the page's heading text");
+
+  // A double click selects one word; a triple selects the line.
+  for (const clickCount of [2, 3]) {
+    for (let click = 1; click <= clickCount; click += 1) {
+      browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 100, y: 40, button: "left", clickCount: click });
+      browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 100, y: 40, button: "left", clickCount: click });
+    }
+    const selected = await selectedText(clickCount === 2
+      ? (text) => text.length > 0 && text.length < dragged.length
+      : (text) => /HUI handoff fixture/u.test(text) && text.length >= dragged.length);
+    if (clickCount === 2) assert.ok(selected.length > 0 && selected.length < dragged.length, `a double click selects a word, got "${selected}"`);
+    else assert.match(selected, /HUI handoff fixture/u, "a triple click selects the line");
+  }
 });
 
 test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {

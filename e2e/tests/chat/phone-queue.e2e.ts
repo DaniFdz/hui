@@ -24,6 +24,9 @@ test("the queue, Message field, composer controls and Stop stay on a 390 px scre
   await message.fill("");
 
   const phone = await hui.phoneScreen();
+  // The queue keeps its wide layout for a frame after the viewport changes; wait for the reflow
+  // instead of measuring the previous layout.
+  await expect.poll(async () => (await queue.boundingBox())?.width, { message: "the queue reflows to the phone width" }).toBeLessThanOrEqual(phone.width);
   const inside = (box: { x: number; y: number; width: number; height: number }) => {
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(phone.width);

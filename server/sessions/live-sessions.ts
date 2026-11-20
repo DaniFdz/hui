@@ -925,7 +925,7 @@ export class LiveSessions {
     return current;
   }
 
-  async abort(id: string): Promise<void> {
+  async abort(id: string, options: { keepBrowserTabs?: boolean } = {}): Promise<void> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
       throw this.#unavailable(live);
@@ -942,7 +942,9 @@ export class LiveSessions {
     });
     live.stopped = true;
     await live.runtime.abort();
-    this.#aborted(id);
+    // An operator who took a tab stops the run but keeps the tab: the stop that
+    // closes it is the ordinary one.
+    if (!options.keepBrowserTabs) this.#aborted(id);
     live.promptPending = false;
     this.#setStatus(live, this.#reported(live));
   }

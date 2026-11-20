@@ -182,6 +182,56 @@ const HANDOFF_FIXTURE_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+/** For a takeover check: a link at the top, a Name field at 40% and a Password field at 60% of the 1280x800
+ * viewport. Every handler reports only a word and a length in the title and the status line, never the value. */
+const TAKEOVER_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI takeover fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    #next { display: block; height: 80px; line-height: 80px; text-align: center; background: #0969da; color: #fff; font-weight: 600; }
+    input { position: fixed; left: 50%; width: 320px; height: 48px; box-sizing: border-box; transform: translateX(-50%); padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font: inherit; }
+    #name { top: calc(30% - 24px); }
+    #password { top: calc(75% - 24px); }
+    #selectable { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; font-size: 22px; }
+    #report { position: fixed; left: 12px; bottom: 12px; margin: 0; color: #57606a; }
+  </style>
+</head>
+<body>
+  <a id="next" href="/browser-fixture">Next page</a>
+  <input id="name" aria-label="Name" autocomplete="off">
+  <input id="password" aria-label="Password" type="password" autocomplete="off">
+  <p id="selectable">Copy this fixture text.</p>
+  <p id="report" role="status">idle</p>
+  <script>
+    const name = document.getElementById("name");
+    const password = document.getElementById("password");
+    const report = (text) => {
+      document.getElementById("report").textContent = text;
+      document.title = "HUI takeover fixture (" + text + ")";
+      // A same-document navigation HUI's live view already reports; the page title alone is not broadcast.
+      location.hash = text.replace(/ /g, "-");
+    };
+    name.addEventListener("focus", () => report("focused"));
+    name.addEventListener("input", () => report("typed " + name.value.length));
+    password.addEventListener("focus", () => report("password focused"));
+    password.addEventListener("input", () => report("pasted " + password.value.length));
+    let menuUntil = 0;
+    document.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      menuUntil = Date.now() + 1_000;
+      report("menu");
+    });
+    document.addEventListener("selectionchange", () => {
+      const selected = String(document.getSelection ? document.getSelection().toString() : "");
+      if (selected && Date.now() >= menuUntil) report("selected " + selected.length);
+    });
+  </script>
+</body>
+</html>`;
+
 /** For a stored-secret check: a password field and a submit that reports its length only. */
 const SECRET_FIXTURE_PAGE = `<!doctype html>
 <html lang="en">
@@ -287,6 +337,10 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/browser-handoff-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-takeover-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(TAKEOVER_FIXTURE_PAGE);
   }
   if (request.method === "GET" && url.pathname === "/browser-annotate-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -1059,6 +1113,26 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent opens the page, then waits inside a browser call so the operator can take the tab while the run runs.
+  if (source.includes("E2E_BROWSER_TAKEOVER") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-takeover-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-takeover-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-takeover-open") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-takeover-wait", "browser", { action: "act", kind: "wait", selector: "#never", timeoutMs: 30000 });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-takeover-wait") {
+    text(response, "The takeover flow ended.");
+    return finish(response);
+  }
+
   // The agent opens the page, then hands the tab to the operator when only a person can finish.
   if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -1090,7 +1164,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_TAKEOVER") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

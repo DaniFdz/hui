@@ -38,7 +38,7 @@ function handoff(value: unknown): BrowserHandoff | null {
   const tabId = tabRef(value["tabId"]);
   const message = text(value["message"], 500).trim();
   if (!tabId || !message) return null;
-  return { tabId, message, since: text(value["since"], 64) };
+  return { tabId, message, since: text(value["since"], 64), by: value["by"] === "operator" ? "operator" : "agent" };
 }
 
 
@@ -56,6 +56,9 @@ export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | unde
       following: raw["following"] !== false,
       handoff: handoff(raw["handoff"]),
     };
+  }
+  if (raw["type"] === "clipboard" && typeof raw["text"] === "string") {
+    return { type: "clipboard", text: text(raw["text"], 64_000) };
   }
   if (raw["type"] === "action" && typeof raw["tabId"] === "string" && TAB_ID.test(raw["tabId"]) && typeof raw["text"] === "string") {
     const point = isRecord(raw["point"]) && Number.isFinite(raw["point"]["x"]) && Number.isFinite(raw["point"]["y"])

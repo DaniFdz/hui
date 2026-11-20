@@ -18,9 +18,9 @@ class Socket {
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: (() => void) | null = null;
   close() { this.closed = true; }
-  state() {
+  state(handoff?: Record<string, unknown>) {
     this.onmessage?.({ data: JSON.stringify({ type: "state", running: true, mode: "headless",
-      tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }], current: "t1", watching: "t1", following: true }) });
+      tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }], current: "t1", watching: "t1", following: true, handoff: handoff ?? null }) });
   }
   frame() {
     const header = new TextEncoder().encode(JSON.stringify({ tabId: "t1", width: 1280, height: 800, seq: 1 }));
@@ -51,6 +51,16 @@ function harness() {
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+/** A Lit template's markup, with bound values written out. */
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
+}
 
 for (const hidden of ["visible", "onScreen"] as const) {
   for (const order of ["hide then end", "end and hide together", "end while shown"] as const) {
@@ -126,4 +136,23 @@ test("a turn ending while hidden refreshes once even if its stream had an earlie
   assert.equal(opens.length, 1);
   preview.change({ visible: true });
   assert.equal(opens.length, 2, "the hidden turn's final page is captured on return");
+});
+
+test("a handoff card says whose turn it is and offers the way in", async () => {
+  const { preview, opens } = harness();
+  preview.onExpand = () => {};
+  opens[0]!.resolve();
+  await settle();
+  opens[0]!.socket.state({ tabId: "t1", message: "You took control. The agent is stopped.", since: "2026-09-28T09:00:00.000Z", by: "operator" });
+  const lease = markup(preview.render());
+  assert.match(lease, /<strong>You have control\.<\/strong> The agent is stopped\./u);
+  assert.doesNotMatch(lease, /Your turn\./u, "a tab the operator took is not the agent's turn");
+  assert.match(lease, />Open the view<\/button>/u, "the operator already has the tab");
+  assert.doesNotMatch(lease, />Take over<\/button>/u);
+
+  opens[0]!.socket.state({ tabId: "t1", message: "Sign in, then continue.", since: "2026-09-28T09:05:00.000Z", by: "agent" });
+  const wait = markup(preview.render());
+  assert.match(wait, /<strong>Your turn\.<\/strong> Sign in, then continue\./u);
+  assert.doesNotMatch(wait, /You have control\./u);
+  assert.match(wait, />Take over<\/button>/u);
 });

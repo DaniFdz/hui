@@ -36,6 +36,8 @@ hui-browser-pane {
   background: color-mix(in srgb, var(--bg-hover, var(--border)) 45%, var(--background));
 }
 .hui-browser-frame { position: relative; overflow: hidden; border-radius: 6px; background: #fff; box-shadow: 0 0 0 1px var(--border), 0 4px 16px rgb(0 0 0 / 10%); }
+/* A touch drag selects page text instead of scrolling the pane. */
+.hui-browser-frame--driving { touch-action: none; }
 .hui-browser-frame img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
 /* Where the agent clicked: a solid dot inside an expanding ring. */
 .hui-browser-pointer {
@@ -149,18 +151,20 @@ button.hui-browser-preview__screen:focus-visible { outline: 2px solid var(--ring
   .hui-browser-preview__dot { animation: none; }
 }
 
-/* ── The agent handed the tab over ──────────────────────────────────────────
- * The pane is the operator's browser for that tab until they continue. */
+/* ── The tab waits for the operator ───────────────────────────────────────
+ * The pane is the operator's browser for that tab until they continue: an agent that handed it over waits, and one
+ * whose tab they took is stopped. The strip wraps rather than overflowing a phone-wide pane. */
 .hui-browser-handoff {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 10%, var(--background));
 }
-.hui-browser-handoff__text { min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
+.hui-browser-handoff__text { flex: 1 1 140px; min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
 .hui-browser-handoff__text strong { color: var(--accent-text, var(--accent)); }
 .hui-browser-handoff__done { flex: none; }
 .hui-browser-frame--driving { cursor: default; outline: none; box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgb(0 0 0 / 10%); }
