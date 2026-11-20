@@ -36,6 +36,9 @@ const METRICS = [
 /** What the mirror paints and highlights, and the scroll fade the textarea already carries. */
 type ComposerMirrorState = {
   mirror: HTMLElement;
+  /** The value the mirror's markup was built from: a frame only rebuilds it when the draft changed, so a streaming
+   * transcript's renders cost metrics and scroll, never a parse and a layout of the whole draft. */
+  lastValue: string | null;
   frame: number | null;
   composing: boolean;
   observer: ResizeObserver | null;
@@ -85,11 +88,15 @@ function syncScroll(textarea: HTMLTextAreaElement, state: ComposerMirrorState): 
 }
 
 /** Replays the draft under the textarea. The frame reads the live value, so a draft a rewind, a reply, a recovered
- * send or a stored draft replaced is painted whether or not an input event arrived. */
+ * send or a stored draft replaced is painted whether or not an input event arrived. Only a changed value rebuilds the
+ * markup: the frame still copies the box and the fade every time, so a reflow lands on the mirror too. */
 function paint(textarea: HTMLTextAreaElement): void {
   const state = states.get(textarea);
   if (!state || state.composing) return;
-  state.mirror.innerHTML = renderDraftHtml(formatDraft(textarea.value));
+  if (state.lastValue !== textarea.value) {
+    state.mirror.innerHTML = renderDraftHtml(formatDraft(textarea.value));
+    state.lastValue = textarea.value;
+  }
   copyMetrics(textarea, state);
   syncScroll(textarea, state);
 }
@@ -127,7 +134,9 @@ export function mountComposerMirror(textarea: HTMLTextAreaElement, mirror: HTMLE
   }
   if (!mirror) return;
   const state: ComposerMirrorState = {
+    // A new mirror element holds no markup yet: its first frame paints even a value the previous one already had.
     mirror,
+    lastValue: null,
     frame: null,
     composing: false,
     observer: null,

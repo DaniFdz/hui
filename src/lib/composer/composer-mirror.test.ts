@@ -152,6 +152,46 @@ test("any number of changes inside one frame cost one redraw", () => {
   disconnectComposerMirror(textarea as unknown as HTMLTextAreaElement);
 });
 
+test("a frame with the same draft paints no new markup but still copies the box, the scroll and the fade", () => {
+  const frames = fakeFrames();
+  const style: Record<string, string> = { ...STYLE };
+  vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: (property: string) => style[property] ?? "" }));
+  const textarea = fakeTextarea();
+  const mirror = fakeMirror();
+  mountComposerMirror(textarea as unknown as HTMLTextAreaElement, mirror as unknown as HTMLElement);
+  frames.flush();
+  assert.equal(mirror.writes, 1);
+  assert.equal(mirror.style.get("font-size"), "16px");
+
+  // A render schedules a frame even when the draft it hands back is the one already painted.
+  style["font-size"] = "18px";
+  textarea.scrollTop = 24;
+  textarea.toggleAttribute("data-scroll-fade-bottom", true);
+  scheduleComposerMirror(textarea as unknown as HTMLTextAreaElement);
+  frames.flush();
+  assert.equal(mirror.writes, 1, "an unchanged draft is not parsed and relaid out again");
+  assert.equal(mirror.style.get("font-size"), "18px", "the frame still copies the metrics");
+  assert.equal(mirror.scrollTop, 24, "and syncs the scroll");
+  assert.ok(mirror.attributes.has("data-scroll-fade-bottom"), "and the fade");
+
+  // One changed draft, one frame: exactly the one write.
+  textarea.value = "**bold**";
+  textarea.fire("input");
+  scheduleComposerMirror(textarea as unknown as HTMLTextAreaElement);
+  assert.equal(frames.pending(), 1, "the input and the render coalesce into one frame");
+  frames.flush();
+  assert.equal(mirror.writes, 2);
+  assert.match(mirror.innerHTML, /hui-draft-bold">bold/u);
+
+  // A new mirror element holds no markup: it paints the value the textarea already had.
+  const replacement = fakeMirror();
+  mountComposerMirror(textarea as unknown as HTMLTextAreaElement, replacement as unknown as HTMLElement);
+  frames.flush();
+  assert.equal(replacement.writes, 1, "a replaced mirror is painted even when the draft did not change");
+  assert.match(replacement.innerHTML, /hui-draft-bold">bold/u);
+  disconnectComposerMirror(textarea as unknown as HTMLTextAreaElement);
+});
+
 test("composition pauses the mirror while the IME owns the draft", () => {
   const frames = fakeFrames();
   vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "" }));

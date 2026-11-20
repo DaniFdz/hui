@@ -851,6 +851,12 @@ function renderLaunchForm(props: HomeProps) {
               <div class="agent-chat__composer-combobox">
                 <div class="agent-chat__composer-mirror" data-testid="composer-mirror" aria-hidden="true"></div>
                 <textarea id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto" required data-composer-markdown
+                  ${ref((element) => {
+                    if (!(element instanceof HTMLTextAreaElement)) return;
+                    mountComposerMirror(element);
+                    // A draft a share, a template or a stored draft filled arrives without a keystroke.
+                    scheduleComposerMirror(element);
+                  })}
                   placeholder="What should this session work on?" .value=${props.draft} ?disabled=${props.launching}
                   @paste=${onComposerPaste(props)}
                   @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}

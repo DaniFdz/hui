@@ -241,10 +241,22 @@ test("both composers paint their draft's Markdown under the textarea", () => {
   }
   assert.match(source, /mountComposerMirror\(element\)/u);
   assert.match(source, /scheduleComposerMirror\(element\)/u, "a render that replaced the draft repaints it");
+  // Both textareas mount their own mirror: the chat's ref wired and the New Session one left bare painted nothing.
+  const mounted = [...source.matchAll(/<textarea\b([\s\S]*?)><\/textarea>/gu)]
+    .map(([, attributes]) => attributes ?? "")
+    .filter((attributes) => attributes.includes("data-composer-markdown"));
+  assert.equal(mounted.length, 2, "the chat composer and the New Session composer");
+  for (const attributes of mounted) {
+    assert.match(attributes, /ref\(\(element\) => \{[\s\S]*?if \(!\(element instanceof HTMLTextAreaElement\)\) return;[\s\S]*?mountComposerMirror\(element\);[\s\S]*?scheduleComposerMirror\(element\);/u,
+      "every Markdown textarea mounts the mirror under it and repaints a replaced draft");
+  }
+  assert.equal(source.match(/mountComposerMirror\(element\)/gu)?.length, 2, "one mount per composer");
+  assert.equal(source.match(/scheduleComposerMirror\(element\)/gu)?.length, 2);
   assert.equal(source.match(/@compositionstart=\$\{\(event: Event\) => setComposerMirrorComposing\(event\.target as HTMLTextAreaElement, true\)\}/gu)?.length, 2);
   assert.equal(source.match(/@compositionend=\$\{\(event: Event\) => setComposerMirrorComposing\(event\.target as HTMLTextAreaElement, false\)\}/gu)?.length, 2);
-  // The frame is the one redraw: a burst of keys and a replaced draft both land in it.
-  assert.match(mirror, /state\.mirror\.innerHTML = renderDraftHtml\(formatDraft\(textarea\.value\)\)/u);
+  // The frame is the one redraw: a burst of keys and a replaced draft both land in it, and only a changed value
+  // rebuilds the markup while every frame still copies the metrics and the fade.
+  assert.match(mirror, /if \(state\.lastValue !== textarea\.value\) \{\s*state\.mirror\.innerHTML = renderDraftHtml\(formatDraft\(textarea\.value\)\);/u);
   assert.match(mirror, /if \(!state \|\| state\.composing\) return;/u);
 });
 
