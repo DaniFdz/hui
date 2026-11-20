@@ -726,10 +726,12 @@ test("a takeover stops the agent's run once, and its tab survives for the operat
   const origin = `http://127.0.0.1:${address.port}`;
   const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const stopped: string[] = [];
-  // The gateway's stop keeps the tabs (`keepBrowserTabs`); this stub must not close one either.
+  const releases: (() => void)[] = [];
+  // The gateway's stop keeps the tabs (`keepBrowserTabs`); this stub must not close one either. It never
+  // settles by itself, so a lease can be continued while its stop is still unwinding.
   const browser = new ManagedBrowser({
     profileDir: join(dir, "profile"), readSettings: async () => settings,
-    stopRun: async (owner) => { stopped.push(owner); },
+    stopRun: (owner) => { stopped.push(owner); return new Promise<void>((resolve) => releases.push(resolve)); },
   });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -778,6 +780,13 @@ test("a takeover stops the agent's run once, and its tab survives for the operat
     3_000,
   );
   assert.equal(rendered, "typed ok", "the operator's input reached the page while they held it");
+
+  // The first lease ended while its stop was still unwinding; a fresh takeover is a fresh lease, and
+  // only the second stop is issued for it.
+  browser.operator("alpha", { action: "takeover", tabId: "t1" });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
+  assert.deepEqual(stopped, ["alpha", "alpha"], "each takeover stops its own run once");
+  for (const release of releases.splice(0)) release();
 });
 
 test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {

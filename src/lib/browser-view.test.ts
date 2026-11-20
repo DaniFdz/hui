@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { BrowserViewState } from "../api/schema/browser.ts";
-import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeoverAvailable } from "./browser-view.ts";
+import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeInsertText, takeoverAvailable } from "./browser-view.ts";
 
 const state: BrowserViewState = {
   running: true, mode: "headless",
@@ -67,6 +67,7 @@ test("the operator's view takes the tab only while its handoff waits", () => {
   assert.equal(operatorDriving({ ...state, handoff: lease, watching: "t4" }), false);
   assert.equal(operatorDriving(state), false);
   assert.equal(browserViewStatus({ ...state, handoff }, "live"), "Your turn");
+  assert.equal(browserViewStatus({ ...state, handoff: lease }, "live"), "You have control", "a taken tab is no longer the agent's turn");
 
   // The view is scaled; input has to land on the page coordinate under the pointer.
   const rect = { left: 100, top: 50, width: 640, height: 400 };
@@ -109,4 +110,8 @@ test("a tab is the operator's to take, and each kind of wait has its own words",
   assert.equal(insertableText(" "), " ", "a space is text the page may need");
   assert.equal(insertableText(""), undefined, "an empty paste sends nothing");
   assert.equal(insertableText("a".repeat(2_000)), "a".repeat(1_024), "one insert carries at most 1024 code units");
+  const field = { value: "long generated value" };
+  assert.equal(takeInsertText(field), "long generated value");
+  assert.equal(field.value, "", "the strip keeps no copy after sending");
+  assert.equal(takeInsertText(field), undefined, "an emptied strip sends nothing");
 });

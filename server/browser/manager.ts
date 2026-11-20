@@ -1222,7 +1222,12 @@ export class ManagedBrowser {
     this.#live();
     const message = requiredText(params, "message", 500);
     const timeoutMs = handoffTimeoutFrom(params["timeoutMs"]);
-    if (this.#handoffs.has(owner)) throw new BrowserToolError("A handoff is already waiting in this conversation.", 409);
+    const held = this.#handoffs.get(owner);
+    if (held) {
+      throw new BrowserToolError(held.by === "operator"
+        ? `The operator has control of tab ${held.tabId}. Ask them in chat to continue.`
+        : "A handoff is already waiting in this conversation.", 409);
+    }
     const since = new Date().toISOString();
     // Whoever was watching follows the agent, which is now this tab; an explicit pin is theirs to keep.
     for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = null;
@@ -1357,6 +1362,8 @@ export class ManagedBrowser {
     if (!handoff) return;
     if (handoff.timer) clearTimeout(handoff.timer);
     this.#handoffs.delete(owner);
+    // A lease that ended while its stop still ran no longer blocks a fresh takeover.
+    if (handoff.by === "operator") this.#takeovers.delete(owner);
     handoff.resolve(outcome);
     // The view's activity line stops claiming the tab is waiting, and a late
     // viewer replays how the wait ended rather than the wait itself.

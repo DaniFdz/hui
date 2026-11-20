@@ -14,7 +14,7 @@ import { createRef, ref } from "lit/directives/ref.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { connectBrowserView } from "../api/browser.ts";
 import { BrowserViewController } from "../controllers/browser-view-controller.ts";
-import { browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, relativeTime, takeoverAvailable, type Size } from "../lib/browser-view.ts";
+import { browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, relativeTime, takeInsertText, takeoverAvailable, type Size } from "../lib/browser-view.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 
 /** The larger live view beside the chat: follows the agent's current tab
@@ -86,8 +86,7 @@ export class BrowserPane extends HuiElement {
    */
   private insert(field: HTMLInputElement | undefined) {
     const tabId = this.browser.view?.handoff?.tabId;
-    const text = field ? insertableText(field.value) : undefined;
-    if (field) field.value = "";
+    const text = field ? takeInsertText(field) : undefined;
     if (!tabId || !text) return;
     this.browser.send({ action: "insert", tabId, text });
   }

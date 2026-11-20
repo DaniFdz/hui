@@ -38,7 +38,7 @@ export function browserViewStatus(state: BrowserViewState | undefined, connectio
   if (connection === "reconnecting") return "Reconnecting…";
   if (connection === "disconnected") return "Disconnected";
   if (!state?.running) return "Browser stopped";
-  if (operatorDriving(state)) return "Your turn";
+  if (operatorDriving(state)) return state.handoff?.by === "operator" ? "You have control" : "Your turn";
   const mode = state.mode === "windowed" ? "visible window" : "headless";
   return state.watching ? `Live · ${mode}` : `Idle · ${mode}`;
 }
@@ -145,6 +145,13 @@ export function drivingLabel(handoff: BrowserHandoff): string {
 export function insertableText(value: string): string | undefined {
   const text = value.slice(0, 1024);
   return text === "" ? undefined : text;
+}
+
+/** Reads the strip's value and clears it in the same step, so no copy stays behind. */
+export function takeInsertText(field: { value: string }): string | undefined {
+  const text = insertableText(field.value);
+  field.value = "";
+  return text;
 }
 
 /** A pointer position in the operator's view as a page coordinate in the frame. */

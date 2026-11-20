@@ -140,6 +140,8 @@ export type Hui = {
   /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
   statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  /** Writes text to this target's clipboard and presses its paste chord on the focused element. */
+  paste(text: string): Promise<void>;
   /** Models the phone shell's soft keyboard from the Keyboard plugin's show/hide events: the root mark it sets and the
    * CSS viewport a phone leaves above the keys. Browser-only; the Android app's keyboard is the system's. */
   softKeyboard(open: boolean): Promise<void>;
@@ -718,6 +720,29 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      paste: async (text) => {
+        const page = browser();
+        const wrote = await page.evaluate(async (value) => {
+          try {
+            await navigator.clipboard.writeText(value);
+            return true;
+          } catch {
+            // A browser that refuses the async clipboard still copies a selected value.
+            const area = document.createElement("textarea");
+            area.value = value;
+            document.body.append(area);
+            area.select();
+            const copied = document.execCommand("copy");
+            area.remove();
+            // The temporary field took focus; the driving frame is what the chord must reach.
+            document.querySelector<HTMLElement>(".hui-browser-frame")?.focus();
+            return copied;
+          }
+        }, text);
+        if (!wrote) throw new Error("hui.paste: this browser refused to write its clipboard");
+        const apple = await page.evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await page.keyboard.press(apple ? "Meta+V" : "Control+V");
+      },
       softKeyboard: async (open) => {
         await browser().setViewport(open ? { width: 390, height: 664 } : { width: 390, height: 844 });
         await browser().evaluate((open) => {
