@@ -861,16 +861,18 @@ Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
 the chat is not.
 
 The pack is versioned, and it reaches every chief: the seeded one and each group's.
-On a later start HUI replaces a skill file nobody edited, keeps a skill with any
-edited file whole, and adds only routes whose names are missing; it never writes
-SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after creation. A chief that got the
-pack before HUI recorded each bot is adopted the first time: a file that already
-matches the pack byte for byte is recorded as pack text, a skill it lacks is
-installed, and a skill that differs is kept and reported, because HUI cannot
-tell your edit from older pack text there. `hui doctor` reports, per chief, a
-skill that can take the shipped text, one you edited, and one the pack no longer
-ships (which you can delete); `hui doctor --fix` installs the untouched updates
-and leaves everything else alone.
+On a later start HUI replaces a skill file nobody edited and a SOUL.md it can
+prove you did not change, keeps a skill with any edited file or an edited soul
+whole, and adds only routes whose names are missing; USER.md, MEMORY.md and
+BOOTSTRAP.md are the bot's and yours, and no upgrade writes them. A chief that
+got the pack before HUI recorded each bot is adopted the first time: a file that
+already matches the pack byte for byte is recorded as pack text, a skill it lacks
+is installed, and a skill or SOUL.md that differs is kept and reported, because
+HUI cannot tell your edit from older pack text there. `hui doctor` reports, per
+chief, a skill or SOUL.md that can take the shipped text, one you edited, one
+with no install record, and a skill the pack no longer ships (which you can
+delete); `hui doctor --fix` installs the untouched updates and leaves everything
+else alone.
 
 A **custom session group** is a project here: the sidebar's **New group** asks for its name, machine, project directory, **Branch** or **New worktree** and base branch, and can create its chief in the same step. Its ⋯ menu also offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in its own folder, on the machine the group runs on, with its own OptChat memory and its own copy of the pack's skills. The group's directory is where the sessions it creates run, not where the chief's own chat works, and the chief's prompt carries that project's `AGENTS.md` (or the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` it holds) beside its own folder's. What it starts belongs to the project too: a `create_session` or a `sessions_spawn` lands in the group's directory and on the group's machine. A group with no directory refuses instead of working in the chief's folder: *This group has no project directory. Set it in the group's New session defaults.* Asking again opens that same chief. The seeded default chief stays for work that belongs to no group. A chief created before its chat moved into its own folder is reported by `hui doctor`, which moves it there with `--fix` while the gateway is stopped; the sessions it starts still run in its group's project.
 

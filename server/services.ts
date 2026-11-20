@@ -284,8 +284,8 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
-/** The staff pack on disk, this gateway's bots and their own skills, and Settings' routes: what the installer needs to
- * seed the Chief of Staff, keep every group chief current, and record a chief the route just created. */
+/** The staff pack on disk, this gateway's bots, their own skills and SOUL.md, and Settings' routes: what the installer
+ * needs to seed the Chief of Staff, keep every group chief current, and record a chief the route just created. */
 async function staffDeps(): Promise<StaffDeps> {
   return {
     pack: await readStaffPack(),
@@ -301,6 +301,7 @@ async function staffDeps(): Promise<StaffDeps> {
       ...(bot.worker ? { worker: bot.worker } : {}),
     })),
     skills: localBotSkills(),
+    soul: localBotFiles(),
     readSettings: readHuiSettings,
     writeSettings: writeHuiSettings,
   };

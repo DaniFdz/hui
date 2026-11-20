@@ -1,17 +1,19 @@
 /**
  * `hui doctor`: the staff pack (staff/). The gateway seeds the Chief of Staff once and installs the pack's skills into
  * its home and into each group chief's; this check reports, per bot, a shipped skill whose text changed, which `--fix`
- * installs, a skill the operator or the bot edited, which the pack never overwrites, and a skill the pack no longer
- * ships, which the operator can delete. A gateway that never seeded a pack is fine (the next start does), and a
- * deleted Chief of Staff is an opt-out, not a problem.
+ * installs, a skill the operator or the bot edited, which the pack never overwrites, a skill the pack no longer ships,
+ * which the operator can delete, and SOUL.md: newer pack text for a soul HUI installed and nobody changed, which `--fix`
+ * installs, while an edited, removed or unrecorded one is reported and kept. A gateway that never seeded a pack is fine
+ * (the next start does), and a deleted Chief of Staff is an opt-out, not a problem.
  */
 import { readFile } from "node:fs/promises";
 
 import { BOTS_FILE } from "../server/bots/bots.ts";
+import { localBotFiles } from "../server/bots/home.ts";
 import { localBotSkills } from "../server/bots/skills.ts";
 import { readHuiSettings, writeHuiSettings } from "../server/hui-settings.ts";
 import { readStaffPack } from "../server/staff/pack.ts";
-import { ensureStaff, staffPlan, readStaffState, STAFF_STATE_FILE, type StaffBot, type StaffDeps } from "../server/staff/service.ts";
+import { ensureStaff, staffPlan, readStaffState, STAFF_STATE_FILE, type StaffBot, type StaffBotPlan, type StaffDeps } from "../server/staff/service.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 export type StaffDoctorOptions = {
@@ -47,6 +49,22 @@ async function bots(file: string): Promise<readonly StaffBot[]> {
 /** A bot id the registry keeps, and the skill reader accepts. */
 const BOT_ID = /^[A-Za-z0-9_-]{1,100}$/u;
 
+/** One bot's SOUL.md, when the plan has something to say about it: an untouched soul takes the newer pack text, and an
+ * edited, removed or unrecorded one is not provably the pack's, so it is reported and never written. A soul that only
+ * needs its hash recorded leaves the operator nothing to do. */
+function soulItems(bot: StaffBotPlan): DoctorItem[] {
+  if (bot.soul === "update") return [{ id: `soul:${bot.botId}`, label: `${bot.name}: SOUL.md`, status: "issue", detail: "newer pack text is available: --fix installs it" }];
+  if (bot.soul !== "edited" && bot.soul !== "unrecorded") return [];
+  return [{
+    id: `soul:${bot.botId}`,
+    label: `${bot.name}: SOUL.md`,
+    status: "blocked",
+    detail: bot.soul === "edited"
+      ? "edited or removed here, so the pack keeps it; restore the shipped text by hand if you want it"
+      : "differs from the shipped text, and HUI has no record of installing it here: keep your version, or replace it by hand with the shipped text",
+  }];
+}
+
 export function createStaffCheck(options: StaffDoctorOptions = {}): DoctorCheck {
   const stateFile = options.stateFile ?? STAFF_STATE_FILE;
   const botsFile = options.botsFile ?? BOTS_FILE;
@@ -59,6 +77,7 @@ export function createStaffCheck(options: StaffDoctorOptions = {}): DoctorCheck 
       createBot: async () => { throw new Error("hui doctor never creates the Chief of Staff; start the gateway instead."); },
       bots: () => bots(botsFile),
       skills: localBotSkills(options.botsDir),
+      soul: localBotFiles(options.botsDir),
       readSettings: readHuiSettings,
       writeSettings: writeHuiSettings,
     };
@@ -81,22 +100,29 @@ export function createStaffCheck(options: StaffDoctorOptions = {}): DoctorCheck 
           : "edited here, so the pack keeps it; remove the edit or copy the new version by hand",
       })),
       ...bot.stale.map((name) => ({ id: `stale:${bot.botId}:${name}`, label: `${bot.name}: skills/${name}`, status: "blocked" as const, detail: "the pack no longer ships this skill and it was not edited here: delete its folder to remove it" })),
+      ...soulItems(bot),
     ]);
     const count = (of: "updates" | "kept" | "stale" | "unrecorded") => plan.bots.reduce((total, bot) => total + bot[of].length, 0);
     const updates = count("updates");
     const kept = count("kept");
     const unrecorded = count("unrecorded");
     const stale = count("stale");
+    const souls = (of: NonNullable<StaffBotPlan["soul"]>) => plan.bots.filter((bot) => bot.soul === of).length;
+    const soulUpdates = souls("update");
+    const soulUnrecorded = souls("unrecorded");
+    const soulKept = souls("edited") + soulUnrecorded;
     const adopted = plan.bots.filter((bot) => bot.adopted);
     return {
       id: "staff",
       title: "Staff pack",
-      status: updates ? "issue" : "ok",
+      status: updates || soulUpdates ? "issue" : "ok",
       summary: [
         ...(updates ? [`${updates} skill${updates === 1 ? "" : "s"} can take the shipped text`] : []),
         ...(kept ? [`${kept} skill${kept === 1 ? "" : "s"} kept${unrecorded ? ` (${unrecorded} with no install record)` : ""}`] : []),
+        ...(soulUpdates ? [`${soulUpdates} SOUL.md file${soulUpdates === 1 ? "" : "s"} can take the shipped text`] : []),
+        ...(soulKept ? [`${soulKept} SOUL.md file${soulKept === 1 ? "" : "s"} kept${soulUnrecorded ? ` (${soulUnrecorded} with no install record)` : ""}`] : []),
         ...(stale ? [`${stale} skill${stale === 1 ? "" : "s"} the pack no longer ships`] : []),
-      ].join("; ") || "Every chief's skills match the shipped pack",
+      ].join("; ") || "Every chief's skills and SOUL.md match the shipped pack",
       items,
       notes: [
         ...(plan.botId && !plan.bots.some((bot) => bot.botId === plan.botId)
@@ -105,7 +131,7 @@ export function createStaffCheck(options: StaffDoctorOptions = {}): DoctorCheck 
         ...(adopted.length
           ? [`${adopted.map((bot) => bot.name).join(", ")} got the pack before HUI recorded each chief: what already matches it byte for byte is recorded, what is missing is installed, and what differs is kept and reported as having no install record.`]
           : []),
-        "The pack owns only skills/: SOUL.md, USER.md, MEMORY.md and BOOTSTRAP.md are the bot's and the operator's, and no upgrade writes them.",
+        "The pack owns skills/ and a SOUL.md it can prove nobody edited; USER.md, MEMORY.md and BOOTSTRAP.md are the bot's and the operator's, and no upgrade writes them.",
       ],
     };
   }
@@ -116,9 +142,13 @@ export function createStaffCheck(options: StaffDoctorOptions = {}): DoctorCheck 
     if (!updates.length) return before;
     const outcome = await ensureStaff(await deps(), { seed: false });
     const after = await inspect();
-    const written = new Set(outcome.bots.flatMap((bot) => bot.written.map((name) => `${bot.botId}:${name}`)));
+    // The items ensureStaff actually repaired: one per skill it wrote and one per soul it replaced with the shipped text.
+    const repaired = new Set(outcome.bots.flatMap((bot) => [
+      ...bot.written.map((name) => `update:${bot.botId}:${name}`),
+      ...(bot.soul === "written" ? [`soul:${bot.botId}`] : []),
+    ]));
     const done: DoctorItem[] = updates.map((item) => {
-      const installed = written.has(item.id.slice(item.id.indexOf(":") + 1));
+      const installed = repaired.has(item.id);
       return { ...item, status: installed ? "fixed" as const : "failed" as const, detail: installed ? "installed the shipped text" : "the files changed while doctor ran" };
     });
     return {
