@@ -1864,6 +1864,18 @@ following OpenClaw's durable-draft model. Text and attachments survive navigatio
 between chats; a successful send retires only that session's draft, while a
 rejected send restores its exact payload ahead of any newer draft.
 
+While the operator types, the composer previews the draft's Markdown under the
+caret, and the textarea stays the only editor: bold, italic, inline code, fenced
+blocks and list bullets paint as they will be sent, every source marker stays
+visible but dimmed because the draft is still Markdown, and inline code keeps the
+composer's body face in a tinted chip, since a monospace face would move the
+caret. Tab and Shift+Tab change a selected list line's depth (three spaces, three
+levels), Enter on an empty list item ends the list instead of sending it,
+Cmd/Ctrl+B, I and E wrap the selection in bold, italic and inline code, and
+Cmd/Ctrl+Shift+E wraps it in a fence. A sent prompt renders that same Markdown in
+the transcript, while the prompts HUI writes for routines and triggers stay plain
+text.
+
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
 New Session offers the skills of the session it will start, never those of the
 chat that was open before it.

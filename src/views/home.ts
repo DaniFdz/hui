@@ -47,6 +47,8 @@ import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd } from "../lib/composer/textarea.ts";
+import { mountComposerMirror, scheduleComposerMirror, setComposerMirrorComposing } from "../lib/composer/composer-mirror.ts";
+import { endEmptyListItem, indentListSelection, outdentListSelection, toggleWrap, wrapFenceSelection, type TextSelection } from "../lib/composer/list-editing.ts";
 import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
 import { dismissRunStatusPanel, renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
@@ -151,6 +153,62 @@ function updateComposerDraft(props: HomeProps, textarea: HTMLTextAreaElement) {
   props.onDraftInput(textarea.value);
   updateCompletionQueries(props, textarea);
   syncComposerTextarea(textarea);
+  // The draft's Markdown paints under the textarea; a frame coalesces a burst of keys into one redraw.
+  scheduleComposerMirror(textarea);
+}
+
+/**
+ * Puts an edit the composer computed back into the textarea as one typed insertion, so the browser's own undo stack
+ * keeps it: `execCommand` replaces the changed span in place, and a browser that refuses it gets the same edit through
+ * `setRangeText`. The caret and the completion queries follow either way, and the textarea keeps the focus.
+ */
+function applyComposerEdit(props: HomeProps, textarea: HTMLTextAreaElement, edit: TextSelection): void {
+  if (edit.text !== textarea.value) {
+    // Replace only the span that changed: one insertion keeps an undo step, where rewriting the whole value would not.
+    const current = textarea.value;
+    let head = 0;
+    const shortest = Math.min(current.length, edit.text.length);
+    while (head < shortest && current.charAt(head) === edit.text.charAt(head)) head += 1;
+    let tail = 0;
+    while (tail < shortest - head
+      && current.charAt(current.length - 1 - tail) === edit.text.charAt(edit.text.length - 1 - tail)) tail += 1;
+    const replacement = edit.text.slice(head, edit.text.length - tail);
+    const replaced = current.length - tail - head;
+    textarea.setSelectionRange(head, head + replaced);
+    const applied = typeof document !== "undefined" && typeof document.execCommand === "function"
+      && document.execCommand(replacement ? "insertText" : "delete", false, replacement);
+    if (!applied) textarea.setRangeText(replacement, head, head + replaced, "preserve");
+  }
+  textarea.setSelectionRange(edit.start, edit.end);
+  if (typeof document !== "undefined" && document.activeElement !== textarea) textarea.focus({ preventScroll: true });
+  updateComposerDraft(props, textarea);
+}
+
+/**
+ * The composer's formatting keys, ahead of the send path so one keypress means one thing: Cmd/Ctrl+B, I and E wrap the
+ * selection in bold, italic and inline code, Cmd/Ctrl+Shift+E fences it, Tab and Shift+Tab change a list line's depth,
+ * and Enter on an empty list item ends the list instead of sending it. It answers false when the key belongs to the
+ * browser, so Tab can still leave a draft that holds no list.
+ */
+function applyComposerFormattingKeydown(props: HomeProps, event: KeyboardEvent): boolean {
+  const textarea = event.target;
+  if (!(textarea instanceof HTMLTextAreaElement) || event.isComposing || event.altKey) return false;
+  const { selectionStart: start, selectionEnd: end, value } = textarea;
+  const command = event.metaKey || event.ctrlKey;
+  const key = event.key.toLowerCase();
+  let edit: TextSelection | undefined;
+  if (command && key === "b" && !event.shiftKey) edit = toggleWrap(value, start, end, "**");
+  else if (command && key === "i" && !event.shiftKey) edit = toggleWrap(value, start, end, "*");
+  else if (command && key === "e") edit = event.shiftKey ? wrapFenceSelection(value, start, end) : toggleWrap(value, start, end, "`");
+  else if (!command && event.key === "Tab") edit = event.shiftKey ? outdentListSelection(value, start, end) : indentListSelection(value, start, end);
+  else if (!command && !event.shiftKey && event.key === "Enter" && start === end) {
+    const ended = endEmptyListItem(value, start);
+    if (ended) edit = { text: ended.text, start: ended.caret, end: ended.caret };
+  }
+  if (!edit) return false;
+  event.preventDefault();
+  applyComposerEdit(props, textarea, edit);
+  return true;
 }
 
 function updateCompletionQueries(props: HomeProps, textarea: HTMLTextAreaElement) {
@@ -791,15 +849,20 @@ function renderLaunchForm(props: HomeProps) {
             <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
             <div class="agent-chat__composer-input-row">
               <div class="agent-chat__composer-combobox">
-                <textarea id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto" required
+                <div class="agent-chat__composer-mirror" data-testid="composer-mirror" aria-hidden="true"></div>
+                <textarea id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto" required data-composer-markdown
                   placeholder="What should this session work on?" .value=${props.draft} ?disabled=${props.launching}
                   @paste=${onComposerPaste(props)}
                   @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}
+                  @compositionstart=${(event: Event) => setComposerMirrorComposing(event.target as HTMLTextAreaElement, true)}
+                  @compositionend=${(event: Event) => setComposerMirrorComposing(event.target as HTMLTextAreaElement, false)}
                   @keydown=${(event: KeyboardEvent) => {
                     props.onLocalPathKeydown(event);
                     if (event.defaultPrevented) return;
                     props.onCommandKeydown(event);
-                    if (!event.defaultPrevented && event.key === "Enter" && composerEnterMode({
+                    if (event.defaultPrevented) return;
+                    if (applyComposerFormattingKeydown(props, event)) return;
+                    if (event.key === "Enter" && composerEnterMode({
                       streaming: false,
                       shiftKey: event.shiftKey,
                       ctrlKey: event.ctrlKey,
@@ -944,8 +1007,8 @@ export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
 }
 
-/** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
- * rendered as the agents write it. */
+/** A user-role message's text: the operator's own and a bot's or a session's (`markdown`) rendered as their Markdown, a
+ * routine's or a trigger's plain. */
 function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
   // A turn that invoked a skill carries PI's wrapper for the model; the reader gets the skill's name and the words
   // the turn added around it instead.
@@ -1014,7 +1077,7 @@ function renderMessage(props: HomeProps, item: ChatMessage, embeds: boolean, att
         </div>`
       : nothing}
     ${attributed ? renderUserText(props, item, embeds, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
-      : item.role === "user" ? renderUserText(props, item, embeds) : html`<div class="chat-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
+      : item.role === "user" ? renderUserText(props, item, embeds, item.text, true) : html`<div class="chat-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
@@ -1614,6 +1677,7 @@ function onPromptKeydown(props: HomeProps) {
     if (event.defaultPrevented) return;
     props.onCommandKeydown(event);
     if (event.defaultPrevented) return;
+    if (applyComposerFormattingKeydown(props, event)) return;
     if (event.key !== "Enter" || !(event.target instanceof HTMLTextAreaElement)) return;
     const mode = composerEnterMode({
       streaming: props.streaming,
@@ -1848,15 +1912,22 @@ function renderComposer(props: HomeProps) {
         <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
         <div class="agent-chat__composer-input-row">
           <div class="agent-chat__composer-combobox">
+            <div class="agent-chat__composer-mirror" data-testid="composer-mirror" aria-hidden="true"></div>
             <textarea
               ${ref((element) => {
-                if (element instanceof HTMLTextAreaElement) syncComposerFocus(element, props.sending);
+                if (!(element instanceof HTMLTextAreaElement)) return;
+                syncComposerFocus(element, props.sending);
+                mountComposerMirror(element);
+                // A draft a rewind, a reply, a recovered send or a stored draft replaced arrives without a keystroke.
+                scheduleComposerMirror(element);
               })}
               name="text"
               rows="1"
-              dir="auto"
+              dir="auto" data-composer-markdown
               .value=${props.draft}
               @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}
+              @compositionstart=${(event: Event) => setComposerMirrorComposing(event.target as HTMLTextAreaElement, true)}
+              @compositionend=${(event: Event) => setComposerMirrorComposing(event.target as HTMLTextAreaElement, false)}
               @focus=${(event: FocusEvent) => {
                 const textarea = event.target as HTMLTextAreaElement;
                 syncComposerTextarea(textarea);

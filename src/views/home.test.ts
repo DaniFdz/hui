@@ -205,9 +205,89 @@ test("user messages preserve explicit line breaks", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /item\.role === "user" \? renderUserText\(props, item, embeds\)/);
+  // The operator's own prompt is the Markdown the composer previewed; a routine's or a trigger's prompt stays plain.
+  assert.match(source, /item\.role === "user" \? renderUserText\(props, item, embeds, item\.text, true\)/);
+  assert.match(source, /attributed\.sender\.kind !== "routine" && attributed\.sender\.kind !== "trigger"/);
   assert.match(source, /class="chat-text chat-text--plain"/);
   assert.match(styles, /\.chat-text--plain\s*\{\s*white-space:\s*pre-wrap;\s*\}/);
+});
+
+test("the operator's own prompt renders the Markdown the composer previewed", async () => {
+  const text = "Ship **this** and *that* with `npm test`:\n- one\n  1. nested\n\n```ts\nconst a = 1;\n```";
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text }] });
+  assert.match(html, /<strong>this<\/strong>/u);
+  assert.match(html, /<em>that<\/em>/u);
+  assert.match(html, /<code>npm test<\/code>/u);
+  assert.match(html, /<pre><code class="language-ts">/u);
+  assert.match(html, /<ul>/u);
+  assert.match(html, /<ol>/u);
+  assert.doesNotMatch(html, /chat-text--plain/u);
+  // A routine's prompt is machine text: its own asterisks stay asterisks.
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Inbox] **Summarize**" }] });
+  assert.match(routine, /class="chat-text chat-text--plain"/u);
+  assert.match(routine, /\*\*Summarize\*\*/u);
+  assert.doesNotMatch(routine, /<strong>Summarize<\/strong>/u);
+});
+
+test("both composers paint their draft's Markdown under the textarea", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const mirror = readFileSync(new URL("../lib/composer/composer-mirror.ts", import.meta.url), "utf8");
+
+  // A paint-only sibling inside the combobox, hidden from assistive tech: the textarea stays the only editor.
+  assert.equal(source.match(/<div class="agent-chat__composer-mirror" data-testid="composer-mirror" aria-hidden="true"><\/div>/gu)?.length, 2);
+  assert.equal(source.match(/data-composer-markdown/gu)?.length, 2);
+  for (const box of source.match(/<div class="agent-chat__composer-combobox">[\s\S]*?<textarea/gu) ?? []) {
+    assert.match(box, /data-testid="composer-mirror"[^>]*><\/div>/u, "the mirror is drawn before the textarea it sits under");
+  }
+  assert.match(source, /mountComposerMirror\(element\)/u);
+  assert.match(source, /scheduleComposerMirror\(element\)/u, "a render that replaced the draft repaints it");
+  assert.equal(source.match(/@compositionstart=\$\{\(event: Event\) => setComposerMirrorComposing\(event\.target as HTMLTextAreaElement, true\)\}/gu)?.length, 2);
+  assert.equal(source.match(/@compositionend=\$\{\(event: Event\) => setComposerMirrorComposing\(event\.target as HTMLTextAreaElement, false\)\}/gu)?.length, 2);
+  // The frame is the one redraw: a burst of keys and a replaced draft both land in it.
+  assert.match(mirror, /state\.mirror\.innerHTML = renderDraftHtml\(formatDraft\(textarea\.value\)\)/u);
+  assert.match(mirror, /if \(!state \|\| state\.composing\) return;/u);
+});
+
+test("composer keys run the menus first, then the formatting edits, then the send path", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const handler = source.slice(source.indexOf("function onPromptKeydown"), source.indexOf("function onPromptSubmit"));
+  const order = ["props.onLocalPathKeydown(event)", "props.onCommandKeydown(event)", "applyComposerFormattingKeydown(props, event)", "composerEnterMode("]
+    .map((marker) => handler.indexOf(marker));
+  assert.ok(order.every((index, at) => index > 0 && (at === 0 || index > order[at - 1]!)), String(order));
+  // The New Session composer runs them in the same order, before its own submit.
+  const launch = source.slice(source.indexOf('id="launch-prompt"'), source.indexOf("launch-controls"));
+  const launchOrder = ["props.onLocalPathKeydown(event)", "props.onCommandKeydown(event)", "applyComposerFormattingKeydown(props, event)", "composerEnterMode("]
+    .map((marker) => launch.indexOf(marker));
+  assert.ok(launchOrder.every((index, at) => index > 0 && (at === 0 || index > launchOrder[at - 1]!)), String(launchOrder));
+  // Tab reaches the list rules before the send path can consume it, and never when they change nothing.
+  const formatting = source.slice(source.indexOf("function applyComposerFormattingKeydown"), source.indexOf("function onPromptKeydown"));
+  assert.match(formatting, /if \(!edit\) return false;/u);
+  assert.match(formatting, /event\.isComposing \|\| event\.altKey/u);
+  assert.match(formatting, /outdentListSelection\(value, start, end\)/u);
+  assert.match(formatting, /endEmptyListItem\(value, start\)/u);
+  // One edit, undoable: the changed span is replaced in place, and a browser that refuses it gets the same text.
+  assert.match(source, /document\.execCommand\(replacement \? "insertText" : "delete", false, replacement\)/u);
+  assert.match(source, /textarea\.setRangeText\(replacement, head, head \+ replaced, "preserve"\)/u);
+});
+
+test("the composer's Markdown paint never changes a glyph's advance", () => {
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const rules = [...styles.matchAll(/([^{}]*\.hui-draft-(?:bold|italic|bold-italic|code|marker)[^{}]*)\{([^}]*)\}/gu)];
+  assert.ok(rules.length > 0, "the paint rules are in the stylesheet");
+  // Every one of these would move the caret off the glyphs: the paint may thicken, tint, skew and chip, never measure.
+  const advance = /(?:^|;)\s*(?:font-(?:weight|style|family|size|variant|feature-settings)|letter-spacing|word-spacing|text-transform|text-indent|padding|margin|border(?!-radius)|line-height|white-space)\s*:/u;
+  for (const [, selector, declarations] of rules) {
+    // The bullet's dot is out of flow: its size is paint, not text.
+    if (selector?.includes("__dot")) continue;
+    assert.doesNotMatch(declarations ?? "", advance, (selector ?? "").trim());
+  }
+  assert.match(styles, /\.hui-draft-bold,\s*\n\.hui-draft-bold-italic\s*\{\s*-webkit-text-stroke: 0\.5px currentColor;/u);
+  assert.match(styles, /\.hui-draft-code\s*\{[^}]*box-shadow:[^}]*border-radius:/su);
+  assert.match(styles, /\.agent-chat__composer-mirror\s*\{[^}]*position: absolute;[^}]*pointer-events: none;/su);
+  assert.match(styles, /textarea\[data-composer-markdown\]\s*\{\s*position: relative;\s*z-index: 1;\s*color: transparent;/u);
+  assert.match(styles, /::selection\s*\{\s*color: transparent;[^}]*background: color-mix\(in srgb, var\(--selection-bg\) 45%, transparent\)/su);
+  assert.match(styles, /\.agent-chat__composer-combobox\[data-composing\] > \.agent-chat__composer-mirror\s*\{\s*display: none;/u);
+  assert.match(styles, /@media \(forced-colors: active\)[\s\S]*\.agent-chat__composer-mirror\s*\{\s*display: none;/u);
 });
 
 test("long user prompts collapse and user rows offer Copy prompt", async () => {
@@ -990,7 +1070,8 @@ test("link previews and cards render on the latest user message and the latest r
   const previews = /<hui-github-embeds .*<hui-datadog-embeds /u;
   const cards = /<hui-(?:github-embeds|datadog-embeds|slack-link|tweet-embed)/u;
 
-  assert.ok(message("u1").includes(`<div class="chat-text chat-text--plain">${slack}</div>`), "an older Slack link stays text");
+  // The operator's own prompt is Markdown, so a bare link reads as one; the card is still the latest message's.
+  assert.match(message("u1"), /<p><a href="https:\/\/acme\.slack\.com\/archives\/C01234567\/p1723456789012345"[^>]*class="markdown-bare-url"/u, "an older Slack link stays a link");
   assert.match(message("a1"), /<p><a href="https:\/\/x\.com\/openai\/status\/123456789"/u, "an older X post stays a link");
   for (const old of ["u1", "a1", "u2"]) assert.doesNotMatch(message(old), cards);
   assert.match(message("u3"), previews, "the last message of its group, and the latest one sent");
@@ -1162,7 +1243,7 @@ test("a turn that invoked a skill names it, instead of showing PI's wrapper for 
   assert.match(html, /class="chat-skill-invoked"[^>]*data-hui-tooltip=\/opt\/hui\/skills\/cost-investigation\/SKILL\.md/u);
   assert.match(html, /<span class="chat-skill-invoked__label">Skill<\/span> <code>cost-investigation<\/code>/u);
   assert.match(html, /Name the cheaper mechanism\./u, "the method stays readable in the turn");
-  assert.match(html, /# Why was this expensive\?/u);
+  assert.match(html, /<h1>Why was this expensive\?<\/h1>/u, "the turn's own Markdown renders");
   assert.ok(!html.includes("&lt;skill name=") && !html.includes("<skill name="), "the wrapper PI writes for the model is not shown");
   assert.ok(!html.includes("References are relative to"));
 });
