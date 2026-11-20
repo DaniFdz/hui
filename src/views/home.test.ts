@@ -53,6 +53,16 @@ test("an open chat names the bot that started it, on the title's own line", asyn
   assert.match(header, /class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u, "the chip leads to the bot's chat");
   assert.match(header, /Started by Ada/u);
   assert.match(header, /bot-avatar--emoji/u, "the chip carries the bot's own small face");
+  // The label is the sentence's two halves, each its own element, so a header short of room drops the prefix and keeps
+  // the name. The link carries the whole sentence itself, so the name a screen reader hears never shortens, and the
+  // face stays decorative inside it.
+  assert.match(header, /<a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada aria-label=Started by Ada /u,
+    "the link is named for the bot that started the chat, whatever the chip draws");
+  assert.match(header, /<span class="chat-pane__creator-face" aria-hidden="true"><span class="bot-avatar/u,
+    "the face stays decorative inside the named link");
+  assert.match(header, /<span class="chat-pane__creator-label"><span class="chat-pane__creator-prefix">Started by <\/span><span class="chat-pane__creator-name">Ada<\/span><\/span>/u,
+    "the prefix and the name are the label's own two spans, in that order");
+  assert.doesNotMatch(header, /chat-pane__creator-label">Started by/u, "the label holds no bare sentence the sheet cannot take apart");
   assert.match(header, /data-testid="session-title"/u, "the title keeps its place");
   assert.ok(header.indexOf('data-testid="session-title"') < header.indexOf('data-testid="chat-pane-creator"'), "the title comes first on the line");
   // The line is only a flex row: the title and the chip are its two siblings, the title first and the chip after it, so
@@ -67,6 +77,14 @@ test("an open chat names the bot that started it, on the title's own line", asyn
   const titleInLine = styles.match(/\.chat-pane__title-line > \.transcript__title \{([^}]*)\}/u)?.[1] ?? "";
   assert.match(titleInLine, /min-width: 0;/u, "the title may shrink on the line, so its own ellipsis still applies");
   assert.doesNotMatch(titleInLine, /overflow|white-space/u, "the line lays out only; it never re-declares the title's ellipsis");
+  // The chip's own rule keeps it on one line; a narrow header drops the prefix and so keeps the name, and the drawer
+  // layout's chooser, which holds the line at any width, does the same.
+  assert.match(styles, /\.chat-pane__creator \{[^}]*white-space: nowrap;/u, "the chip stays on one line");
+  assert.match(styles, /\.transcript__head \.chat-pane__crumbs--picker \.chat-pane__creator-prefix \{ display: none; \}/u,
+    "the chip drops its prefix where the chooser holds the line, so the bot's name keeps the room");
+  assert.match(styles, /@container session-header \(max-width: 600px\) \{[^@]*?\.chat-pane__creator-prefix \{ display: none; \}/u,
+    "a narrow header drops the prefix and keeps the name");
+  assert.doesNotMatch(styles, /\.chat-pane__creator-label \{[^}]*display: none/u, "the label itself is never dropped");
 
   // Nothing at all without a creator, and nothing on a bot's own chat.
   assert.doesNotMatch(headerOf(await renderWorkerSession("idle", { bots: [ADA], onOpenBot: () => {} })), /chat-pane-creator/u);

@@ -2542,12 +2542,13 @@ function renderCreatorChip(props: HomeProps, session: SessionView) {
     class="chat-pane__creator"
     data-testid="chat-pane-creator"
     href=${navigationPath({ kind: "bot", id: bot.id })}
+    aria-label=${`Started by ${bot.name}`}
     @click=${(event: MouseEvent) => {
       if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       open(bot.id);
     }}
-  ><span class="chat-pane__creator-face" aria-hidden="true">${renderBotAvatar(bot, "sm")}</span><span class="chat-pane__creator-label">Started by ${bot.name}</span></a>`;
+  ><span class="chat-pane__creator-face" aria-hidden="true">${renderBotAvatar(bot, "sm")}</span><span class="chat-pane__creator-label"><span class="chat-pane__creator-prefix">Started by </span><span class="chat-pane__creator-name">${bot.name}</span></span></a>`;
 }
 
 /** The open chat's title, or a phone's panel chooser where that stands, with the creator chip on the same line: the
