@@ -4233,10 +4233,12 @@ seeds it once:
   until it is messaged. HUI records the seed in `staff.json`; deleting the bot
   is the opt-out and HUI never creates another. Its skills live in its own
   `skills/` folder, so only its chat and its workers see them.
-- **Hash-based upgrades.** The record holds the hash of every file HUI wrote.
-  A start replaces a skill whose files all still match, keeps an edited skill
-  whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
-  BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
+- **Hash-based upgrades.** The record holds the hash of every skill file HUI
+  wrote and of the SOUL.md it installed. A start replaces a skill whose files all
+  still match and a SOUL.md whose text still does, keeps an edited skill or soul
+  whole and reports it, records a soul that already matches the shipped text
+  instead of writing it, and adds only routes missing by name. USER.md, MEMORY.md
+  and BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
 - **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. A report is never queued behind a turn in the chief's chat: a busy chat refuses it and nothing is queued, and the pair is remembered, recomputed from the newest facts and delivered when that chat's turn ends, with the 15-minute scan as the fallback. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records

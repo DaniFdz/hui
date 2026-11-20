@@ -8,8 +8,9 @@
  *
  * The pack is installed at creation: SOUL.md is the seed, and its skills are written into the new bot's own folder on
  * the host that keeps it (its worker's, or this gateway's). The routes are merged by name. HUI records what it installed
- * the next time the gateway starts (server/staff/service.ts), so the chief follows later pack updates; the operator can
- * edit its skills in Tools & skills, and the pack never overwrites an edited one.
+ * — the skills' hashes and its SOUL.md's — the next time the gateway starts (server/staff/service.ts), so the chief
+ * follows later pack updates; the operator can edit its skills or its SOUL.md in Tools & skills, and the pack never
+ * overwrites something it cannot prove nobody changed.
  *
  * A new chief needs its group's project directory, because that is where the sessions it starts run: a group that names
  * none gets no chief, with the same sentence `create_session` and `sessions_spawn` use, as the New group dialog refuses

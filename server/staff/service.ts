@@ -9,19 +9,35 @@
  * Chief of Staff opts out. A group chief with no record yet (one HUI installed the pack into before it recorded each
  * bot) is adopted the first time this runs: every file it already holds byte for byte is recorded, a skill it lacks is
  * installed, and a skill that differs is kept and reported, because the record cannot yet tell an operator's edit from
- * older pack text. SOUL.md, USER.md, MEMORY.md and BOOTSTRAP.md are never written after creation, and a skill with any
- * edited file is kept whole and reported, never overwritten. A pack skill the operator removed is not re-added.
+ * older pack text. The record also holds the hash of the SOUL.md HUI installed, so an upgrade gives a soul nobody edited
+ * the newer pack text, keeps an edited or removed one whole and reported, never overwritten, and records a soul already
+ * holding the shipped text instead of reporting it as an edit. USER.md, MEMORY.md and BOOTSTRAP.md are never written after
+ * creation, and neither is a skill with any edited file. A pack skill the operator removed is not re-added.
  */
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR } from "../paths.ts";
 import type { Settings } from "../hui-settings.ts";
+import type { BotFiles } from "../bots/service.ts";
 import type { BotSkillFiles, BotOwnSkill } from "../bots/skills.ts";
 import { isChiefTitle } from "../bots/chief-title.ts";
 import { hashText, packFilePaths, type StaffPack, type StaffRoute } from "./pack.ts";
 
 /** Where HUI records the pack it seeded and what each chief holds, next to `bots.json`. */
 export const STAFF_STATE_FILE = join(CONFIG_DIR, "staff.json");
+
+/** The text of a SOUL.md as HUI keeps it: the bot service normalizes a home file to `\n` line ends and trims it
+ * (`normalizeHomeFile`, bots.ts), `writeHomeFile` appends the newline its reader trims back off. So a pack checked out
+ * on Windows with CRLF line ends hashes and writes exactly what an LF checkout stores and `readHomeFile` returns. */
+export function soulText(text: string): string {
+  return text.replace(/\r\n?/gu, "\n").trim();
+}
+
+/** The identity of the SOUL.md a bot reads: `soulText` of it, the text the bot holds rather than the bytes on disk, which
+ * is what makes a soul HUI installed compare equal to the one the bot reads back, in production and not only in a fake. */
+export function soulHash(text: string): string {
+  return hashText(soulText(text));
+}
 
 /** One bot as the installer sees it: the title that marks a chief, the group it is chief of, and the worker that keeps
  * its home. */
@@ -42,6 +58,8 @@ export type StaffDeps = {
   /** Every bot this gateway knows, an archived one included. */
   bots: () => Promise<readonly StaffBot[]>;
   skills: Pick<BotSkillFiles, "read" | "write">;
+  /** The bot's own SOUL.md (`home.ts`), which defaults to the kind `soul`. */
+  soul: Pick<BotFiles, "read" | "write">;
   readSettings: () => Promise<Settings>;
   writeSettings: (settings: Settings) => Promise<Settings>;
   stateFile?: string;
@@ -54,6 +72,9 @@ export type StaffBotState = {
   installedAt: string;
   /** `skills/<name>/<file>` to the hash of the text HUI installed, never the operator's edits. */
   files: Record<string, string>;
+  /** `soulHash` of the SOUL.md HUI installed, never the operator's edits. Absent on a record written before HUI tracked
+   * the soul: that is the same as "no soul record", and the rest of the entry still counts. */
+  soul?: string;
 };
 
 /** The installed pack: the seeded Chief of Staff, and what the pack holds in each chief. */
@@ -66,7 +87,7 @@ export type StaffState = {
   bots: Record<string, StaffBotState>;
 };
 
-/** What one run did in one bot. */
+/** What one run did in one bot: what happened to its SOUL.md, when the run had anything to say about it. */
 export type StaffBotOutcome = {
   botId: string;
   /** The bot held pack text but no record: this run recorded it. */
@@ -74,6 +95,11 @@ export type StaffBotOutcome = {
   written: string[];
   /** Skills kept because a file of theirs differs from the pack. */
   kept: string[];
+  /** `written`: an untouched soul took the newer pack text. `recorded`: it already held the shipped text, and this run
+   * recorded its hash without writing the file. `kept`: it was edited or removed here, so the pack left it alone.
+   * `unrecorded`: it differs from the shipped text and HUI has no record of installing it there, so only the operator can
+   * say what it is. */
+  soul?: "written" | "recorded" | "kept" | "unrecorded";
 };
 
 export type StaffOutcome = {
@@ -98,6 +124,11 @@ export type StaffBotPlan = {
   unrecorded: string[];
   /** Skills the pack no longer ships that this bot still holds untouched: reported, never deleted. */
   stale: string[];
+  /** What an install would do with its SOUL.md. `update`: an untouched soul takes the shipped text. `record`: it already
+   * holds that text, and only the hash gets recorded. `edited`: it was changed or removed here, so it is kept.
+   * `unrecorded`: it differs and HUI has no record of installing it. Absent: the soul matches the record and the pack, so
+   * nothing happens. */
+  soul?: "update" | "record" | "edited" | "unrecorded";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -140,6 +171,7 @@ export async function readStaffState(deps: Pick<StaffDeps, "stateFile">): Promis
         packVersion: typeof entry["packVersion"] === "number" ? entry["packVersion"] : 0,
         installedAt: typeof entry["installedAt"] === "string" ? entry["installedAt"] : "",
         files: hashes(entry["files"]),
+        ...(typeof entry["soul"] === "string" ? { soul: entry["soul"] } : {}),
       };
     }
   }
@@ -244,24 +276,52 @@ function edited(files: Record<string, string>, installed: Map<string, string>, s
   });
 }
 
-/** Every bot this run maintains, with the record it works from and the skills it holds: a recorded bot that still
- * exists, plus a group chief holding pack text that has none yet. A deleted bot, and one whose home is on a worker, is
- * left alone. */
-async function targets(deps: StaffDeps, bots: readonly StaffBot[], state: StaffState): Promise<{ bot: StaffBot; recorded?: StaffBotState; installed: Map<string, string> }[]> {
-  const kept: { bot: StaffBot; recorded?: StaffBotState; installed: Map<string, string> }[] = [];
+/** Every bot this run maintains, with the record it works from, the skills and SOUL.md it holds: a recorded bot that
+ * still exists, plus a group chief holding pack text that has none yet. A deleted bot, and one whose home is on a worker,
+ * is left alone. */
+async function targets(deps: StaffDeps, bots: readonly StaffBot[], state: StaffState): Promise<{ bot: StaffBot; recorded?: StaffBotState; installed: Map<string, string>; soul: string | undefined }[]> {
+  const kept: { bot: StaffBot; recorded?: StaffBotState; installed: Map<string, string>; soul: string | undefined }[] = [];
   for (const bot of bots) {
     const recorded = state.bots[bot.id];
     // A chief HUI never recorded needs its title as well as its group: `group` is an ordinary field the operator can set
     // on any bot, and a bot with one copied pack skill must not receive the rest.
     if (bot.worker || (!recorded && !(bot.group && isChiefTitle(bot.title)))) continue;
     const installed = installedText(await deps.skills.read(bot.id));
-    if (recorded || holdsPack(installed, deps.pack)) kept.push({ bot, recorded, installed });
+    if (recorded || holdsPack(installed, deps.pack)) kept.push({ bot, recorded, installed, soul: await deps.soul.read(bot.id) });
   }
   return kept;
 }
 
-/** What one bot needs, read from its own skills and its record; `state` is the record to write back. */
-function review(deps: StaffDeps, recorded: StaffBotState | undefined, installed: Map<string, string>) {
+/** What one bot's SOUL.md needs, read from its record and the text it holds: the outcome and the plan's wording for it,
+ * the text to write when an untouched soul takes the shipped one, and the hash to record when the record changes. */
+function soulDecision(deps: StaffDeps, recorded: StaffBotState | undefined, current: string | undefined): {
+  outcome?: NonNullable<StaffBotOutcome["soul"]>;
+  plan?: NonNullable<StaffBotPlan["soul"]>;
+  write?: string;
+  record?: string;
+} {
+  const shippedText = soulText(deps.pack.soul);
+  const shippedHash = soulHash(shippedText);
+  // Compare in the form the bot reads, not the bytes on disk: the port trims but keeps the line ends it found, so a
+  // SOUL.md hand-edited to CRLF is the same soul as the one HUI shipped (`soulText`, `normalizeHomeFile`).
+  const currentText = current === undefined ? undefined : soulText(current);
+  // The bot already holds the shipped text, so only its record can be behind: a crash between the soul write and the
+  // state write, or a hand edit that landed on that same text. Recording it heals the record instead of reporting an
+  // edit that is not one. Nothing is written, because the text is already there.
+  if (currentText === shippedText) {
+    if (recorded?.soul === shippedHash) return {};
+    return { outcome: "recorded", plan: "record", record: shippedHash };
+  }
+  // Other text with no soul record: only the operator can say what it is, so it is reported and left alone.
+  if (recorded?.soul === undefined) return { outcome: "unrecorded", plan: "unrecorded" };
+  // A recorded hash that no longer matches its text: somebody edited or removed the soul, so the pack leaves it alone.
+  if (recorded.soul !== soulHash(currentText ?? "")) return { outcome: "kept", plan: "edited" };
+  // Recorded and unchanged, and the pack has other text: an untouched soul follows the pack.
+  return { outcome: "written", plan: "update", write: shippedText, record: shippedHash };
+}
+
+/** What one bot needs, read from its own skills, its SOUL.md and its record; `state` is the record to write back. */
+function review(deps: StaffDeps, recorded: StaffBotState | undefined, installed: Map<string, string>, current: string | undefined) {
   const adopted = !recorded;
   const state: StaffBotState = recorded ?? {
     packVersion: deps.pack.version,
@@ -283,12 +343,13 @@ function review(deps: StaffDeps, recorded: StaffBotState | undefined, installed:
     writes.push({ name: skill.name, text: skill.text, ...(skill.files.length ? { files: skill.files } : {}) });
     for (const file of packFilePaths([skill])) installedHashes[file.path] = hashText(file.text);
   }
-  return { adopted, state, writes, installedHashes, kept, unrecorded, stale: staleSkills(state, installed, deps.pack) };
+  return { adopted, state, writes, installedHashes, kept, unrecorded, stale: staleSkills(state, installed, deps.pack), soul: soulDecision(deps, recorded, current) };
 }
 
 /**
- * Writes the pack's skills into every chief and merges its routes. Seeds the Chief of Staff first when HUI never did;
- * a bot the operator deleted stays deleted. `seed: false` never creates a bot (hui doctor --fix).
+ * Writes the pack's skills into every chief, gives an untouched SOUL.md the shipped text, and merges its routes. Seeds
+ * the Chief of Staff first when HUI never did; a bot the operator deleted stays deleted. `seed: false` never creates a
+ * bot (hui doctor --fix).
  */
 export async function ensureStaff(deps: StaffDeps, options: { seed?: boolean } = {}): Promise<StaffOutcome> {
   return serialized(() => install(deps, options));
@@ -304,13 +365,13 @@ async function install(deps: StaffDeps, options: { seed?: boolean }): Promise<St
       name: deps.pack.bot.name,
       title: deps.pack.bot.title,
       description: deps.pack.bot.description,
-      soul: deps.pack.soul,
+      soul: soulText(deps.pack.soul),
     });
     state = {
       version: 2,
       seededAt: (deps.now?.() ?? new Date()).toISOString(),
       botId: bot.id,
-      bots: { [bot.id]: { packVersion: deps.pack.version, installedAt: (deps.now?.() ?? new Date()).toISOString(), files: {} } },
+      bots: { [bot.id]: { packVersion: deps.pack.version, installedAt: (deps.now?.() ?? new Date()).toISOString(), files: {}, soul: soulHash(deps.pack.soul) } },
     };
     // Recorded before the files go in, so a crash in between cannot seed a second bot.
     await writeStaffState(deps, state);
@@ -318,17 +379,24 @@ async function install(deps: StaffDeps, options: { seed?: boolean }): Promise<St
   }
 
   const outcomes: StaffBotOutcome[] = [];
-  for (const { bot, recorded, installed } of await targets(deps, await deps.bots(), state)) {
-    const { adopted, state: next, writes, installedHashes, kept } = review(deps, recorded, installed);
+  for (const { bot, recorded, installed, soul } of await targets(deps, await deps.bots(), state)) {
+    const { adopted, state: next, writes, installedHashes, kept, soul: soulStep } = review(deps, recorded, installed, soul);
+    // The soul goes in before the skills, all of it inside the record that follows: a soul write that fails then leaves
+    // no skill written behind it. A soul written without its record loses nothing either, because the next run reads the
+    // shipped text and heals the record as "recorded" (`soulDecision`).
+    if (soulStep.write !== undefined) await deps.soul.write(bot.id, soulStep.write);
     if (writes.length) await deps.skills.write(bot.id, writes);
     Object.assign(next.files, installedHashes);
-    if (writes.length || adopted) {
-      next.packVersion = deps.pack.version;
+    if (soulStep.record !== undefined) next.soul = soulStep.record;
+    if (writes.length || adopted || soulStep.record !== undefined) {
+      if (writes.length || adopted || soulStep.write !== undefined) next.packVersion = deps.pack.version;
       state.bots[bot.id] = next;
       // Recorded before the next bot, so a failure there cannot lose what this one received.
       await writeStaffState(deps, state);
     }
-    if (writes.length || kept.length || adopted) outcomes.push({ botId: bot.id, adopted, written: writes.map((skill) => skill.name), kept });
+    if (writes.length || kept.length || adopted || soulStep.outcome !== undefined) {
+      outcomes.push({ botId: bot.id, adopted, written: writes.map((skill) => skill.name), kept, ...(soulStep.outcome ? { soul: soulStep.outcome } : {}) });
+    }
   }
 
   const routesAdded = await mergeRoutes(deps, deps.pack.routes);
@@ -349,29 +417,39 @@ async function mergeRoutes(deps: StaffDeps, routes: readonly StaffRoute[]): Prom
   return missing.map((route) => route.name);
 }
 
-/** Records the pack HUI has just written into a chief, so the next start can tell its files from the operator's. A
- * gateway that never seeded a pack has nothing to record into, and the next start seeds one. */
+/** Records the pack HUI has just written into a chief, its SOUL.md included, so the next start can tell its files from
+ * the operator's. A gateway that never seeded a pack has nothing to record into, and the next start seeds one. */
 export async function recordChief(deps: StaffDeps, botId: string): Promise<void> {
   return serialized(async () => {
     const state = await readStaffState(deps);
     if (!state) return;
     const files: Record<string, string> = {};
     for (const file of packFilePaths(deps.pack.skills)) files[file.path] = hashText(file.text);
-    state.bots[botId] = { packVersion: deps.pack.version, installedAt: (deps.now?.() ?? new Date()).toISOString(), files };
+    state.bots[botId] = { packVersion: deps.pack.version, installedAt: (deps.now?.() ?? new Date()).toISOString(), files, soul: soulHash(deps.pack.soul) };
     await writeStaffState(deps, state);
   });
 }
 
-/** What an upgrade would do, without doing it: which skills get the shipped text, which are kept as edited, and which
- * the pack no longer ships. A record HUI never wrote is not created here. */
+/** What an upgrade would do, without doing it: which skills get the shipped text, which are kept as edited, which the
+ * pack no longer ships, and what happens to each soul. Writes no state and no SOUL.md; a record HUI never wrote is not
+ * created here. */
 export async function staffPlan(deps: StaffDeps): Promise<{ botId?: string; bots: StaffBotPlan[] }> {
   const state = await readStaffState(deps);
   if (!state) return { bots: [] };
   return {
     botId: state.botId,
-    bots: (await targets(deps, await deps.bots(), state)).map(({ bot, recorded, installed }) => {
-      const { adopted, writes, kept, unrecorded, stale } = review(deps, recorded, installed);
-      return { botId: bot.id, name: bot.name, adopted, updates: writes.map((skill) => skill.name), kept, unrecorded, stale };
+    bots: (await targets(deps, await deps.bots(), state)).map(({ bot, recorded, installed, soul }) => {
+      const { adopted, writes, kept, unrecorded, stale, soul: soulStep } = review(deps, recorded, installed, soul);
+      return {
+        botId: bot.id,
+        name: bot.name,
+        adopted,
+        updates: writes.map((skill) => skill.name),
+        kept,
+        unrecorded,
+        stale,
+        ...(soulStep.plan ? { soul: soulStep.plan } : {}),
+      };
     }),
   };
 }
