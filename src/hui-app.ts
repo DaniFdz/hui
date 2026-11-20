@@ -3480,6 +3480,8 @@ export class HuiApp extends HuiElement {
       gateways: this.gateways.views(this.gatewayName),
       onSwitchGateway: this.switchGateway,
       onAddGateway: () => this.gateways.openAddGateway(),
+      gatewayOffline: this.sessions.unreachable,
+      onRetryGateway: () => { void this.refreshSessions(); },
       onSearch: this.updateSearch,
     };
 
