@@ -3438,6 +3438,7 @@ export class HuiApp extends HuiElement {
       onOpenKanban: () => this.navigate({ kind: "kanban" }),
       onOpenPage: this.openPage,
       onSelectSession: this.selectSession,
+      onOpenBot: this.openBot,
       onSplitSession: this.openSplitSession,
       onToggleGroup: this.sessions.toggleGroup,
       toggledSessionTrees: this.sessions.toggledSessionTrees,

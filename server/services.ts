@@ -794,7 +794,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   } as Record<string, unknown>);
   // The session is the PR lead, and the caller watches it for the heartbeat.
   await updateRegistry((records) => records.map((current) => {
-    if (current.id === record.id) return { ...current, lead: true as const };
+    if (current.id === record.id) return { ...current, lead: true as const, createdByBot: owner.id };
     if (current.id === callerSessionId && params["watch"] !== false) {
       return { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) };
     }
