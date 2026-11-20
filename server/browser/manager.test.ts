@@ -869,7 +869,9 @@ test("a pointer drag, double click and triple click select page text, and copy r
     browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "move", x, y: 40, button: "left", clickCount: 1 });
   }
   browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 460, y: 40, button: "left", clickCount: 1 });
-  const dragged = await copy();
+  // The copy is a separate CDP command; wait for the renderer to report the selection it made.
+  const selectedText = (matches: (text: string) => boolean) => eventually(() => copy(), matches, 5_000);
+  const dragged = await selectedText((text) => /HUI handoff fixture/u.test(text));
   assert.match(dragged, /HUI handoff fixture/u, "the drag selected the page's heading text");
 
   // A double click selects one word; a triple selects the line.
@@ -878,7 +880,9 @@ test("a pointer drag, double click and triple click select page text, and copy r
       browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 100, y: 40, button: "left", clickCount: click });
       browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 100, y: 40, button: "left", clickCount: click });
     }
-    const selected = await copy();
+    const selected = await selectedText(clickCount === 2
+      ? (text) => text.length > 0 && text.length < dragged.length
+      : (text) => /HUI handoff fixture/u.test(text) && text.length >= dragged.length);
     if (clickCount === 2) assert.ok(selected.length > 0 && selected.length < dragged.length, `a double click selects a word, got "${selected}"`);
     else assert.match(selected, /HUI handoff fixture/u, "a triple click selects the line");
   }
