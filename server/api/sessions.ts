@@ -281,7 +281,7 @@ export const sessionRouteSchemas = [
 
 export const sessionActionRouteSchemas = [
   ...["prompt", "steer", "steer-now", "follow-up"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionPromptResponse })),
-  ...["continue", "compact", "reload", "abort", "rewind", "resume", "question"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionOk })),
+  ...["continue", "compact", "reload", "abort", "rewind", "resume", "question", "progress"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionOk })),
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },

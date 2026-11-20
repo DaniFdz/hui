@@ -162,15 +162,6 @@ const cases: UseCase[] = [
     phone: "backlog",
   },
   {
-    id: "SET-013",
-    title: "Start task progress cards collapsed",
-    behaviour: "With “Collapse task progress” on, an agent's active task progress card appears collapsed in the conversation and can still be expanded; off, it appears expanded.",
-    spec: ["docs/api.md#hui-owned-presentation-state", "docs/api.md#task-progress"],
-    surfaces: ["appearance:chat.collapseTaskProgress"],
-    web: "required",
-    phone: "backlog",
-  },
-  {
     id: "SET-014",
     title: "Choose whether Enter sends",
     behaviour: "“Send shortcut” set to Enter makes Enter send the composer's message; set to “⌘/Ctrl + Enter”, Enter inserts a new line and only the chord or the send button sends.",

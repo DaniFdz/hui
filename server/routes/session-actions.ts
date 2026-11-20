@@ -1,6 +1,6 @@
 /**
  * One session's actions: `/__hui/sessions/:id/(open|prompt|steer|follow-up|queue|continue|clear|compact|reload|btw|
- * tools|models|commands|model|abort|rewind|fork|resume|thinking|fast|autonomous|question|connect)`, with the guards they share
+ * tools|models|commands|model|abort|rewind|fork|resume|thinking|fast|autonomous|question|connect|progress)`, with the guards they share
  * (an unknown or still-creating session, a bot's forever chat) and the request ids
  * that keep a resent prompt from running twice. `hui.ts` applies the `x-hui` guard before dispatching here and
  * writes the `…/events` stream for the record this module answers with `{ stream }`.
@@ -30,6 +30,7 @@ import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from
 import { isThinkingLevel } from "../sessions/thinking.ts";
 import { parseClearCommand, parseCompactCommand, parseGoalCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
 import { changeSessionGoal, GOAL_CONTINUE_PROMPT, GoalError } from "../sessions/goals.ts";
+import { SessionProgressBusyError } from "../sessions/session-progress.ts";
 
 export const routeSchemas: RouteSchema[] = [
   ...sessionActionRouteSchemas,
@@ -39,7 +40,7 @@ export const routeSchemas: RouteSchema[] = [
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|steer-now|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|autonomous|question|abort|clear|reload|compact|rewind|fork|goal)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|steer-now|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|autonomous|question|abort|clear|reload|compact|rewind|fork|goal|progress)$/;
 
 export function createSessionActionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "updateSession" | "forkRequest" | "forkFromSession">;
@@ -48,6 +49,7 @@ export function createSessionActionRoutes(deps: {
   subagents: Pick<SubagentService, "cancelCollected">;
   secretRequests: Pick<SecretRequests, "answer">;
   questionnaires: Pick<Questionnaires, "answer">;
+  refreshProgress: (record: SessionRecord) => Promise<void>;
 }) {
   /** Prompts, steers and follow-ups by their client request id, so a resend never runs twice. */
   const recentRequests = new RecentRequests();
@@ -75,6 +77,16 @@ export function createSessionActionRoutes(deps: {
         const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
         if (owner) {
           return reply(SessionError, { error: foreverChatRefusal(owner.handle, action[2]) }, 409);
+        }
+      }
+      if (action[2] === "progress" && method === "POST") {
+        try {
+          await deps.refreshProgress(record);
+          return reply(SessionOk, { ok: true });
+        } catch (error) {
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "Could not recompute this session's progress.",
+          }, error instanceof SessionProgressBusyError ? 409 : 502);
         }
       }
       if (action[2] === "open" && method === "POST") {

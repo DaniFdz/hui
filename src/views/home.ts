@@ -259,7 +259,6 @@ export type HomeProps = {
   forkPending: boolean;
   draft: string;
   chatPreferences: {
-    collapseTaskProgress: boolean;
     sendShortcut: "enter" | "modifierEnter";
     githubEmbeds: boolean;
     datadogEmbeds: boolean;
@@ -318,6 +317,10 @@ export type HomeProps = {
   onClosePane?: () => void;
   paneMovable?: boolean;
   onSelectSubagent: (sessionId: string) => void;
+  /** Stable, preindexed ordinary children; streamed frames never scan the registry. */
+  childSessions: readonly SessionView[];
+  runStatusPanelOpen: boolean;
+  onRunStatusPanelOpenChange: (open: boolean) => void;
   /** Pending `suggest_task` cards for the open session. */
   taskSuggestions?: TaskSuggestionCardProps;
   /** HUI-run background watchers for the open session. */
@@ -336,6 +339,8 @@ export type HomeProps = {
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
   /** The goal editor inside the Run status popover: whether the objective is being retyped, and a refused save. */
   goalPanel: GoalPanelState;
+  progressRefresh: { pending: boolean; error: string | undefined };
+  onRecomputeProgress: () => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
   onGoalCancelEdit: () => void;
@@ -2564,18 +2569,6 @@ function renderHeader(props: HomeProps, session: SessionView) {
     <header class="transcript__head chat-pane__header" tabindex="-1" data-testid="chat-header" draggable=${props.paneMovable ? "true" : "false"}>
       <div class="chat-pane__header-leading">
         ${renderPaneMoveHandle(props.paneMovable)}
-        ${props.mobileNavLayout ? html`<button
-          class="btn btn--ghost btn--icon chat-icon-btn chat-pane__nav-toggle"
-          type="button"
-          aria-label="Open navigation"
-          aria-controls="primary-navigation-drawer"
-          aria-expanded="false"
-          @click=${(event: Event) => {
-            // The Run status panel is pinned over this row's right end, so this tap also closes it.
-            dismissRunStatusPanel(sessionControlId(props, "run-status"));
-            toggleNavigationDrawer(event);
-          }}
-        >${icons.menu}</button>` : nothing}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           ${renderTitleLine(props, session)}
@@ -2593,6 +2586,28 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
+          ${renderRunStatus({
+            id: sessionControlId(props, "run-status"),
+            session,
+            loading: props.opening || session.status === "starting",
+            subagents: props.subagents,
+            ...(props.watchers ? { watchers: props.watchers } : {}),
+            streaming: props.streaming,
+            waiting: Boolean(props.question),
+            sending: props.sending,
+            connectionLive: props.connection === "live",
+            goalPanel: props.goalPanel,
+            progressRefresh: props.progressRefresh,
+            onRecomputeProgress: props.onRecomputeProgress,
+            onGoalChange: props.onGoalChange,
+            onGoalEdit: props.onGoalEdit,
+            onGoalSave: props.onGoalSave,
+            onGoalCancelEdit: props.onGoalCancelEdit,
+            onSelectSubagent: props.onSelectSubagent,
+            childSessions: props.childSessions,
+            panelOpen: props.runStatusPanelOpen,
+            onPanelOpenChange: props.onRunStatusPanelOpenChange,
+          })}
           ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall, labelled: Boolean(props.mobileNavLayout) }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
@@ -2611,25 +2626,19 @@ function renderHeader(props: HomeProps, session: SessionView) {
               @click=${props.onClosePane}
             >${icons.close}</button>
           ` : nothing}
-          ${renderRunStatus({
-            id: sessionControlId(props, "run-status"),
-            session,
-            loading: props.opening || session.status === "starting",
-            subagents: props.subagents,
-            ...(props.watchers ? { watchers: props.watchers } : {}),
-            streaming: props.streaming,
-            waiting: Boolean(props.question),
-            sending: props.sending,
-            connectionLive: props.connection === "live",
-            goalPanel: props.goalPanel,
-            collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
-            onGoalChange: props.onGoalChange,
-            onGoalEdit: props.onGoalEdit,
-            onGoalSave: props.onGoalSave,
-            onGoalCancelEdit: props.onGoalCancelEdit,
-            onSelectSubagent: props.onSelectSubagent,
-          })}
         </div>
+        ${props.mobileNavLayout ? html`<button
+          class="btn btn--ghost btn--icon chat-icon-btn chat-pane__nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-controls="primary-navigation-drawer"
+          aria-expanded="false"
+          @click=${(event: Event) => {
+            // Navigation stays rightmost and dismisses Run status in the same tap.
+            dismissRunStatusPanel(sessionControlId(props, "run-status"));
+            toggleNavigationDrawer(event);
+          }}
+        >${icons.menu}</button>` : nothing}
       </div>
     </header>
     ${renderDeleteConfirmation(props, session)}

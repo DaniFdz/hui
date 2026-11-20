@@ -1420,6 +1420,10 @@ const server = createServer(async (request, response) => {
   }
   // HUI's own Task progress card: the utility model answers in a summary and a plan.
   if (source.includes("Track the task progress of this coding-agent session")) {
+    if (source.includes("E2E_PROGRESS_DONE")) {
+      text(response, "Summary: Browser fixture, the plan is complete\nPlan:\n- done: Read fixture\n- done: Verify presentation\n- done: Report the plan");
+      return finish(response);
+    }
     const second = source.includes("E2E_PROGRESS_TWO");
     text(response, second
       ? "Summary: Browser fixture, the plan moved on\nPlan:\n- done: Read fixture\n- done: Verify presentation\n- doing: Report the plan"

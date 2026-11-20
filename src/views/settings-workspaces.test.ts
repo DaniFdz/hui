@@ -128,11 +128,11 @@ test("settings text entry uses the canonical OpenClaw control treatment", () => 
 });
 
 test("Appearance exposes functional OpenClaw chat preferences", () => {
-  for (const label of ["Message width", "Collapse task progress", "Send shortcut"]) {
+  for (const label of ["Message width", "Send shortcut"]) {
     assert.match(settingsSource, new RegExp(label));
   }
   assert.match(settingsSource, /props\.onChangeChat/);
-  assert.match(settingsSource, /renderSettingsToggle\("Collapse task progress"/);
+  assert.doesNotMatch(settingsSource, /Collapse task progress/, "the plan is always open, not controlled by a device preference");
   for (const label of ["Message width", "Send shortcut"]) {
     assert.ok(settingsSource.includes(`renderSettingsPicker("${label}"`));
   }

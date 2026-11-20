@@ -10,7 +10,7 @@ import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
 import { forgetConversation } from "./lib/session/offline-store.ts";
-import { isSubagentActive } from "./lib/subagent-activity.ts";
+import { isSubagentActive, latestSubagentBatch } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -66,7 +66,7 @@ import { renderGatewayDialog } from "./views/gateway-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
-import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
+import { childSessionsByParent, customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
@@ -263,6 +263,8 @@ export class HuiApp extends HuiElement {
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
   @state() private continuing = false;
+  /** Only lazy panel content follows these events; Web Awesome still owns opening and dismissal. */
+  @state() private runStatusOpenFor = "";
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
@@ -738,9 +740,12 @@ export class HuiApp extends HuiElement {
   }
 
   override willUpdate(changed: PropertyValues) {
+    // Loading/navigation can remove the popover without an after-hide event: later closed pills retain no rows.
+    if (this.conversation.opening || this.conversation.openError || this.conversation.selected?.status === "starting" || this.view !== "home") this.runStatusOpenFor = "";
     // Subagent trees follow the selection: moving elsewhere folds the old tree.
     if (this.updatingSelectedId !== this.conversation.selected?.id) {
       this.updatingSelectedId = this.conversation.selected?.id;
+      this.runStatusOpenFor = "";
       this.sessions.toggledSessionTrees = new Set();
       this.transcriptWindowStart = undefined;
     }
@@ -783,6 +788,11 @@ export class HuiApp extends HuiElement {
     ) {
       this.applyNavigation({ kind: "session", id: this.paneSessionId });
     }
+    // Check after pane synchronization: removing its last goal/plan also removes the surface without a hide event.
+    // Restoring a child later must start closed, not inherit the removed surface's lazy rows.
+    if (this.runStatusOpenFor && !this.conversation.selected?.goal && !this.conversation.selected?.progress
+      && !this.childSessions.length && !this.backlog.watchers.length
+      && !latestSubagentBatch(this.conversation.subagents, Date.now()).length) this.runStatusOpenFor = "";
   }
 
   /** Lit cannot autofocus a field that appears on a later render, and typing
@@ -2086,6 +2096,20 @@ export class HuiApp extends HuiElement {
 
   /* ── bots ─────────────────────────────────────────────────────────────── */
 
+  /** Every pane reading the same registry shares one child projection, including the empty-array identity. */
+  private static readonly childSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
+  private static readonly noChildSessions: readonly SessionView[] = [];
+  private get childSessions(): readonly SessionView[] {
+    // Embedded panes overlay only their own status. Their children come from the canonical shared list.
+    const groups = this.embeddedPane && this.paneGroups ? this.paneGroups : this.sessions.groups;
+    let index = HuiApp.childSessionIndexes.get(groups);
+    if (!index) {
+      index = childSessionsByParent(groups);
+      HuiApp.childSessionIndexes.set(groups, index);
+    }
+    return index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
+  }
+
   /** Session lists never show bot chats; the Bots tab lists their bots. The
    * unfiltered registry stays in `groups` so a bot pane can open its chat. */
   private listedGroupsSource: readonly SessionGroup[] | undefined;
@@ -2978,6 +3002,7 @@ export class HuiApp extends HuiElement {
   }
 
   private homeProps(): HomeProps {
+    const sessionId = this.conversation.selected?.id;
     const launchModels = this.control.pi?.model.catalog ?? [];
     const launchModel = resolveLaunchModel(
       launchModels,
@@ -3010,6 +3035,12 @@ export class HuiApp extends HuiElement {
       bots: this.mentionable(),
       onOpenBot: this.embeddedPane ? this.onPaneOpenBot : this.openBot,
       subagents: this.conversation.subagents,
+      childSessions: this.childSessions,
+      runStatusPanelOpen: this.runStatusOpenFor === this.conversation.selected?.id,
+      onRunStatusPanelOpenChange: (open) => {
+        if (sessionId !== this.conversation.selected?.id) return;
+        this.runStatusOpenFor = open ? sessionId ?? "" : "";
+      },
       opening: this.conversation.opening,
       openError: this.conversation.openError,
       streaming: this.conversation.streaming,

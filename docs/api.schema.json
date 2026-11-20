@@ -17189,6 +17189,13 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/sessions/:id/progress",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/prompt",
       "response": {
         "$ref": "#/$defs/SessionPromptResponse"

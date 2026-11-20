@@ -17,7 +17,7 @@ const TITLE = "Appearance";
 
 /** The keys that moved to the device, and the chat block's own share of them. */
 const MOVED = ["theme", "themeMode", "accent", "fontUi", "fontChat", "fontTerminal", "textScale"] as const;
-const MOVED_CHAT = ["messageWidth", "collapseTaskProgress", "sendShortcut", "githubEmbeds", "datadogEmbeds"] as const;
+const MOVED_CHAT = ["messageWidth", "sendShortcut", "githubEmbeds", "datadogEmbeds"] as const;
 
 const NOTES = [
   "Appearance is per device since 2026-11-16: a theme, colour mode, accent, typeface, text size and chat preference are kept by the browser, app or phone that shows them, and every device starts from HUI's defaults.",
