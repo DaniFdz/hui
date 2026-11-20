@@ -153,6 +153,30 @@ test("a plain conversation is offered none of a bot's own tools or sections, and
   assert.deepEqual(agent?.tools, { remove: ["notify_user"] }, "nothing is filtered but the notification tool, which Settings leaves off");
 });
 
+test("a chief's chat carries its delegation rule on every prompt, and an ordinary bot's chat carries none", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const { chiefSection } = await import("../runtimes/durable-prompt.ts");
+  const { isChiefTitle } = await import("./chief-title.ts");
+  // The gateway supplies both from its roster (`server/services.ts`): the bot id becomes the title the operator set.
+  const titles = new Map([["bot-chief", "Chief of Staff · Payments"], ["bot-helper", "Helper"]]);
+  f.bots.isChief = (botId) => isChiefTitle(titles.get(botId));
+  const port = durableBotConversations(f.host, fakeMemory());
+  const prompt = async (botId: string) => {
+    const id = durableConversationId(await port.create({ botId, cwd: f.cwd, memory: { name: botId } }))!;
+    return f.host.prompt.render(f.cwd, ["read", "sessions_spawn", "create_session"], id);
+  };
+
+  const chief = await prompt("bot-chief");
+  assert.ok(chief.includes(chiefSection()), "the chief section, whole");
+  assert.match(chief, /## Delegate by default/u);
+  assert.match(chief, /- Fast iteration is a child:.*`sessions_spawn`/u);
+  assert.match(chief, /- Everything else is a session:.*`create_session`.*lead for one PR/u);
+  assert.match(chief, /you write no code a worker or a session can write/u);
+
+  const helper = await prompt("bot-helper");
+  assert.doesNotMatch(helper, /Delegate by default|sessions_spawn`\. Name the one reply/u, "an ordinary bot's chat carries none");
+});
+
 test("a bot's conversation is created in one commit with bot document and memory, offers message_bot, and reads SOUL.md on every request", { timeout: 90_000 }, async (t) => {
   const f = await fixture(t);
   const port = durableBotConversations(f.host, fakeMemory());
