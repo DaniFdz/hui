@@ -52,7 +52,11 @@ test("a session a chief started shows the chief's face in its row and a Started 
     await hui.expectLinkTo(screen.getByTestId("chat-header"), `Started by ${chief.name}`, `/bots/${chief.id}`);
     const chip = screen.getByTestId("chat-pane-creator");
     await expect(chip).toBeVisible();
-    expect(await hui.textOf(chip)).toBe(`Started by ${chief.name}`);
+    // The chip drops the words "Started by" where the header line is narrow, a phone's drawer layout among them, and keeps
+    // the accessibility tree's full sentence: the name is the chip's accessible name at any width, its painted text the
+    // bot's own name.
+    await expect(chip).toHaveAccessibleName(`Started by ${chief.name}`);
+    expect(await hui.textOf(chip)).toContain(chief.name);
     await chip.tap();
     await expect.poll(() => hui.url()).toMatch(new RegExp(`/bots/${chief.id}$`, "u"));
   } finally {
