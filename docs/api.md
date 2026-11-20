@@ -1589,6 +1589,11 @@ running collected children with `completionDelivery: "delivered"`. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
 turn. On settlement HUI persists the terminal lifecycle and bounded summary,
 then prompts an idle parent or attempts steering on a running/waiting parent.
+A run that settles after a runtime error with no later answer is persisted
+`failed` with that error, or with `The subagent finished without a reply.`
+when it reported none; a stored `completed` record that kept neither a
+non-blank summary nor an error is reported `failed` in its completion event
+and in `agents_wait`.
 If steering fails or is unsupported, HUI queues the result as a follow-up;
 if the parent settled during that attempt, HUI prompts it directly instead.
 Successful steering does not also enqueue a follow-up or abort the parent.

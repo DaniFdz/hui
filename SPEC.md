@@ -2134,10 +2134,16 @@ with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
 data, trailing action instructions). Completions are batched until all active
-siblings finish and render as a system card, never as a "You" bubble. A
-child's task and `sessions_send` messages show as the sending session's. Delivery
-steers an active parent, prompts an idle one, or queues a follow-up if steering
-cannot be accepted. This does not abort the parent's current run. At most eight
+siblings finish and render as a system card, never as a "You" bubble. A child's
+run counts as completed only when it settles with a final assistant message. One
+that settles after a runtime error with no later answer is recorded `failed` with
+that error, or with `The subagent finished without a reply.` when the runtime
+reported none. A stored `completed` record that kept neither a non-blank
+summary nor an error is reported `failed` in its completion event and in
+`agents_wait`, never as an empty completion. A child's task and
+`sessions_send` messages show as the sending session's. Delivery steers an
+active parent, prompts an idle one, or queues a follow-up if steering cannot
+be accepted. This does not abort the parent's current run. At most eight
 ordinary descendants may be active in one tree.
 
 A spawn picks the child's model in one of three ways: a **route** name from the
