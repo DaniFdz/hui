@@ -14,11 +14,6 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   const steps = plan.getByLabel("Task progress steps");
   // No run opens the popover: the shared helper presses the pill the turn leaves in the header.
   const openPanel = () => openRunStatus(screen);
-  // The plan starts folded on a phone and on a wide window only when every step is done or the setting asks for it.
-  const openPlan = async () => {
-    if (!(await steps.isVisible())) await plan.getByText(/^\d+ of \d+$/u).tap();
-  };
-
   // HUI writes the card with the utility model; this instance points it at the fixture.
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
@@ -37,7 +32,6 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
   await openPanel();
-  await openPlan();
   await expect(steps).toBeVisible();
   await expect(plan.getByText("1 of 2")).toBeVisible();
   await expect(plan).toContainText("HUI's utility model writes this");
@@ -48,7 +42,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await message.fill("E2E_PROGRESS_TWO");
   await send.tap();
   await openPanel();
-  await openPlan();
+  await expect(steps).toBeVisible();
   await expect(plan.getByText("2 of 3")).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
@@ -64,16 +58,10 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await hui.reload();
   await expect(popover).toBeHidden();
   await openPanel();
-  await openPlan();
+  await expect(steps).toBeVisible();
   await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
-  // Collapse task progress starts it folded even with work left.
-  await hui.saveAppearance({ chat: { collapseTaskProgress: true } });
-  await hui.reload();
-  await openPanel();
-  await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
-  await expect(steps).toBeHidden();
 });
 
 test("a session's stored card shows in its row hovercard without opening it", { tags: ["SESS-043"], platforms: ["web"] }, async ({ screen, hui }) => {

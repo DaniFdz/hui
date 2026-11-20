@@ -293,7 +293,7 @@
    HUI's metadata is longer than the reference breadcrumb segments. */
 .transcript__head { container-name: session-header; }
 .transcript__head .chat-pane__header-leading { flex: 1 1 0; }
-.transcript__head .chat-pane__header-trailing { flex: 0 0 auto; }
+.transcript__head .chat-pane__header-trailing { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 4px; margin-inline-start: auto; }
 .transcript__head .transcript__identity { flex: 1; min-width: 0; }
 .transcript__head .chat-pane__crumbs { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .transcript__head .session-row__dot { display: none; }

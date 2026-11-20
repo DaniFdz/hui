@@ -4970,7 +4970,7 @@ so every device reads the same maps).
 
 Appearance is not there. A theme, color mode, accent, interface, chat-prose or
 terminal typeface, text size and the chat preferences (`messageWidth`,
-`collapseTaskProgress`, `sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
+`sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
 the client that shows them, and are kept in that client's own storage under the
 versioned `hui.appearance.v1` key: one gateway serves many screens and people, so
 two clients must be able to disagree, and a phone's WebView keeps its own copy per

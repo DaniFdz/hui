@@ -9,6 +9,15 @@ const BROWSER = ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and
 
 const cases: UseCase[] = [
   {
+    id: "AGENT-075",
+    title: "See side work at a glance",
+    behaviour: "With a plan present, Run status shows a badge counting running or queued helpers and running watchers, names the side-task count in its accessible summary and adds active in the panel head. A changed active set pings once; streamed output with the same set does not restart it. Reduced motion disables animation while counts still update. Without a plan there is no extra active count. Growing the plan and badge counts leaves all header controls to the right fixed.",
+    spec: ["SPEC.md#run-status"],
+    surfaces: [],
+    web: "required",
+    phone: "required",
+  },
+  {
     id: "AGENT-001",
     title: "Answer an agent's question",
     behaviour: "One card opens at the end of the transcript, its last row above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. The card scrolls with the conversation, so scrolling back for context keeps it where it was asked. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
@@ -528,9 +537,9 @@ const cases: UseCase[] = [
   {
     id: "AGENT-053",
     title: "Follow a session's task progress",
-    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the Plan section of the chat header's Run status popover: folded, the current step and done/total; open, N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on (and starts folded on a phone), a new turn rewrites it, and it is stored with the session so it returns after a reload. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
+    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the Plan section of the chat header's Run status popover: folded, the current step and done/total; open, N of M, a one-line summary and each step marked pending, in progress or done. It starts expanded while any step is unfinished, on every device, and folds only when every step is done or the operator folds it by hand, a new turn rewrites it, and it is stored with the session so it returns after a reload. The operator opens Run status to read the plan; it stays open across runs until they close it, and a press elsewhere in the app — Send included — closes it as an outside click. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
-    surfaces: ["appearance:chat.collapseTaskProgress", "setting:models.utility"],
+    surfaces: ["setting:models.utility"],
     web: "required",
     phone: "required",
   },

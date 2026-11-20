@@ -40,6 +40,9 @@ export type RunStatusHelpers = {
   allSucceeded: boolean;
 };
 
+/** Live side work, keyed by its stable active set rather than by streamed output. */
+export type RunStatusActivity = { count: number; signature: string };
+
 export type RunStatusModel = {
   /** Nothing to report: draw no trigger at all. */
   visible: boolean;
@@ -52,6 +55,7 @@ export type RunStatusModel = {
   plan: RunStatusPlan | undefined;
   helpers: RunStatusHelpers | undefined;
   watchers: RunStatusWatchers | undefined;
+  activity: RunStatusActivity;
   /** Blocks, failures and an unanswered question: the trigger carries a warn/danger mark. */
   attention: boolean;
   /** What the trigger is announced as, including the parts its visible word leaves out. */
@@ -136,10 +140,9 @@ function corner(value: number, height: number): number {
 
 /**
  * The morph's two ends: the trigger's own box — so the first frame is the pill, not a picture of it — and the panel's
- * settled box. Both are the panel's own box in viewport pixels, and the panel settles on the pill's top-right corner, so
- * the top and right edges do not travel: the box only grows left and down into the content it holds. Nothing here is a
- * transform or a scale, and nothing is clamped: a placement that moved the panel would make the two corners disagree,
- * which the tests that read the settled box must fail on.
+ * settled box at the actions group's top-right. The top stays pinned while the right edge travels from the leftmost
+ * trigger to the group's fixed right edge. Both are measured viewport boxes: no transform, scale or clamping can hide
+ * a placement error from the tests that read the settled box.
  */
 export function runStatusMorphBoxes(input: {
   pill: RunStatusMorphRect | undefined;
@@ -265,6 +268,11 @@ export function runStatus(options: {
       finished: options.watchers.filter((watcher) => watcher.state !== "running").length,
     } satisfies RunStatusWatchers
     : undefined;
+  const activeIds = [
+    ...options.subagents.filter((task) => ["running", "queued"].includes(subagentVisualState(task.status))).map((task) => `helper:${task.taskId}`),
+    ...(options.watchers ?? []).filter((watcher) => watcher.state === "running").map((watcher) => `watcher:${watcher.id}`),
+  ].sort();
+  const activity: RunStatusActivity = { count: activeIds.length, signature: activeIds.join("|") };
   const visible = Boolean(goal || plan || helpers || watchers);
   const attention = Boolean(goal?.status === "blocked" || helpers?.failed || watchers?.failed || options.waiting);
 
@@ -310,6 +318,7 @@ export function runStatus(options: {
   // The name says the goal's state once too: a head that already is the goal's state does not repeat it.
   if (goal && goalSectionStatus({ label }, goal)) parts.push(`goal ${goal.status === "active" ? "pursuing" : goal.status}`);
   if (plan?.total) parts.push(`${plan.done} of ${plan.total} steps done`);
+  if (plan && activity.count > 0) parts.push(`${activity.count} side ${activity.count === 1 ? "task" : "tasks"} active`);
   if (helpers) {
     parts.push(helpers.allFinished
       ? `${helpers.completed} of ${helpers.total} helpers completed`
@@ -329,6 +338,7 @@ export function runStatus(options: {
     plan,
     helpers,
     watchers,
+    activity,
     attention,
     summary: `Run status: ${parts.join(", ")}`,
   };

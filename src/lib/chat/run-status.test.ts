@@ -62,7 +62,32 @@ test("a goal, plan and running helpers summarize as Working with the plan's coun
     { total: model.helpers?.total, running: model.helpers?.running, queued: model.helpers?.queued, finished: model.helpers?.finished },
     { total: 3, running: 2, queued: 1, finished: 0 },
   );
-  assert.match(model.summary, /^Run status: Working, goal pursuing, 1 of 3 steps done, 3 of 3 helpers active$/u);
+  assert.match(model.summary, /^Run status: Working, goal pursuing, 1 of 3 steps done, 3 side tasks active, 3 of 3 helpers active$/u);
+});
+
+test("side work counts live helpers and watchers with a stable sorted active-set signature", () => {
+  const watchers = (["running", "done", "failed"] as const).map((state) => ({
+    id: state, purpose: state, target: "", outcome: "", command: "true", pid: null, logPath: "/tmp/log",
+    state, startedAt, lastLine: "",
+  }));
+  const subagents = [task("z", "queued"), task("b", "starting"), task("a", "running"), task("done", "completed"), task("failed", "failed")];
+  const input = { goal: undefined, progress, subagents, watchers, streaming: false, waiting: false, now };
+  const model = runStatus(input);
+  assert.deepEqual(model.activity, { count: 4, signature: "helper:a|helper:b|helper:z|watcher:running" });
+  assert.match(model.summary, /4 side tasks active/u);
+  assert.deepEqual(runStatus({ ...input, subagents: [...subagents].reverse(), watchers: [...watchers].reverse(), streaming: true }).activity, model.activity);
+  const changed = runStatus({ ...input, subagents: subagents.map((item) => item.taskId === "a" ? { ...item, status: "completed" as const } : item) });
+  assert.equal(changed.activity.count, 3);
+  assert.notEqual(changed.activity.signature, model.activity.signature);
+  const noPlan = runStatus({ ...input, progress: undefined });
+  assert.deepEqual(noPlan.activity, model.activity);
+  assert.doesNotMatch(noPlan.summary, /side tasks active/u);
+  assert.match(noPlan.summary, /3 of 5 helpers active/u);
+  assert.match(noPlan.summary, /1 of 3 watchers running/u);
+  const empty = runStatus({ ...input, subagents: [], watchers: [] });
+  assert.deepEqual(empty.activity, { count: 0, signature: "" });
+  assert.doesNotMatch(empty.summary, /side task/u);
+  assert.match(runStatus({ ...input, subagents: [], watchers: watchers.slice(0, 1) }).summary, /1 side task active/u);
 });
 
 test("an open question outranks a running turn and marks the trigger for attention", () => {
@@ -263,27 +288,26 @@ test("background watchers keep the trigger alive and count as working", () => { 
   assert.match(failed.summary, /1 watcher$/u);
 });
 
-test("the pill and the panel share one top-right corner, so the box only grows left and down", () => {
-  // The popover overlays the anchor by the pill's height, so the panel's settled top-right is the pill's: the corner
-  // never travels, and neither does the right edge while the box widens.
+test("the top stays pinned while the right edge travels from the pill to the actions group", () => {
+  // The leftmost pill grows into the measured panel at the fixed right edge of the actions group.
   const pill = { x: 1100, y: 20, width: 104, height: 28 };
-  const panel = { x: 784, y: 20, width: 420, height: 360 };
+  const panel = { x: 884, y: 20, width: 420, height: 360 };
   const boxes = runStatusMorphBoxes({ pill, panel, pillRadius: 999, panelRadius: 14, reducedMotion: false });
   assert.deepEqual(boxes, {
     // Exactly the pill's rect and the panel's corner: the pill's own round at 28px tall.
     from: { x: 1100, y: 20, width: 104, height: 28, radius: 14 },
     // And the panel's settled rect, unchanged by the morph.
-    to: { x: 784, y: 20, width: 420, height: 360, radius: 14 },
+    to: { x: 884, y: 20, width: 420, height: 360, radius: 14 },
   });
   // The box's top-right corner is the trigger's, and its width is the trigger's: no scale is involved.
   assert.equal(boxes!.from.x + boxes!.from.width, pill.x + pill.width);
   assert.equal(boxes!.from.y, pill.y);
   assert.equal(boxes!.from.width, pill.width);
   assert.equal(boxes!.from.height, pill.height);
-  // Both ends share the pill's top-right corner, and the end box carries the panel's own size: the corner stays put
-  // while the box grows left and down into the rows it holds.
+  // The measured panel carries the actions group's right edge, not the pill's.
   assert.equal(boxes!.to.y, pill.y, "the settled top edge is the pill's");
-  assert.equal(boxes!.to.x + boxes!.to.width, pill.x + pill.width, "and the settled right edge is the pill's");
+  assert.equal(boxes!.to.x + boxes!.to.width, 1304, "the settled right edge is the actions group's");
+  assert.notEqual(boxes!.to.x + boxes!.to.width, pill.x + pill.width);
   assert.equal(boxes!.to.width, panel.width, "while the box keeps the panel's own width");
   assert.equal(boxes!.to.height, panel.height);
 });

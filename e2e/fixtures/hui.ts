@@ -215,6 +215,9 @@ export type Hui = {
    * border and shadow is one card; a wrapper painting the same surface hides the box a morph is moving.
    */
   cardChrome(selector: string): Promise<{ node: CardChrome; wrapper: CardChrome | null } | null>;
+  /** Computed CSS animation and node identity; a retained one-shot has the same token and start time across frames. */
+  selectorAnimation(selector: string): Promise<{ animationName: string; count: number; startTime: number | null; token: number } | null>;
+  reducedMotion(value: "reduce" | "no-preference"): Promise<void>;
   /**
    * A node's whole text by CSS selector, folded and hidden rows included: what a panel holds, rather than what it paints.
    * The rendered read (`textOf`) leaves a closed disclosure's rows out, which a gate on a panel that now stays open
@@ -1063,6 +1066,18 @@ function huiTest(offline: boolean) {
       drawn: (selector) => browser().evaluate((query) => {
         const node = document.querySelector(query);
         return node ? node.getClientRects().length > 0 : false;
+      }, selector),
+      reducedMotion: (reducedMotion) => browser().emulateMedia({ reducedMotion }),
+      selectorAnimation: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        if (!node) return null;
+        const scope = window as unknown as { huiAnimationNodes?: { tokens: WeakMap<Element, number>; next: number } };
+        const ids = scope.huiAnimationNodes ??= { tokens: new WeakMap(), next: 0 };
+        let token = ids.tokens.get(node);
+        if (token === undefined) { token = ++ids.next; ids.tokens.set(node, token); }
+        const animations = node.getAnimations();
+        const start = animations[0]?.startTime;
+        return { animationName: getComputedStyle(node).animationName, count: animations.length, startTime: typeof start === "number" ? start : null, token };
       }, selector),
       cardChrome: (selector) => browser().evaluate((query) => {
         const node = document.querySelector(query);

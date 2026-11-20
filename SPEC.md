@@ -873,7 +873,7 @@ gateway…** opens that same dialog in place.
 
 Every control on the Appearance page is kept by the client, not the gateway: the
 theme, the color mode, the accent, the interface, chat-prose and terminal fonts,
-the text size and the chat preferences (message width, collapsed task progress,
+the text size and the chat preferences (message width,
 the send shortcut and the two link-preview switches). They live under one
 versioned `localStorage` key on the web and in the desktop app's page, which is
 the same store, and a phone's WebView keeps its own per app install, so a phone
@@ -1930,25 +1930,30 @@ card is registry state, so it is there immediately after a gateway restart.
 
 ### Run status
 
-The chat header's rightmost control is **Run status**, present whenever the
+The chat header's leftmost action is **Run status**, present whenever the
 conversation has a goal, a plan, a recent batch of helpers or background
 watchers; otherwise it is absent. It reads the most urgent state — Waiting for
 your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
 Goal achieved, Done or Pursuing goal — with the plan's done/total (or the
 helpers' or watchers' count) beside it. Its accessible name names the goal, plan
-and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
+and helper facts it summarizes. While a plan exists, a compact dot-and-count badge shows running or queued helpers
+plus running watchers, and the accessible name states that side-task count. The panel head adds the word “active”.
+A changed active set replays one ping; streamed output with the same set does not. Reduced motion disables the ping,
+not count updates. Without a plan the existing helper/watcher facts stand alone, with no second active count.
+Header actions run left to right: Run status, Call, bot-panel toggle, bot menu, Continue, Close pane (where present).
+The phone navigation toggle follows the actions group at the far right. The group's right edge stays fixed as the pill
+grows, so all the controls to its right keep their positions. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
 Clicking the trigger opens one popover whose settled top-right corner is
-the trigger's; while it is out the pill is not drawn at all — the panel's first
+the actions group's (just left of navigation on a phone); while it is out the pill is not drawn at all — the panel's first
 line is its own title, the pill's mark, one state word and count set at the
 card's left padding on the same 12px the rows below use, with the chevron, now
 pointing up, at the box's right edge as the close — so the two boxes never show
 together and no word floats alone at the right. The
 pill morphs into the panel and back as one painted box: the panel's own width and
-height grow out of the pill's box — the trigger's top-right corner, the pill's
-round at the pill's height — and that corner stays put, so the box only grows
-left and down while only the panel is painted and the rows inside it fade in near
+height grow out of the pill's box — the pill's own width, height and round — to the measured panel box. Its top stays pinned while its right edge travels
+from the trigger's right edge to the actions group's fixed edge while only the panel is painted and the rows inside it fade in near
 the end of the growth. Left-aligned copy inside a box growing to the left would
 travel with its left edge, so the title's copy is held while the box grows — the
 chevron carries the first frame — and written once the box has arrived, where it
@@ -1971,7 +1976,8 @@ the conversation starts on its own — a watcher settling, a helper finishing �
 opens or shuts the panel. A reload starts closed.
 The popover holds **Goal** (the objective, its status note, when it was set, its
 automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
-steps and summary), **Helpers** (the latest batch, its counts, one dot per child
+steps and summary, expanded while any step is unfinished; it folds only when all steps are done or the operator
+folds it by hand, with no device preference or phone-specific default), **Helpers** (the latest batch, its counts, one dot per child
 and each child's row) and **Watchers** (each watcher's purpose, latest output,
 state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
 its rows behind Watcher details while the section header keeps the running

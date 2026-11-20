@@ -1,5 +1,5 @@
 /** The chat header's Run status panel: it stays shut through every run until the operator opens it, their open and close
- * outlive runs, and the pill morphs into it and back from one pinned top-right corner while the head reads the same state
+ * outlive runs, and the pill morphs into it and back with its top pinned and its right edge travelling while the head reads the same state
  * as the pill (CHAT-090). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -78,7 +78,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
 
   // The operator's own press is what opens it, and the pill morphs into the panel it opens: the head reads the same state
   // as the trigger — mark, word and count — so one control visibly becomes the other. The panel's settled top-right corner
-  // is the pill's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
+  // is the actions group's and the pill itself is not painted while the panel is out, so the two boxes never show together; the
   // trigger keeps its box as the anchor and the aria-expanded, word and summary it gives back on close.
   await trigger.tap();
   await expect(popover).toBeVisible();
@@ -169,6 +169,10 @@ test("Run status stays shut through a run until the operator opens it, and then 
   expect(chrome?.node?.border, "the panel is the card, and the box the morph moves").toBeGreaterThan(0);
   expect(chrome?.node?.shadow).not.toBe("none");
 
+  const actions = await hui.rect(".chat-pane__header-actions");
+  expect(actions).not.toBeNull();
+  const actionsRight = actions!.x + actions!.width;
+  const actionsTop = actions!.y;
   const closing = await hui.morphFrames(PANEL, TRIGGER, () => screen.getByLabel("Close run status").tap(), [HEAD_COPY, CLOSE]);
   const shrinking = closing.filter((frame) => frame.box.painted && frame.box.width > 0);
   const settledWidth = Math.max(...shrinking.map((frame) => frame.box.width));
@@ -176,7 +180,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   const leaving = shrinking[0];
   expect(leaving?.trigger.painted, "the close starts with no pill beside the panel").toBe(false);
   expect(Math.abs((leaving?.box.top ?? 0) - (leaving?.trigger.top ?? 0)), "the close starts on the pill's own top edge").toBeLessThanOrEqual(1);
-  expect(Math.abs((leaving?.box.right ?? 0) - (leaving?.trigger.right ?? 0)), "and on its right edge").toBeLessThanOrEqual(1);
+  expect(Math.abs((leaving?.box.right ?? 0) - actionsRight), "on the actions group's right edge").toBeLessThanOrEqual(1);
   const arrived = shrinking.at(-1);
   expect(Math.abs((arrived?.box.width ?? 0) - (arrived?.trigger.width ?? 0)), "it arrives as the pill's own box").toBeLessThanOrEqual(1);
   expect(Math.abs((arrived?.box.right ?? 0) - (arrived?.trigger.right ?? 0))).toBeLessThanOrEqual(1);
@@ -203,12 +207,14 @@ test("Run status stays shut through a run until the operator opens it, and then 
   expect(Math.abs((start?.box.top ?? 0) - (start?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
   expect(travelling.some((frame) => frame.box.width > (start?.trigger.width ?? 0) + 20 && frame.box.width < settledWidth - 20), "the box travels between the two").toBe(true);
   expect(Math.max(...travelling.map((frame) => frame.box.width)), "and ends on the panel's settled width").toBeGreaterThanOrEqual(settledWidth - 1);
-  // The corner is pinned for every frame of the growth, not only its first: the panel settles on the pill's top-right
-  // corner, so the box only widens left and its top and right edges never move — and the pill is painted in none of them.
+  // The top is pinned in every frame; the right edge travels from the pill to the group's fixed edge.
+  const arrival = travelling.at(-1);
+  expect(Math.abs((arrival?.box.right ?? 0) - actionsRight), "arrival is the actions group's right edge").toBeLessThanOrEqual(1);
   for (const frame of travelling) {
     expect(frame.trigger.painted, `the frame ${frame.box.width}px wide draws no second box`).toBe(false);
     expect(Math.abs(frame.box.top - frame.trigger.top), `the frame ${frame.box.width}px wide keeps the pill's top edge`).toBeLessThanOrEqual(1);
-    expect(Math.abs(frame.box.right - frame.trigger.right), `the frame ${frame.box.width}px wide keeps the pill's right edge`).toBeLessThanOrEqual(1);
+    expect(frame.box.right).toBeGreaterThanOrEqual(frame.trigger.right - 1);
+    expect(frame.box.right).toBeLessThanOrEqual(actionsRight + 1);
   }
   // No glide: the head's copy is left-aligned, so a box widening to the left would carry the word with its left edge. The
   // copy is held for the whole growth instead — the chevron, already at the box's right edge, carries the first frame —
@@ -224,13 +230,14 @@ test("Run status stays shut through a run until the operator opens it, and then 
   expect(openingTitle.length, "the title's copy is written once the box has arrived").toBeGreaterThan(0);
   const openingTitleX = openingTitle.map((frame) => frame.tracked?.[HEAD_COPY]?.x ?? Number.NaN);
   expect(Math.max(...openingTitleX) - Math.min(...openingTitleX), "and it never travels while the box grows").toBeLessThanOrEqual(1);
-  // And the settled panel is that corner, covering the pill's whole box: no fragment of the pill is left above it.
+  // The settled panel reaches the group's fixed top-right; the trigger remains unpainted.
   const settled = await popover.boundingBox();
   const pill = await trigger.boundingBox();
   expect(settled, "the panel is on screen").not.toBeNull();
   expect(pill, "the trigger keeps its box").not.toBeNull();
   expect(Math.abs((settled?.y ?? 0) - (pill?.y ?? 0)), "the settled panel's top is the trigger's").toBeLessThanOrEqual(1);
-  expect(Math.abs(((settled?.x ?? 0) + (settled?.width ?? 0)) - ((pill?.x ?? 0) + (pill?.width ?? 0))), "and its right edge is the trigger's").toBeLessThanOrEqual(1);
+  expect(Math.abs(((settled?.x ?? 0) + (settled?.width ?? 0)) - actionsRight), "its right edge is the actions group's").toBeLessThanOrEqual(1);
+  expect(Math.abs((settled?.y ?? 0) - actionsTop), "and its top edge is the actions group's").toBeLessThanOrEqual(1);
   expect((settled?.x ?? Number.POSITIVE_INFINITY), "the panel reaches left of the pill").toBeLessThan((pill?.x ?? 0) - 20);
   expect((settled?.y ?? 0) + (settled?.height ?? 0), "and its box covers the pill's").toBeGreaterThanOrEqual((pill?.y ?? 0) + (pill?.height ?? 0));
   // The settled panel reads like a card: its first line is the panel's own title — the mark, the one state word and the

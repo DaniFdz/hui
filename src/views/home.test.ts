@@ -306,6 +306,45 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
 });
 
+test("side work badges use a keyed active set and keep the plan open with work left", async () => {
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "idle", progress: {
+    markdown: "Plan", steps: [{ step: "Verify", status: "in_progress" }],
+  } };
+  const subagents = [{ taskId: "a", sessionId: "child", parentSessionId: "s", title: "Helper", status: "running", startedAt: new Date().toISOString() }];
+  const html = await renderWorkerSession("idle", { session, subagents, mobileNavLayout: true,
+    bot: { bot: { id: "b", name: "Ada" }, panelOpen: false, onTogglePanel: () => {}, onAction: () => {} },
+    call: { inCall: false, onCall: () => {} }, onClosePane: () => {},
+  });
+  assert.equal(html.match(/class="chat-run-status__activity" aria-hidden=(?:"true"|true)/gu)?.length, 1);
+  assert.equal(html.match(/class="chat-run-status__activity"/gu)?.length, 2, "the panel head keeps its live word readable");
+  assert.match(html, /1 side task active/u);
+  assert.match(html, /1 active/u);
+  assert.match(html, /data-testid="task-progress" aria-label="Task progress" \?open=true/u, "unfinished plans start open on phones too");
+  const done = await renderWorkerSession("idle", { session: { ...session, progress: { markdown: "Done", steps: [{ step: "Verify", status: "completed" }] } } });
+  assert.doesNotMatch(done, /\?open=true/u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { subagents }), /class="chat-run-status__activity"/u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { session, subagents: [] }), /class="chat-run-status__activity"/u);
+  const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
+  assert.match(view, /keyed\(activity\.signature, html/u);
+  assert.match(view, /skidding = actionsGroup \? actionsGroup\.getBoundingClientRect\(\)\.right - trigger\.getBoundingClientRect\(\)\.right : 0/u);
+  const css = readStyles("../styles/chat-run-status.css");
+  assert.match(css, /\.chat-run-status__activity \{[^}]*display: inline-flex;[^}]*flex: none;/su);
+  assert.match(css, /\.chat-run-status__activity-ping \{[^}]*position: absolute;/su);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chat-run-status__activity-ping \{ animation: none;/su);
+  const actions = html.slice(html.indexOf('class="chat-pane__actions chat-pane__header-actions"'));
+  const controls = ['data-testid="run-status-trigger"', 'aria-label=Call Ada', 'bot-panel-toggle', 'bot-header-menu__trigger', 'aria-label="Continue without a prompt"', 'aria-label="Close session pane"', 'aria-label="Open navigation"'];
+  let previous = -1;
+  for (const control of controls) {
+    const index = actions.indexOf(control);
+    assert.ok(index > previous, "header control follows its predecessor: " + control);
+    previous = index;
+  }
+  const leading = html.slice(html.indexOf('class="chat-pane__header-leading"'), html.indexOf('class="chat-pane__header-trailing"'));
+  assert.doesNotMatch(leading, /Open navigation/u);
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
+});
+
 test("only the operator's press opens the Run status popover", () => {
   const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
   // The only path that opens the popover is Web Awesome's own response to a press on its trigger: the view writes no
@@ -637,7 +676,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
     goalPanel: { editing: false, error: "" },
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
@@ -975,7 +1014,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
+    chatPreferences: { sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },
