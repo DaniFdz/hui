@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { disconnectComposerMirror, mountComposerMirror, scheduleComposerMirror, setComposerMirrorComposing } from "./composer-mirror.ts";
+import { disconnectComposerMirror, COMPOSER_MIRROR_READY_ATTRIBUTE, mountComposerMirror, scheduleComposerMirror, setComposerMirrorComposing } from "./composer-mirror.ts";
 import { MAX_FORMATTED_LENGTH } from "./markdown-draft.ts";
 
 type FakeTextarea = {
@@ -300,4 +300,30 @@ test("mounting twice keeps one listener and one frame, and disconnecting drops b
   assert.equal(textarea.listenerCount("input"), 0);
   scheduleComposerMirror(textarea as unknown as HTMLTextAreaElement);
   assert.equal(frames.pending(), 0, "a disconnected textarea schedules nothing");
+});
+
+test("a textarea is marked ready only while a mirror is mounted under it", () => {
+  const frames = fakeFrames();
+  vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "" }));
+  const textarea = fakeTextarea();
+  const mirror = fakeMirror();
+  const ready = (): boolean => textarea.hasAttribute(COMPOSER_MIRROR_READY_ATTRIBUTE);
+  assert.equal(ready(), false, "a textarea that mounted nothing keeps its own glyphs");
+
+  mountComposerMirror(textarea as unknown as HTMLTextAreaElement, mirror as unknown as HTMLElement);
+  assert.equal(ready(), true, "the paint-only rules may hide the textarea's glyphs once a mirror paints the draft");
+  frames.flush();
+
+  // A mount that finds no mirror under the textarea leaves its text visible instead of drawing an empty box.
+  mountComposerMirror(textarea as unknown as HTMLTextAreaElement, null);
+  assert.equal(ready(), false, "a replaced or missing mirror gives the glyphs back");
+  assert.equal(textarea.listenerCount("input"), 0);
+  assert.equal(frames.pending(), 0);
+
+  const again = fakeMirror();
+  mountComposerMirror(textarea as unknown as HTMLTextAreaElement, again as unknown as HTMLElement);
+  assert.equal(ready(), true);
+  frames.flush();
+  disconnectComposerMirror(textarea as unknown as HTMLTextAreaElement);
+  assert.equal(ready(), false, "a discarded composer's textarea is not left painting nothing");
 });

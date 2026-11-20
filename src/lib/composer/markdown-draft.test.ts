@@ -133,3 +133,34 @@ test("a draft above the cap paints plain until it drops back below it", () => {
   assert.deepEqual(formatDraft(overCap).map((line) => line.kind), ["text"]);
   assert.deepEqual(kinds(overCap.slice(0, -1)), ["marker", "bold", "marker", "text"]);
 });
+
+/** How long a formatting pass took, so a quadratic matcher cannot hide behind a passing invariant. */
+function timedFormat(source: string): { ms: number; lines: ReturnType<typeof formatDraft> } {
+  const started = performance.now();
+  const lines = formatDraft(source);
+  return { ms: performance.now() - started, lines };
+}
+
+test("an adversarial draft of unmatched runs formats in linear time and keeps the invariant", () => {
+  // 5,000 `*` runs that pair up, then 2,400 `**` runs: a closer that scans every opener it cannot use is quadratic on
+  // this draft, so the matcher keeps one stack per run kind and drops the openers a match already passed, lazily.
+  const draft = "*a".repeat(5000) + " **".repeat(2400);
+  assert.ok(draft.length <= MAX_FORMATTED_LENGTH, "the draft is formatted, not painted plain");
+  const { ms, lines } = timedFormat(draft);
+  assert.equal(draftPlainText(lines), draft);
+  assert.ok(ms < 200, `formatted ${draft.length} characters in ${ms.toFixed(1)}ms`);
+});
+
+test("a full-length ordinary draft formats every run it holds", () => {
+  const paragraph = "Ship **this** and *that* with `npm test`:\n- one\n  1. nested\n\n";
+  const draft = paragraph.repeat(Math.ceil(MAX_FORMATTED_LENGTH / paragraph.length)).slice(0, MAX_FORMATTED_LENGTH);
+  assert.equal(draft.length, MAX_FORMATTED_LENGTH);
+  const { ms, lines } = timedFormat(draft);
+  assert.equal(draftPlainText(lines), draft);
+  assert.ok(ms < 200, `formatted ${draft.length} characters in ${ms.toFixed(1)}ms`);
+  // It is formatted, not plain: the bold, the code span and the lists are all still recognised at the cap.
+  const flat = lines.flatMap((line) => [...line.inlines]);
+  assert.ok(flat.some((token) => token.kind === "bold" && token.text === "this"));
+  assert.ok(flat.some((token) => token.kind === "code" && token.text === "npm test"));
+  assert.deepEqual([...new Set(lines.map((line) => line.kind))].sort(), ["blank", "list", "ordered", "text"]);
+});

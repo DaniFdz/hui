@@ -201,7 +201,7 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(styles, /\.chat-text\s*\{[^}]*font-size: var\(--chat-text-size\);[^}]*line-height: 1\.5;/s);
 });
 
-test("user messages preserve explicit line breaks", () => {
+test("user messages preserve explicit line breaks", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
@@ -210,6 +210,16 @@ test("user messages preserve explicit line breaks", () => {
   assert.match(source, /attributed\.sender\.kind !== "routine" && attributed\.sender\.kind !== "trigger"/);
   assert.match(source, /class="chat-text chat-text--plain"/);
   assert.match(styles, /\.chat-text--plain\s*\{\s*white-space:\s*pre-wrap;\s*\}/);
+
+  // An operator prompt is rendered Markdown (`renderAgentMarkdown`: markdown-it with `breaks: true`), so a line break
+  // is the parser's own `<br>` between the two lines rather than a pre-wrap box the Markdown never passed through.
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "first line\nsecond line" }] });
+  assert.match(html, /first line<br>\s*second line/u);
+  assert.doesNotMatch(html, /chat-text--plain/u, "the operator's own words take the Markdown path");
+  // A routine's line break still comes from its plain, pre-wrapped box.
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Digest] first line\nsecond line" }] });
+  assert.match(routine, /class="chat-text chat-text--plain">first line\s+second line/u);
+  assert.doesNotMatch(routine, /<br>/u);
 });
 
 test("the operator's own prompt renders the Markdown the composer previewed", async () => {
@@ -222,6 +232,10 @@ test("the operator's own prompt renders the Markdown the composer previewed", as
   assert.match(html, /<ul>/u);
   assert.match(html, /<ol>/u);
   assert.doesNotMatch(html, /chat-text--plain/u);
+  // The operator's own fence is code in the transcript too: the reference sheet strips a user bubble's `pre` back to
+  // the body face, so this HUI rule restores the code face for the operator's message and no one else's.
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.chat-group\.user:not\(\.chat-group--peer\) \.chat-text :is\(\.code-block-wrapper pre, pre code\)\s*\{[^}]*font-family: var\(--mono, ui-monospace, monospace\);[^}]*font-size: 12px;[^}]*line-height: 1\.55;/su);
   // A routine's prompt is machine text: its own asterisks stay asterisks.
   const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Inbox] **Summarize**" }] });
   assert.match(routine, /class="chat-text chat-text--plain"/u);
@@ -280,6 +294,13 @@ test("composer keys run the menus first, then the formatting edits, then the sen
   // One edit, undoable: the changed span is replaced in place, and a browser that refuses it gets the same text.
   assert.match(source, /document\.execCommand\(replacement \? "insertText" : "delete", false, replacement\)/u);
   assert.match(source, /textarea\.setRangeText\(replacement, head, head \+ replaced, "preserve"\)/u);
+  // And one keypress saves the draft once: `execCommand` fires the `input` event whose handler already saved it,
+  // measured the draft and repainted the mirror, so the typed path only re-reads what the final selection decides and
+  // the `setRangeText` path, which fires no event, runs the whole update.
+  const apply = source.slice(source.indexOf("function applyComposerEdit"), source.indexOf("function applyComposerFormattingKeydown"));
+  assert.equal(apply.match(/updateComposerDraft\(props, textarea\)/gu)?.length, 1, "the draft is saved once per key");
+  assert.match(apply, /if \(typed\) \{[^}]*updateCompletionQueries\(props, textarea\);[^}]*scheduleComposerMirror\(textarea\);[^}]*return;[^}]*\}\s*updateComposerDraft\(props, textarea\);/su);
+  assert.match(apply, /if \(!typed\) textarea\.setRangeText\(/u);
 });
 
 test("the composer's Markdown paint never changes a glyph's advance", () => {
@@ -287,17 +308,33 @@ test("the composer's Markdown paint never changes a glyph's advance", () => {
   const rules = [...styles.matchAll(/([^{}]*\.hui-draft-(?:bold|italic|bold-italic|code|marker)[^{}]*)\{([^}]*)\}/gu)];
   assert.ok(rules.length > 0, "the paint rules are in the stylesheet");
   // Every one of these would move the caret off the glyphs: the paint may thicken, tint, skew and chip, never measure.
-  const advance = /(?:^|;)\s*(?:font-(?:weight|style|family|size|variant|feature-settings)|letter-spacing|word-spacing|text-transform|text-indent|padding|margin|border(?!-radius)|line-height|white-space)\s*:/u;
+  const advance = /(?:^|;)\s*(?:font-(?:weight|style|family|size|variant|feature-settings)|letter-spacing|word-spacing|text-transform|text-indent|padding|margin|border(?!-radius)|line-height|white-space|display)\s*:/u;
+  let leaning = 0;
   for (const [, selector, declarations] of rules) {
-    // The bullet's dot is out of flow: its size is paint, not text.
-    if (selector?.includes("__dot")) continue;
-    assert.doesNotMatch(declarations ?? "", advance, (selector ?? "").trim());
+    // The bullet's dot is out of flow and shares its line box with no text: its size is paint, not advance. Only this
+    // one rule is exempt, so a second out-of-flow box has to justify itself here too.
+    if (selector?.trim() === ".hui-draft-marker__dot") continue;
+    // Italic leans one word at a time (`markdown-draft.ts` keeps the spaces outside these spans) and the inline-block
+    // box is what keeps that lean from shearing the glyph beside it: the one display the paint owns. Removing it here
+    // is the assertion that no other rule takes one.
+    const painted = (declarations ?? "").replace("display: inline-block;", () => {
+      assert.match(selector ?? "", /\.hui-draft-italic/u, "only the italic rule may take a display");
+      leaning += 1;
+      return "";
+    });
+    assert.doesNotMatch(painted, advance, (selector ?? "").trim());
   }
+  assert.equal(leaning, 1, "the italic rule is the only paint rule that takes a display");
+  assert.match(styles, /\.hui-draft-italic,\s*\n\.hui-draft-bold-italic\s*\{\s*display: inline-block;\s*\n\s*transform: skewX\(-9deg\);/u);
   assert.match(styles, /\.hui-draft-bold,\s*\n\.hui-draft-bold-italic\s*\{\s*-webkit-text-stroke: 0\.5px currentColor;/u);
   assert.match(styles, /\.hui-draft-code\s*\{[^}]*box-shadow:[^}]*border-radius:/su);
   assert.match(styles, /\.agent-chat__composer-mirror\s*\{[^}]*position: absolute;[^}]*pointer-events: none;/su);
-  assert.match(styles, /textarea\[data-composer-markdown\]\s*\{\s*position: relative;\s*z-index: 1;\s*color: transparent;/u);
-  assert.match(styles, /::selection\s*\{\s*color: transparent;[^}]*background: color-mix\(in srgb, var\(--selection-bg\) 45%, transparent\)/su);
+  assert.match(styles, /textarea\[data-composer-markdown\]\s*\{\s*position: relative;\s*z-index: 1;/u);
+  // The textarea's glyphs only step aside once a mirror is mounted under them (`composer-mirror.ts` sets the attribute):
+  // a mount that found no mirror leaves the draft's own text readable instead of an empty box.
+  assert.match(styles, /textarea\[data-composer-markdown\]\[data-composer-mirror-ready\]\s*\{\s*color: transparent;\s*\n\s*-webkit-text-fill-color: transparent;/u);
+  assert.match(styles, /textarea\[data-composer-markdown\]::placeholder\s*\{\s*color: var\(--chat-composer-tertiary\);/u);
+  assert.match(styles, /textarea\[data-composer-markdown\]\[data-composer-mirror-ready\]::selection\s*\{\s*color: transparent;[^}]*background: color-mix\(in srgb, var\(--selection-bg\) 45%, transparent\)/su);
   assert.match(styles, /\.agent-chat__composer-combobox\[data-composing\] > \.agent-chat__composer-mirror\s*\{\s*display: none;/u);
   assert.match(styles, /@media \(forced-colors: active\)[\s\S]*\.agent-chat__composer-mirror\s*\{\s*display: none;/u);
 });

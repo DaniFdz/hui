@@ -1,19 +1,27 @@
-/* HUI-owned: the composer's Markdown mirror (`src/lib/composer/markdown-draft.ts`, `composer-mirror.ts`). The reference
- * sheets keep the composer's geometry; this file only paints what the draft means, and every rule is paint-only.
+/* HUI-owned: the composer's Markdown mirror (`src/lib/composer/markdown-draft.ts`, `composer-mirror.ts`) and the
+ * typography of the operator's own sent fence. The reference sheets keep the composer's geometry; every rule here is
+ * paint-only where it touches the composer.
  *
- * The textarea stays the editor: its glyphs go transparent so the mirror under it is what the operator reads, while the
- * caret, the selection wash, the placeholder, the scroll position and every metric that decides where a glyph lands
- * stay the textarea's. Nothing here may change an advance width — no font family, size, weight, style, variant,
- * spacing, padding, border or margin on a token — because the caret would then drift off the paint.
+ * The textarea stays the editor: once a mirror is mounted under it, its glyphs go transparent so the mirror is what the
+ * operator reads, while the caret, the selection wash, the placeholder, the scroll position and every metric that
+ * decides where a glyph lands stay the textarea's. Nothing here may change an advance width — no font family, size,
+ * weight, style, variant, spacing, padding, border or margin on a token — because the caret would then drift off the
+ * paint.
  */
 
 /* One stacking step: the mirror sits under the textarea inside the combobox's isolation. */
 .agent-chat__composer-combobox > textarea[data-composer-markdown] {
   position: relative;
   z-index: 1;
+  caret-color: var(--text-strong);
+}
+
+/* The mirror paints the draft, so the textarea's own glyphs step aside — but only once a mirror is mounted there
+   (`composer-mirror.ts` sets the attribute): a mount that found no mirror leaves the textarea's text visible instead
+   of an empty box. */
+.agent-chat__composer-combobox > textarea[data-composer-markdown][data-composer-mirror-ready] {
   color: transparent;
   -webkit-text-fill-color: transparent;
-  caret-color: var(--text-strong);
 }
 
 /* The placeholder is not the draft, so it keeps its own colour instead of inheriting transparent glyphs. */
@@ -23,7 +31,7 @@
 }
 
 /* A translucent wash over the painted text: the mirror shows through the selection rather than two layers of glyphs. */
-.agent-chat__composer-combobox > textarea[data-composer-markdown]::selection {
+.agent-chat__composer-combobox > textarea[data-composer-markdown][data-composer-mirror-ready]::selection {
   color: transparent;
   -webkit-text-fill-color: transparent;
   background: color-mix(in srgb, var(--selection-bg) 45%, transparent);
@@ -160,4 +168,22 @@
     color: CanvasText;
     -webkit-text-fill-color: currentColor;
   }
+}
+
+/* The operator's own prompt is the Markdown the composer previewed, so its fence is code in the transcript too. The
+ * reference sheet strips a user bubble's `pre` back to the body face — a fence typed into a message reads as the prose
+ * around it — and that is what a bot's, a session's, a routine's or a trigger's message (`chat-group--peer`) keeps. */
+.chat-group.user:not(.chat-group--peer) .chat-text :is(.code-block-wrapper pre, pre code) {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* A code block the operator asked to wrap still wraps: its own control outranks the rule above, as it does for every
+ * other message's fence. */
+.chat-group.user:not(.chat-group--peer) .chat-text .code-block-wrapper.is-wrapped pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

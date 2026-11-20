@@ -57,7 +57,10 @@ test("the composer paints the draft's Markdown under the textarea and the sent p
   await expect(transcript.getByText("npm test", { exact: true })).toBeVisible();
   await expect(transcript.getByText("```ts")).toHaveCount(0);
   await expect(transcript.getByRole("list").first()).toBeVisible();
-  await expect(transcript.getByRole("listitem").nth(1)).toBeVisible();
+  // The ordered item is nested under the bullet, not a sibling list: a bare "second list item" read passes either way.
+  const prompt = transcript.getByTestId("message-row").filter({ hasText: "bullet" });
+  await expect(prompt.getByRole("listitem").first().getByRole("list").first()).toBeVisible();
+  await expect(prompt.getByRole("listitem").first().getByRole("listitem").first()).toHaveText(/nested/u);
 
   // HUI's own prompts are machine text: a routine's and a trigger's markers stay markers.
   await hui.prompt(session, "[routine: Digest] **Summarize**");

@@ -206,27 +206,41 @@ function scanInline(source: string): Node[] {
 
 /** Pairs delimiter runs into opening and closing markers, then flattens the result with the style each run sits in. */
 function resolveEmphasis(nodes: Node[]): DraftInline[] {
+  // The unmatched openers in document order, plus the positions where each run kind sits in that list (`**` pairs only
+  // with `**`). A match cuts the list at its opener's position, so every run opened after that opener is gone: a
+  // per-kind entry is stale once its position no longer holds its own opener, and it is dropped the next time that kind
+  // is asked for. Each opener is pushed and dropped once, which keeps an adversarial draft of unmatched openers
+  // amortized linear where scanning every opener for each closer would be quadratic.
   const stack: number[] = [];
+  const openers = new Map<string, { at: number; node: number }[]>();
   for (const [index, node] of nodes.entries()) {
     if (node.kind !== "delim") continue;
-    let match = -1;
+    const kind = `${node.char}${node.text.length}`;
+    let live = openers.get(kind);
+    if (!live) {
+      live = [];
+      openers.set(kind, live);
+    }
+    let matched = false;
     if (node.close) {
-      for (let cursor = stack.length - 1; cursor >= 0; cursor -= 1) {
-        const candidate = nodes[stack[cursor] ?? -1];
-        if (candidate?.kind === "delim" && candidate.char === node.char && candidate.text.length === node.text.length) {
-          match = cursor;
-          break;
-        }
+      for (;;) {
+        const candidate = live.pop();
+        if (!candidate) break;
+        // A cut may have taken this position and a later opener taken it back, so an entry counts only as its own node.
+        if (candidate.at >= stack.length || stack[candidate.at] !== candidate.node) continue;
+        const opener = nodes[candidate.node];
+        if (opener?.kind !== "delim") break;
+        opener.matched = "open";
+        node.matched = "close";
+        // A run inside this pair stays literal: nothing can pair across a close.
+        stack.length = candidate.at;
+        matched = true;
+        break;
       }
     }
-    if (match >= 0) {
-      const opener = nodes[stack[match] ?? -1];
-      if (opener?.kind === "delim") opener.matched = "open";
-      node.matched = "close";
-      // An unmatched run inside this pair stays literal; nothing can pair across a close.
-      stack.length = match;
-    } else if (node.open) {
+    if (!matched && node.open) {
       stack.push(index);
+      live.push({ at: stack.length - 1, node: index });
     }
   }
 

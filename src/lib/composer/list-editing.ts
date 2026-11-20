@@ -15,6 +15,9 @@ export const MAX_LIST_INDENT = LIST_INDENT.length * 3;
 
 const LIST_ITEM_LINE_RE = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+)/u;
 const EMPTY_LIST_ITEM_LINE_RE = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+)$/u;
+/** What continues a word, the same test the draft formatter uses: a marker glued to a word joins it, so `**a**b`
+ * closes `a` and then opens nothing. */
+const WORD_CHAR_RE = /[0-9A-Za-z\u00c0-\uffff]/u;
 
 function lineStart(text: string, position: number): number {
   return text.lastIndexOf("\n", position - 1) + 1;
@@ -98,35 +101,53 @@ export function endEmptyListItem(text: string, caret: number): { text: string; c
   return { text: text.slice(0, from) + text.slice(to), caret: from };
 }
 
-/** Wraps the selection in an inline marker, or unwraps the run it already sits in. */
+/** Whether the run of `marker` starting at `at` opens emphasis: a run glued to the word before it continues that word
+ * (`**a**b`'s second run closes `a`), so it can never be an opener. */
+function opensAt(text: string, at: number): boolean {
+  return at <= 0 || !WORD_CHAR_RE.test(text.charAt(at - 1));
+}
+
+/** Whether the run of `marker` ending just before `at` closes emphasis: a run glued to the word after it opens the
+ * next run (`**a**b`'s third run opens `b`), so it can never be a closer. */
+function closesAt(text: string, at: number): boolean {
+  return at >= text.length || !WORD_CHAR_RE.test(text.charAt(at));
+}
+
+/**
+ * Wraps the selection in an inline marker, or unwraps the run it already sits in. A run only comes off when the pair
+ * around the caret or the selection is genuine — the marker before it opens and the one after it closes — because the
+ * same marker plays both roles: inserting a pair against an existing run would merge into it and change what it means,
+ * so a caret or selection adjacent to a run that is no pair stays where it is.
+ */
 export function toggleWrap(text: string, start: number, end: number, marker: WrapMarker): TextSelection {
+  const width = marker.length;
   const before = text.slice(0, start);
   const after = text.slice(end);
   const selected = text.slice(start, end);
+  const adjacent = before.endsWith(marker) || after.startsWith(marker);
+  if (before.endsWith(marker) && after.startsWith(marker) && opensAt(text, start - width) && closesAt(text, end + width)) {
+    return { text: before.slice(0, -width) + selected + after.slice(width), start: start - width, end: end - width };
+  }
   if (start !== end) {
-    if (before.endsWith(marker) && after.startsWith(marker)) {
-      const remaining = marker.length;
-      return { text: before.slice(0, -remaining) + selected + after.slice(remaining), start: start - remaining, end: end - remaining };
+    if (selected.length >= width * 2 && selected.startsWith(marker) && selected.endsWith(marker)) {
+      return { text: before + selected.slice(width, -width) + after, start, end: end - width * 2 };
     }
-    if (selected.length >= marker.length * 2 && selected.startsWith(marker) && selected.endsWith(marker)) {
-      return { text: before + selected.slice(marker.length, -marker.length) + after, start, end: end - marker.length * 2 };
-    }
-    return { text: `${before}${marker}${selected}${marker}${after}`, start: start + marker.length, end: end + marker.length };
+    if (adjacent) return { text, start, end };
+    return { text: `${before}${marker}${selected}${marker}${after}`, start: start + width, end: end + width };
   }
-  if (before.endsWith(marker) && after.startsWith(marker)) {
-    return { text: before.slice(0, -marker.length) + after.slice(marker.length), start: start - marker.length, end: start - marker.length };
-  }
+  // A caret inside a run unwraps that run: the nearest run before it that opens, and the nearest after it that closes.
   const open = before.lastIndexOf(marker);
   const close = after.indexOf(marker);
-  if (open >= 0 && close >= 0) {
+  if (open >= 0 && close >= 0 && opensAt(text, open) && closesAt(text, start + close + width)) {
     const closeAt = start + close;
     return {
-      text: text.slice(0, open) + text.slice(open + marker.length, closeAt) + text.slice(closeAt + marker.length),
-      start: start - marker.length,
-      end: start - marker.length,
+      text: text.slice(0, open) + text.slice(open + width, closeAt) + text.slice(closeAt + width),
+      start: start - width,
+      end: start - width,
     };
   }
-  return { text: `${before}${marker}${marker}${after}`, start: start + marker.length, end: start + marker.length };
+  if (adjacent) return { text, start, end };
+  return { text: `${before}${marker}${marker}${after}`, start: start + width, end: start + width };
 }
 
 /** Wraps a selection in a fenced block, or opens an empty one with the caret on its middle line. */

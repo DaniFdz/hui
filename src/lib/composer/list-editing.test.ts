@@ -72,8 +72,23 @@ test("a wrap marker toggles around the selection or the caret", () => {
   assert.deepEqual(apply(toggleWrap("****", 2, 2, "**")), { text: "", selected: "", start: 0, end: 0 });
   // A caret inside a run unwraps that run; outside one it opens an empty pair.
   assert.deepEqual(apply(toggleWrap("**bold**", 4, 4, "**")), { text: "bold", selected: "", start: 2, end: 2 });
+  assert.deepEqual(apply(toggleWrap("**bold**", 5, 5, "**")), { text: "bold", selected: "", start: 3, end: 3 });
   assert.deepEqual(apply(toggleWrap("plain", 2, 2, "`")), { text: "pl``ain", selected: "", start: 3, end: 3 });
   assert.deepEqual(apply(toggleWrap("*it*", 1, 3, "*")), { text: "it", selected: "it", start: 0, end: 2 });
+});
+
+test("a caret or selection next to a run that is no pair leaves the draft alone", () => {
+  // The same marker opens and closes, so a caret against a run may not insert a pair into it: that would merge the two
+  // into one run and change what the draft means.
+  for (const [text, caret] of [["**a**b", 5], ["**a** b **c**", 8], ["**a** **b**", 5], ["**a**b", 3]] as const) {
+    assert.deepEqual(apply(toggleWrap(text, caret, caret, "**")), { text, selected: "", start: caret, end: caret }, `${text} at ${caret}`);
+  }
+  // A selection that abuts a run is the same edit one character wider.
+  assert.deepEqual(apply(toggleWrap("**a**b", 5, 6, "**")), { text: "**a**b", selected: "b", start: 5, end: 6 });
+  assert.deepEqual(apply(toggleWrap("**a** b **c**", 7, 8, "**")), { text: "**a** b **c**", selected: " ", start: 7, end: 8 });
+  // A pair around the caret still unwraps, and a caret nowhere near a run still opens one.
+  assert.deepEqual(apply(toggleWrap("**a** b", 2, 2, "**")), { text: "a b", selected: "", start: 0, end: 0 });
+  assert.deepEqual(apply(toggleWrap("**a** b", 6, 6, "**")), { text: "**a** ****b", selected: "", start: 8, end: 8 });
 });
 
 test("a fence wraps a multi-line selection, or opens an empty block for the caret", () => {

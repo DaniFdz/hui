@@ -163,6 +163,7 @@ function updateComposerDraft(props: HomeProps, textarea: HTMLTextAreaElement) {
  * `setRangeText`. The caret and the completion queries follow either way, and the textarea keeps the focus.
  */
 function applyComposerEdit(props: HomeProps, textarea: HTMLTextAreaElement, edit: TextSelection): void {
+  let typed = false;
   if (edit.text !== textarea.value) {
     // Replace only the span that changed: one insertion keeps an undo step, where rewriting the whole value would not.
     const current = textarea.value;
@@ -175,12 +176,19 @@ function applyComposerEdit(props: HomeProps, textarea: HTMLTextAreaElement, edit
     const replacement = edit.text.slice(head, edit.text.length - tail);
     const replaced = current.length - tail - head;
     textarea.setSelectionRange(head, head + replaced);
-    const applied = typeof document !== "undefined" && typeof document.execCommand === "function"
+    typed = typeof document !== "undefined" && typeof document.execCommand === "function"
       && document.execCommand(replacement ? "insertText" : "delete", false, replacement);
-    if (!applied) textarea.setRangeText(replacement, head, head + replaced, "preserve");
+    if (!typed) textarea.setRangeText(replacement, head, head + replaced, "preserve");
   }
   textarea.setSelectionRange(edit.start, edit.end);
   if (typeof document !== "undefined" && document.activeElement !== textarea) textarea.focus({ preventScroll: true });
+  if (typed) {
+    // `execCommand` fired the `input` event, whose handler already saved the draft, measured the textarea and repainted
+    // the mirror; only what depends on this function's final selection is left. A fallback edit fires no event at all.
+    updateCompletionQueries(props, textarea);
+    scheduleComposerMirror(textarea);
+    return;
+  }
   updateComposerDraft(props, textarea);
 }
 

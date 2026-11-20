@@ -3,14 +3,19 @@
  * composer's textarea, and keeps that div's box, text metrics and scroll exactly on the textarea's so the two overlay
  * character for character.
  *
- * It only ever reads the textarea (value, clientWidth, scroll, computed style): the textarea stays the editor, so
- * nothing here calls `requestUpdate`, writes `value`, or takes focus. Any number of inputs inside one frame cost one
- * redraw, composition pauses it while an IME owns the draft, and a resize or a late webfont re-copies the metrics.
+ * It only ever reads the textarea (value, clientWidth, scroll, computed style) and marks it ready while a mirror is
+ * mounted: the textarea stays the editor, so nothing here calls `requestUpdate`, writes `value`, or takes focus. Any
+ * number of inputs inside one frame cost one redraw, composition pauses it while an IME owns the draft, and a resize or
+ * a late webfont re-copies the metrics.
  */
 import { formatDraft, renderDraftHtml } from "./markdown-draft.ts";
 
 /** The mirror is the textarea's previous sibling inside the composer's combobox. */
 export const COMPOSER_MIRROR_CLASS = "agent-chat__composer-mirror";
+
+/** Set on a textarea only while its mirror is mounted: the paint-only rules that hide the textarea's own glyphs hang
+ * off it, so a composer whose mirror never mounted keeps its text instead of drawing an empty box. */
+export const COMPOSER_MIRROR_READY_ATTRIBUTE = "data-composer-mirror-ready";
 
 /** The box and text metrics that decide where every glyph sits and where the draft wraps, so they are copied as they
  * compute rather than restated in CSS. */
@@ -132,7 +137,11 @@ export function mountComposerMirror(textarea: HTMLTextAreaElement, mirror: HTMLE
     }
     disconnectComposerMirror(textarea);
   }
-  if (!mirror) return;
+  if (!mirror) {
+    // No mirror under this textarea: nothing paints the draft, so the textarea keeps its own glyphs.
+    textarea.toggleAttribute(COMPOSER_MIRROR_READY_ATTRIBUTE, false);
+    return;
+  }
   const state: ComposerMirrorState = {
     // A new mirror element holds no markup yet: its first frame paints even a value the previous one already had.
     mirror,
@@ -145,6 +154,7 @@ export function mountComposerMirror(textarea: HTMLTextAreaElement, mirror: HTMLE
     onFonts: null,
   };
   states.set(textarea, state);
+  textarea.toggleAttribute(COMPOSER_MIRROR_READY_ATTRIBUTE, true);
   const options = { passive: true, signal: state.events.signal };
   textarea.addEventListener("input", () => scheduleComposerMirror(textarea), options);
   textarea.addEventListener("scroll", () => syncScroll(textarea, state), options);
@@ -174,6 +184,7 @@ export function disconnectComposerMirror(textarea: HTMLTextAreaElement): void {
   const state = states.get(textarea);
   if (!state) return;
   states.delete(textarea);
+  textarea.toggleAttribute(COMPOSER_MIRROR_READY_ATTRIBUTE, false);
   if (state.frame !== null) cancelFrame(state.frame);
   state.observer?.disconnect();
   state.events.abort();
