@@ -281,7 +281,7 @@ export function runStatus(options: {
     ...(options.watchers ?? []).filter((watcher) => watcher.state === "running").map((watcher) => `watcher:${watcher.id}`),
   ].sort();
   const activity: RunStatusActivity = { count: activeIds.length, signature: activeIds.join("|") };
-  const visible = Boolean(goal || plan || helpers || childSessions.length || watchers);
+  const visible = Boolean(goal || plan || helpers || childSessions.length || watchers || options.streaming || options.waiting);
   const attention = Boolean(goal?.status === "blocked" || helpers?.failed || watchers?.failed || options.waiting);
 
   let tone: RunStatusTone = "idle";

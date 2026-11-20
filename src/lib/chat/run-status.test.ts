@@ -40,6 +40,18 @@ test("a conversation with nothing to report draws no trigger", () => {
   assert.equal(model.detail, undefined);
 });
 
+test("a bare streaming turn or pending question still has Run status to open", () => {
+  const streaming = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: true, waiting: false, now });
+  assert.equal(streaming.visible, true);
+  assert.equal(streaming.tone, "running");
+  assert.equal(streaming.label, "Working");
+  assert.equal(streaming.detail, undefined, "nothing live but the turn itself");
+  const waiting = runStatus({ goal: undefined, progress: undefined, subagents: [], streaming: false, waiting: true, now });
+  assert.equal(waiting.visible, true);
+  assert.equal(waiting.tone, "waiting");
+  assert.equal(waiting.label, "Waiting for your answer");
+});
+
 test("a goal, plan and running helpers summarize live work without a plan count", () => {
   const model = runStatus({
     goal: goal(),
