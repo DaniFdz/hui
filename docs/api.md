@@ -1908,8 +1908,9 @@ not on that worker, and refuses `watcher`, the `GATEWAY_ONLY_TOOLS` of
 `secret-request`; the terminal and the browser are not one of them: a worker
 conversation's terminals live in the gateway but open that worker's own shell,
 and its browser runs on the host),
-`bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
-a bot whose chat runs on that worker; any other bot is refused),
+`bot.section {botId}` (`{ section: string | null, chief: boolean }`, the
+`bots` prompt section of a bot whose chat runs on that worker, and whether its
+title makes it a Chief of Staff; any other bot is refused),
 `bot.project {botId}` (`{ cwd: string | null }`, the project directory of that
 Chief of Staff's group, whose context file its chat's prompt carries; any other
 bot is refused, a bot the operator filed under a group is of none, and a bot of
@@ -2621,6 +2622,15 @@ everything on by default: a bot restricted by hand gains newly installed tools.
   while something is off: it lists what is off (powerful tools marked) and how to
   ask for it, and tells the bot not to work around a turned-off tool through
   other tools, bots or sessions.
+- **`hui_chief`**, a prompt section only a Chief of Staff bot's chat carries, on
+  every request: quick work is a child's (`sessions_spawn`: a read-only probe,
+  one command, one small independent check, one reply, and a child never owns a
+  branch or a pull request), every real task gets its own session
+  (`create_session`: anything with more than one step, any change that writes
+  code, a long build, test or e2e run), that session is the lead for one pull
+  request, and the chief writes no code a worker or a session can write. It is
+  HUI's section, not the pack's `chief-mode` skill body: nothing opens a skill
+  body by itself, so the routing rule reaches the model without a `read`.
 
 **Asking for more.** `request_access({ tools?, skills?, reason })` asks the
 operator to turn back on tools or skills that are off. It raises a session
@@ -3167,7 +3177,10 @@ at once after a create or a `PUT`), never a request per list.
 
 The host's `bots` prompt section comes from this gateway: the host asks it
 (`bot.section`), which answers only for a bot that runs on that worker, so a
-bot on a worker knows the whole roster and `message_bot` crosses both ways. A
+bot on a worker knows the whole roster and `message_bot` crosses both ways. That
+answer also says whether the bot's title makes it a Chief of Staff (`chief`), so
+a chief's chat hosted on a worker carries its `hui_chief` section as a local
+chief's does. A
 session on the worker gets its list of the bots it may tag the same way (`bot.section`
 without `botId`, asked of its own gateway), and is offered `hui-bot-tag` as every
 Durable session is;

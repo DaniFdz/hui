@@ -77,6 +77,9 @@ export type HostBotsOptions = {
   /** The project directory of the bot's group, as a connected gateway gives it (`bot.project`): the project whose
    * context file its chat's prompt carries beside its own folder's. */
   projectDir?: DurableBotsDeps["projectDir"];
+  /** Whether the bot is a chief of staff, as the connected gateway that owns the roster answers (`bot.section`): only a
+   * chief's chat here carries its `hui_chief` section. */
+  isChief?: DurableBotsDeps["isChief"];
   /** Settings' profile name, for a bot's first conversation. */
   operator: () => Promise<string | undefined>;
   /** The operator allowed a bot's request here: what its lists are now. */
@@ -180,6 +183,7 @@ export function hostBots(options: HostBotsOptions) {
     section: options.section, recorded: options.recorded,
     home: { home, operator: options.operator, name: (id) => names.get(id) },
     ...(options.projectDir ? { projectDir: options.projectDir } : {}),
+    ...(options.isChief ? { isChief: options.isChief } : {}),
   }));
 
   /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */
