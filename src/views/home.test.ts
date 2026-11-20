@@ -38,6 +38,81 @@ test("the open chat draws the sleep notice in flow between its header and its tr
   assert.doesNotMatch(await renderWorkerSession("idle"), /Sleep prevention/u, "a chat handed no notice draws none");
 });
 
+const ADA = { id: "bot-ada", handle: "ada", name: "Ada", avatar: { emoji: "🦊" } };
+const SESSION_STARTED_BY_ADA = {
+  id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle",
+  worker: { id: "w", name: "devbox" }, createdBy: { id: "bot-ada", handle: "ada", name: "Ada" },
+};
+
+/** The open chat's header alone: from its own test id up to the transcript. */
+const headerOf = (html: string) => html.slice(html.indexOf('data-testid="chat-header"'), html.indexOf('data-testid="transcript"'));
+
+test("an open chat names the bot that started it, on the title's own line", async () => {
+  const html = await renderWorkerSession("idle", { session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: () => {} });
+  const header = headerOf(html);
+  assert.match(header, /class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u, "the chip leads to the bot's chat");
+  assert.match(header, /Started by Ada/u);
+  assert.match(header, /bot-avatar--emoji/u, "the chip carries the bot's own small face");
+  // The label is the sentence's two halves, each its own element, so a header short of room drops the prefix and keeps
+  // the name. The link carries the whole sentence itself, so the name a screen reader hears never shortens, and the
+  // face stays decorative inside it.
+  assert.match(header, /<a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada aria-label=Started by Ada /u,
+    "the link is named for the bot that started the chat, whatever the chip draws");
+  assert.match(header, /<span class="chat-pane__creator-face" aria-hidden="true"><span class="bot-avatar/u,
+    "the face stays decorative inside the named link");
+  assert.match(header, /<span class="chat-pane__creator-label"><span class="chat-pane__creator-prefix">Started by <\/span><span class="chat-pane__creator-name">Ada<\/span><\/span>/u,
+    "the prefix and the name are the label's own two spans, in that order");
+  assert.doesNotMatch(header, /chat-pane__creator-label">Started by/u, "the label holds no bare sentence the sheet cannot take apart");
+  assert.match(header, /data-testid="session-title"/u, "the title keeps its place");
+  assert.ok(header.indexOf('data-testid="session-title"') < header.indexOf('data-testid="chat-pane-creator"'), "the title comes first on the line");
+  // The line is only a flex row: the title and the chip are its two siblings, the title first and the chip after it, so
+  // the chip follows the title instead of landing at the header's edge. The title keeps its identity and, in the sheet,
+  // the rule that ellipsizes it; the line declares no overflow of its own.
+  const titleLine = header.match(/<div class="chat-pane__title-line">(.*?)<\/div>/u)?.[1] ?? "";
+  assert.match(titleLine, /^<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=Build>Build<\/h2><a class="chat-pane__creator" data-testid="chat-pane-creator" href=\/bots\/bot-ada\b/u,
+    "the title and the chip are siblings in the title line, the chip after the title");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.transcript__head \.transcript__title,\s*\.transcript__head \.transcript__meta \{ display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/u,
+    "the title still ellipsizes by the header's own rule");
+  const titleInLine = styles.match(/\.chat-pane__title-line > \.transcript__title \{([^}]*)\}/u)?.[1] ?? "";
+  assert.match(titleInLine, /min-width: 0;/u, "the title may shrink on the line, so its own ellipsis still applies");
+  assert.doesNotMatch(titleInLine, /overflow|white-space/u, "the line lays out only; it never re-declares the title's ellipsis");
+  // The chip's own rule keeps it on one line; a narrow header drops the prefix and so keeps the name, and the drawer
+  // layout's chooser, which holds the line at any width, does the same.
+  assert.match(styles, /\.chat-pane__creator \{[^}]*white-space: nowrap;/u, "the chip stays on one line");
+  assert.match(styles, /\.transcript__head \.chat-pane__crumbs--picker \.chat-pane__creator-prefix \{ display: none; \}/u,
+    "the chip drops its prefix where the chooser holds the line, so the bot's name keeps the room");
+  assert.match(styles, /@container session-header \(max-width: 600px\) \{[^@]*?\.chat-pane__creator-prefix \{ display: none; \}/u,
+    "a narrow header drops the prefix and keeps the name");
+  assert.doesNotMatch(styles, /\.chat-pane__creator-label \{[^}]*display: none/u, "the label itself is never dropped");
+
+  // Nothing at all without a creator, and nothing on a bot's own chat.
+  assert.doesNotMatch(headerOf(await renderWorkerSession("idle", { bots: [ADA], onOpenBot: () => {} })), /chat-pane-creator/u);
+  const ownChat = await renderWorkerSession("idle", {
+    session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: () => {},
+    bot: { bot: ADA, panelOpen: false, panelId: "panel", onTogglePanel: () => {} },
+  });
+  assert.match(headerOf(ownChat), /bot-chat-identity/u, "a bot's chat keeps its own header");
+  assert.doesNotMatch(ownChat, /chat-pane-creator/u, "a bot's own chat never says a bot started it");
+});
+
+test("a creator chip opens that bot's chat on a plain click, and leaves other clicks to the browser", async () => {
+  const { renderHome } = await import("./home.ts");
+  const opened: string[] = [];
+  const view = renderHome(await workerSession("idle", {
+    session: SESSION_STARTED_BY_ADA, bots: [ADA], onOpenBot: (botId: string) => opened.push(botId),
+  }) as unknown as import("./home.ts").HomeProps);
+  const click = clickHandler(view, 'class="chat-pane__creator"');
+  assert.equal(typeof click, "function", "the chip binds its own click handler");
+  let prevented = false;
+  click!({ button: 0, preventDefault: () => { prevented = true; } } as unknown as MouseEvent);
+  assert.equal(prevented, true, "the chip does not let the browser leave the app");
+  assert.deepEqual(opened, ["bot-ada"], "the chip opens the bot that started the session");
+  // A middle click keeps the browser's own behaviour, so its cancellation is the failure.
+  click!({ button: 1, preventDefault: () => { throw new Error("a middle click is the browser's"); } } as unknown as MouseEvent);
+  assert.deepEqual(opened, ["bot-ada"]);
+});
+
 test("auto-follow and scroll-to-latest target the real reference transcript scroller", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const { TRANSCRIPT_SCROLLER_SELECTOR } = await import("./home.ts");
@@ -714,9 +789,8 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-/** An open worker session; handlers are inert and unlisted props absent. */
-async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
-  const { renderHome } = await import("./home.ts");
+/** An open worker session's props; handlers are inert and unlisted props absent. */
+async function workerSession(status: string, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const props: Record<string, unknown> = {
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
@@ -729,8 +803,25 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
   };
-  const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
-  return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+  return new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
+}
+
+/** An open worker session's markup; handlers are inert and unlisted props absent. */
+async function renderWorkerSession(status: string, overrides: Record<string, unknown> = {}): Promise<string> {
+  const { renderHome } = await import("./home.ts");
+  return markup(renderHome(await workerSession(status, overrides) as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
+}
+
+/** The handler bound to `@click` on the innermost rendered template whose own markup holds `marker`. */
+function clickHandler(value: unknown, marker: string): ((event: MouseEvent) => void) | undefined {
+  if (Array.isArray(value)) return value.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (!value || typeof value !== "object" || !("strings" in value) || !("values" in value)) return undefined;
+  const { strings, values } = value as { strings: readonly string[]; values: unknown[] };
+  const child = values.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (child) return child;
+  if (!strings.join("").includes(marker)) return undefined;
+  const at = strings.findIndex((part) => part.endsWith("@click="));
+  return at >= 0 ? values[at] as (event: MouseEvent) => void : undefined;
 }
 
 /** The handler bound to `@submit` in the first rendered template whose own markup holds `marker`. */

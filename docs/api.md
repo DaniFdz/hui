@@ -1314,6 +1314,8 @@ type SessionView = {
   parentId?: string;
   subagent?: Omit<SubagentRecord, "task" | "summary">; // the task and report stay out of lists: see SubagentTaskView
   bot?: { id: string; handle: string; name: string }; // the bot whose forever chat this is; see Bots
+  createdBy?: { id: string; handle: string; name: string }; // the bot that started this session with
+                        // create_session; absent on a bot's own chat and on sessions created before it was recorded
   pullRequests?: SessionPullRequest[]; // oldest first, at most 20
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
   stage: SessionStage;                 // effective Kanban column
@@ -1535,6 +1537,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `model`, `thinking`, `fast`, `autonomous` | HUI | Session preference passed back to the runtime on reopen; `fast` and `autonomous` are optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
+| `createdByBot` | HUI | Optional id of the bot (bots.json) that started this session with `create_session`, shown as `createdBy` in views. Written only there, additive with no registry version bump; a session created before the field existed, and a bot's own chat, have none, and one whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `progress` | HUI | Optional Task progress card `{ markdown, steps }` that HUI's utility model last wrote. Additive, so existing registries need no migration; absent means no card yet. See [Task progress](#task-progress). |

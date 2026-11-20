@@ -952,6 +952,9 @@ test("a session a chief starts opens with its brief tagged from the chief, never
   await settledWith(child.id, says("user", brief));
   assert.deepEqual(liveSessions.transcript(child.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []),
     [`[from @${chief.handle}] ${brief}`]);
+  const groups = (await call("/__hui/sessions")).body["groups"] as Array<{ sessions: Array<{ id: string; createdBy?: unknown }> }>;
+  const view = groups.flatMap((group) => group.sessions).find(({ id }) => id === child.id);
+  assert.deepEqual(view?.createdBy, { id: chief.id, handle: chief.handle, name: chief.name }, "the session shows the chief that started it");
 });
 
 test("a group that loses its project directory refuses a session rather than place it in its chief's folder", { timeout: 120_000 }, async () => {

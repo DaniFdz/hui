@@ -28,6 +28,7 @@ import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import { DEFAULT_DEVICE_APPEARANCE } from "../lib/appearance/store.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES } from "../lib/pages.ts";
 
@@ -1011,6 +1012,36 @@ function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", lo
   return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
 }
 
+/** The Agents list as rendered, with the roster and the bot opener the shell hands it for a row's creator face. */
+function sidebarView(sessions: SessionView[], bots: BotView[], onOpenBot?: (botId: string) => void) {
+  return renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined,
+    selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots } },
+    gateways: GATEWAYS,
+    ...(onOpenBot ? { onOpenBot } : {}),
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+}
+
+/** The handler bound to `@click` on the innermost template whose own markup holds `marker`. */
+function clickHandler(value: unknown, marker: string): ((event: MouseEvent) => void) | undefined {
+  if (Array.isArray(value)) return value.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (!value || typeof value !== "object" || !("strings" in value) || !("values" in value)) return undefined;
+  const { strings, values } = value as { strings: readonly string[]; values: unknown[] };
+  const child = values.map((item) => clickHandler(item, marker)).find(Boolean);
+  if (child) return child;
+  if (!strings.join("").includes(marker)) return undefined;
+  const at = strings.findIndex((part) => part.endsWith("@click="));
+  return at >= 0 ? values[at] as (event: MouseEvent) => void : undefined;
+}
+
+const CHIEF = { id: "bot-ada", handle: "ada", name: "Ada", avatar: { emoji: "🦊" }, status: "idle", unread: false } as unknown as BotView;
+const STARTED_BY_CHIEF = session("made", "Started by a chief", "Work", { createdBy: { id: "bot-ada", handle: "ada", name: "Ada" } });
+
 test("a session row draws its actions menu only once it opens, so a long list stays light", () => {
   const elements = (text: string) => text.match(/<[a-z][\w-]*/gu)?.length ?? 0;
   const closed = sidebar(100);
@@ -1018,6 +1049,71 @@ test("a session row draws its actions menu only once it opens, so a long list st
   assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
   assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
   assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
+});
+
+test("a session a bot started shows that bot's face as its own link to the bot's chat", () => {
+  const opened: string[] = [];
+  const view = sidebarView([STARTED_BY_CHIEF], [CHIEF], (botId: string) => opened.push(botId));
+  const rendered = markup(view);
+  const link = rendered.indexOf('class="session-row sidebar-recent-session__link"');
+  const creator = rendered.indexOf('class="session-row-creator"');
+  assert.ok(link >= 0 && creator > link, "the creator's control follows the row's own link, in flow");
+  assert.ok(creator < rendered.indexOf('class="sidebar-recent-session__aside'), "it sits before the trailing actions");
+  const control = rendered.match(/<a\s+href=\/bots\/bot-ada\b[\s\S]*?<\/a>/u)?.[0] ?? "";
+  assert.match(control, /data-testid="session-row-creator"/u);
+  assert.match(control, /aria-label=Open Ada's chat/u, "the face's link is named for the chat it opens");
+  assert.match(control, /bot-avatar--emoji/u, "the row draws the bot's own face");
+  assert.match(control, /\ud83e\udd8a/u, "the face is the bot's own mark");
+  assert.match(control, /aria-hidden="true"/u, "the face stays decorative: the link carries the name");
+  assert.match(rendered, /href=\/sessions\/made\b/u, "the row keeps opening the session itself");
+
+  // The mark is the chat header creator chip's 16px optical size, not sm's 32px face and 28px
+  // tile, while the link keeps the 32px/44px target that makes it reachable.
+  const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  assert.match(styles, /\.session-row-creator \.bot-avatar--face hui-bot-face \{ --bot-face-size: 16px; \}/u, "a face draws at the chip's 16px");
+  assert.match(styles, /\.session-row-creator \.bot-avatar--emoji \{ width: 16px; height: 16px; margin: 0; font-size: 10px; \}/u, "an emoji tile and its glyph read at that same 16px");
+  assert.match(styles, /\.session-row-creator \{[^}]*?width: 32px;[^}]*?height: 32px;/u, "the control keeps its 32px target");
+  assert.match(styles, /@media \(hover: none\), \(pointer: coarse\) \{\s*\.app-shell \.session-row-creator \{\s*width: 44px;\s*height: 44px;/u, "and 44px on a phone");
+
+  // One click on the face opens the bot's chat and never the session.
+  const click = clickHandler(view, "class=\"session-row-creator\"");
+  assert.equal(typeof click, "function", "the face binds its own click handler");
+  // No drawer is open in this reading: the handler asks the shell's element check and stops there.
+  vi.stubGlobal("HTMLElement", class {});
+  let prevented = false;
+  try {
+    click!({ button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, preventDefault: () => { prevented = true; } } as unknown as MouseEvent);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  assert.equal(prevented, true, "the face does not let the browser leave the app");
+  assert.deepEqual(opened, ["bot-ada"], "the click opens the bot, not the session");
+});
+
+test("a row without a creator draws no creator control", () => {
+  const rendered = markup(sidebarView([session("plain", "An ordinary session", "Work")], [CHIEF], () => undefined));
+  assert.match(rendered, />An ordinary session</u);
+  assert.doesNotMatch(rendered, /session-row-creator|bot-avatar/u);
+});
+
+test("a creator the roster no longer holds leaves an ordinary row", () => {
+  const rendered = markup(sidebarView([STARTED_BY_CHIEF], [], () => undefined));
+  assert.doesNotMatch(rendered, /session-row-creator|bot-avatar/u, "no dangling control and no face asset");
+  assert.match(rendered, /href=\/sessions\/made\b/u);
+});
+
+test("without a bot opener the row draws no creator control", () => {
+  const rendered = markup(sidebarView([STARTED_BY_CHIEF], [CHIEF]));
+  assert.doesNotMatch(rendered, /session-row-creator|bot-avatar/u);
+});
+
+test("the roster is indexed once per render, never searched per row", () => {
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  assert.equal(source.split("botIndex(").length - 1, 2, "one definition, one call: the render that owns the list builds it");
+  assert.match(source, /function groupSection\(group: SidebarSessionGroup, props: ShellProps, botsById: ReadonlyMap<string, BotView>, filtering: boolean\)/u, "the index is threaded down to the rows");
+  assert.match(source, /function sessionRow\(session: SessionView, selected: boolean, props: ShellProps, botsById: ReadonlyMap<string, BotView>/u);
+  assert.match(source, /const botsById = botIndex\(props\.bots\.roster\.bots\);/u, "built from the roster the shell already holds");
+  assert.doesNotMatch(source, /roster\.bots\.find|\.roster\.bots\s*\.filter/u, "a row never searches the roster");
 });
 
 test("the session list draws placeholder rows until its first read answers", () => {

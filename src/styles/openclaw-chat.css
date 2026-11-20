@@ -301,6 +301,46 @@
 .transcript__head .transcript__meta { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transcript__head .transcript__title { margin: 0; }
 .transcript__head .transcript__meta { font-size: 11px; color: var(--muted); }
+/* The bot that started the session, beside its title (or a phone's panel chooser where that stands): one line at any
+   width, the title ellipsizing and the chip keeping the rest of the room for itself. */
+.chat-pane__title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* The title takes only the room its text needs, so the chip follows it instead of ending up at the header's edge; it
+   still ellipsizes when the two together outgrow the line. A phone's panel chooser keeps its own width — its picker
+   writes `min-width` inline, so no rule here can shrink it — and the chip takes the room that is left. */
+.chat-pane__title-line > .transcript__title { flex: 0 1 auto; min-width: 0; }
+.chat-pane__title-line > .picker-select { flex: 1 1 auto; }
+.chat-pane__creator {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 45%;
+  height: 20px;
+  padding: 0 7px 0 3px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chat-pane__creator:hover { background: color-mix(in srgb, var(--muted) 20%, transparent); color: var(--text); }
+.chat-pane__creator:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-pane__creator-face { display: grid; flex: none; place-items: center; width: 16px; height: 16px; }
+/* A chip's mark is small on purpose: the same two knobs the message handoff's face uses. */
+.chat-pane__creator-face .bot-avatar--face hui-bot-face { --bot-face-size: 16px; }
+.chat-pane__creator-face .bot-avatar--emoji { width: 16px; height: 16px; margin: 0; font-size: 10px; }
+.chat-pane__creator-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chip's two halves read as one sentence where the line has room. Where it does not — the drawer layout, whose
+   chooser takes the line at any width, and a narrow header by its own container rule below — the chip drops
+   "Started by" and keeps the bot's name, the one thing it exists to say, and stops shrinking so the squeeze lands on
+   the title or the chooser, which ellipsize by their own rules; `max-width` still caps a long name. The link carries
+   the whole sentence in its aria-label, so nothing is lost to a reader that does not see the chip. */
+.transcript__head .chat-pane__crumbs--picker .chat-pane__creator { flex: none; }
+.transcript__head .chat-pane__crumbs--picker .chat-pane__creator-prefix { display: none; }
 .transcript__head .session-history-action { flex-shrink: 0; }
 /* A phone shows the destination chooser where the title was, so the conversation keeps its row
    (panel-selector.ts). The chooser's kind word is dropped: this header only ever names the chat. */
@@ -338,6 +378,9 @@
 @container session-header (max-width: 600px) {
   .session-history-action { width: 28px; height: 28px; justify-content: center; padding: 0; }
   .session-history-action__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* A narrow header repeats what the drawer layout already does above: the chip keeps the bot's name alone. */
+  .chat-pane__creator { flex: none; }
+  .chat-pane__creator-prefix { display: none; }
 }
 .chat .transcript__note { width: calc(100% - 36px); max-width: 48rem; margin: 6px auto; }
 .chat-composer-neighbor-card__actions { display: inline-flex; align-items: center; gap: 8px; }
