@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
+import type { ProgressCard, SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
 import { goalSectionStatus, goalStatusLabel, runStatus, runStatusHeadCopyTiming, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted, type RunStatusPanelState } from "./run-status.ts";
 
@@ -93,6 +93,37 @@ test("side work counts live helpers and watchers with a stable sorted active-set
   assert.equal(empty.detail, undefined, "a plan alone adds no pill detail");
   assert.equal(runStatus({ ...input, goal: goal(), streaming: true }).detail, "goal · 3 helpers · 1 watcher");
   assert.equal(runStatus({ ...input, goal: goal("blocked") }).detail, "3 helpers · 1 watcher", "a goal label needs no repeated goal detail");
+});
+
+test("running child sessions contribute live detail and activity between helpers and watchers", () => {
+  const childSessions = (["running", "idle", "waiting", "error", "running"] as const).map((status, index) => ({
+    id: `child-${index}`, title: `Child ${index}`, parentId: "s", status,
+  } as SessionView));
+  const watchers = [{ id: "w", purpose: "Watch", target: "", outcome: "", command: "true", pid: null,
+    logPath: "", state: "running" as const, startedAt, lastLine: "" }];
+  const input = { goal: goal(), progress, subagents: [task("a", "running")], childSessions, watchers, streaming: false, waiting: false, now };
+  const active = runStatus(input);
+  assert.equal(active.detail, "goal · 1 helper · 2 sessions · 1 watcher");
+  assert.equal(active.label, "Working");
+  assert.equal(active.liveSessions, 2);
+  assert.strictEqual(active.childSessions, childSessions);
+  assert.deepEqual(active.activity, { count: 4, signature: "helper:a|session:child-0|session:child-4|watcher:w" });
+  assert.match(active.summary, /1 of 1 helpers active, 2 sessions running, 1 of 1 watchers running/u);
+  assert.deepEqual(runStatus({ ...input, childSessions: [...childSessions].reverse(), streaming: true }).activity, active.activity);
+  const one = runStatus({ ...input, childSessions: childSessions.slice(0, 1) });
+  assert.equal(one.detail, "goal · 1 helper · 1 session · 1 watcher");
+  assert.notEqual(one.activity.signature, active.activity.signature);
+  const settled = runStatus({ ...input, childSessions: childSessions.map((session) => ({ ...session, status: "idle" })) });
+  assert.equal(settled.detail, "goal · 1 helper · 1 watcher");
+  assert.equal(settled.activity.count, 2);
+  const alone = runStatus({ ...input, goal: undefined, progress: undefined, subagents: [], watchers: [] });
+  assert.equal(alone.visible, true);
+  assert.equal(alone.label, "Working");
+  assert.equal(alone.detail, "2 sessions");
+  const idle = runStatus({ ...input, goal: undefined, progress: undefined, subagents: [], watchers: [], childSessions: childSessions.slice(1, 4) });
+  assert.equal(idle.visible, true, "idle children still have rows to inspect");
+  assert.equal(idle.detail, undefined);
+  assert.deepEqual(idle.activity, { count: 0, signature: "" });
 });
 
 test("an open question outranks a running turn and marks the trigger for attention", () => {

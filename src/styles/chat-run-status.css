@@ -547,6 +547,11 @@
   cursor: pointer;
 }
 
+.chat-run-status__session {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .chat-run-status__helper:hover,
 .chat-run-status__helper:focus-visible {
   background: color-mix(in srgb, var(--text) 6%, transparent);

@@ -1935,16 +1935,20 @@ card is registry state, so it is there immediately after a gateway restart.
 ### Run status
 
 The chat header's leftmost action is **Run status**, present whenever the
-conversation has a goal, a plan, a recent batch of helpers or background
+conversation has a goal, a plan, a recent batch of helpers, child sessions or background
 watchers; otherwise it is absent. It reads the most urgent state — Waiting for
 your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
 Goal achieved, Done or Pursuing goal — followed by muted, unit-bearing live detail:
 **goal** when a goal exists and the label does not already name it, then running
-or queued **N helper(s)**, then running **N watcher(s)**, joined by ** · **.
+or queued **N helper(s)**, running **N session(s)**, then running **N watcher(s)**, joined by ** · **.
+Only ordinary, unarchived child sessions count here: a child has `parentId` set
+and no `subagent` helper metadata. Idle or waiting children add no live count;
+settling, archiving or deleting a running child removes it from that count and
+from the dot's active-set signature without opening the panel.
 For example, **Working · goal · 2 helpers** or **Working · 1 watcher**.
 A plan alone adds no detail; its done/total belongs only in the Plan section.
-The accessible name retains the goal, plan, helper and watcher facts. A fixed,
-aria-hidden dot follows live helper/watcher detail, whether or not a plan exists;
+The accessible name retains the goal, plan, helper, live-session and watcher facts. A fixed,
+aria-hidden dot follows live helper/session/watcher detail, whether or not a plan exists;
 there is no second count or “active” word. A changed active set replays one ping;
 streamed output with the same set retains its node and animation. Reduced motion
 disables the ping, not live detail updates.
@@ -1986,10 +1990,15 @@ The popover holds **Goal** (the objective, its status note, when it was set, its
 automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
 steps and summary, always visible, including completed steps; a non-interactive head
 keeps the current step, done of total and Recompute, with no fold or device preference), **Helpers** (the latest batch, its counts, one dot per child
-and each child's row) and **Watchers** (each watcher's purpose, latest output,
+and each child's row), **Sessions** (ordinary, unarchived children, each with its
+title and live status; pressing a row opens that session) and **Watchers** (each watcher's purpose, latest output,
 state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
 its rows behind Watcher details while the section header keeps the running
-count). Empty sections are absent. A state word is written once per box: a
+count). Sessions orders running first, then waiting, error, idle and all other
+statuses, draws at most eight rows and ends with a muted **+N more** when needed.
+Its rows are built only while the popover is open, not for a closed pill; the
+parent-to-children index is built once per session-list change and shared across
+panes. Empty sections are absent. A state word is written once per box: a
 goal's own word is the head's whenever the head reads it, so the Goal section
 head then prints its title alone, and the section carries the goal's status
 only while the head says another state — Working, Waiting for your answer, or a

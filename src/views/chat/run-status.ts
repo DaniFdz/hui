@@ -1,8 +1,8 @@
 /**
  * The chat header's Run status: the compact trigger and the popover that holds a
  * conversation's goal (with its controls and editor), its Task progress plan, the
- * latest batch of helpers and its background watchers. The popover is HUI's only
- * home for those four surfaces, and it opens only when the operator opens it: a
+ * latest batch of helpers, child sessions and background watchers. The popover is HUI's only
+ * home for those surfaces, and it opens only when the operator opens it: a
  * run never opens or closes it, and neither does the width of the window. The
  * trigger stays out of the transcript so a phone keeps the whole conversation.
  * The pill morphs into the panel and back as one painted box: the panel's width
@@ -22,6 +22,8 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { keyed } from "lit/directives/keyed.js";
 import type { SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
+import { sessionStatusLabel } from "../../lib/session/labels.ts";
+import { runStatusChildRows } from "../../lib/session/sidebar-sessions.ts";
 import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
 import {
   goalSectionStatus,
@@ -54,6 +56,10 @@ export type RunStatusProps = {
   id: string;
   session: SessionView;
   subagents: readonly SubagentTaskView[];
+  childSessions: readonly SessionView[];
+  /** Lazy rows follow the popover's own show/after-hide events, retaining content through its close morph. */
+  panelOpen: boolean;
+  onPanelOpenChange: (open: boolean) => void;
   /** Background watchers, when this conversation has any. */
   watchers?: WatcherActivityProps;
   /** The conversation is still opening/starting: nothing live to report yet. */
@@ -181,6 +187,25 @@ function renderHelpers(props: RunStatusProps, model: RunStatusModel, id: string)
     <div class="chat-run-status__markers" aria-hidden="true">${helpers.tasks.map(helperMark)}</div>
     <p class="chat-run-status__counts">${counts}</p>
     ${children}
+  </section>`;
+}
+
+function renderChildSessions(props: RunStatusProps, model: RunStatusModel) {
+  if (!props.panelOpen || !model.childSessions.length) return nothing;
+  const { rows, more } = runStatusChildRows(model.childSessions);
+  return html`<section class="chat-run-status__section" aria-label="Sessions">
+    <div class="chat-run-status__section-head"><span class="chat-run-status__section-title">Sessions</span></div>
+    <div class="chat-run-status__helpers-list">${rows.map((session) => html`<button
+      type="button" class="chat-run-status__helper chat-run-status__session" data-child-session-id=${session.id}
+      aria-label=${`Open session ${session.title}`}
+      @click=${(event: Event) => {
+        ((event.currentTarget as Element).closest("wa-popover") as RunStatusPopover | null)?.hide();
+        props.onSelectSubagent(session.id);
+      }}>
+      <span class="chat-run-status__helper-copy"><span class="chat-run-status__helper-title">${session.title}</span></span>
+      <span class="chat-run-status__meta">${sessionStatusLabel(session)}</span>
+    </button>`)}</div>
+    ${more ? html`<p class="chat-run-status__note">+${more} more</p>` : nothing}
   </section>`;
 }
 
@@ -726,6 +751,7 @@ export function renderRunStatus(props: RunStatusProps) {
     goal: props.session.goal,
     progress: props.session.progress,
     subagents: props.subagents,
+    childSessions: props.childSessions,
     ...(props.watchers ? { watchers: props.watchers.watchers } : {}),
     streaming: props.streaming,
     waiting: props.waiting,
@@ -766,6 +792,8 @@ export function renderRunStatus(props: RunStatusProps) {
       for=${triggerId}
       placement="bottom-end"
       without-arrow
+      @wa-show=${() => props.onPanelOpenChange(true)}
+      @wa-after-hide=${() => props.onPanelOpenChange(false)}
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
         <header class="chat-run-status__head">
@@ -781,6 +809,7 @@ export function renderRunStatus(props: RunStatusProps) {
           ${renderGoal(props, model, panelId)}
           ${renderPlan(props, model, panelId)}
           ${renderHelpers(props, model, panelId)}
+          ${renderChildSessions(props, model)}
           ${renderWatchers(props)}
         </div>
       </div>

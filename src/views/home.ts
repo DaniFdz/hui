@@ -317,6 +317,10 @@ export type HomeProps = {
   onClosePane?: () => void;
   paneMovable?: boolean;
   onSelectSubagent: (sessionId: string) => void;
+  /** Stable, preindexed ordinary children; streamed frames never scan the registry. */
+  childSessions: readonly SessionView[];
+  runStatusPanelOpen: boolean;
+  onRunStatusPanelOpenChange: (open: boolean) => void;
   /** Pending `suggest_task` cards for the open session. */
   taskSuggestions?: TaskSuggestionCardProps;
   /** HUI-run background watchers for the open session. */
@@ -2572,6 +2576,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
             onGoalSave: props.onGoalSave,
             onGoalCancelEdit: props.onGoalCancelEdit,
             onSelectSubagent: props.onSelectSubagent,
+            childSessions: props.childSessions,
+            panelOpen: props.runStatusPanelOpen,
+            onPanelOpenChange: props.onRunStatusPanelOpenChange,
           })}
           ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall, labelled: Boolean(props.mobileNavLayout) }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"

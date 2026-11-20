@@ -346,6 +346,32 @@ test("side work uses a keyed dot-only badge and the plan is always open", async 
   assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
 });
 
+test("Run status counts live child sessions while closed and draws capped session rows only while open", async () => {
+  const { childSessionsByParent } = await import("../lib/session/sidebar-sessions.ts");
+  const childSessions = childSessionsByParent([{ label: "", sessions: Array.from({ length: 10 }, (_, i) => ({
+    id: `child-${i}`, title: `Operator child ${i}`, parentId: "s", status: i === 9 ? "running" : "idle",
+    tool: "durable", cwd: "/repo", displayCwd: "", group: "", stage: "investigation", stageOrigin: "default", createdAt: "", updatedAt: "",
+  })) }]).get("s")!;
+  const subagents = [{ taskId: "a", sessionId: "helper", parentSessionId: "s", title: "Helper title", status: "running", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+  const watchers = { expanded: new Set(), pending: new Set(), errors: {}, onExpanded: () => {}, onAction: () => {}, watchers: [{ id: "w", purpose: "Watcher purpose", target: "", outcome: "", command: "true", pid: null, logPath: "", state: "running", startedAt: new Date().toISOString(), lastLine: "" }] };
+  const closed = await renderWorkerSession("idle", { childSessions, subagents, watchers });
+  assert.match(closed, /class="chat-run-status__count"> · 1 helper · 1 session · 1 watcher</u);
+  assert.match(closed, /1 session running/u);
+  assert.doesNotMatch(closed, /Operator child|aria-label="Sessions"/u, "closed panels do not construct child rows");
+  const open = await renderWorkerSession("idle", { childSessions, subagents, watchers, runStatusPanelOpen: true });
+  const helper = open.indexOf('>Helpers<');
+  const sessions = open.indexOf('aria-label="Sessions"');
+  const watcher = open.indexOf('>Watchers<');
+  assert.ok(helper > 0 && sessions > helper && watcher > sessions, "Sessions sits between Helpers and Watchers");
+  assert.equal(open.match(/aria-label=Open session Operator child/gu)?.length, 8);
+  assert.ok(open.indexOf('>Operator child 9<') < open.indexOf('>Operator child 0<'), "running child sorts first");
+  assert.match(open, />Running</u);
+  assert.match(open, />Idle</u);
+  assert.match(open, /class="chat-run-status__note">\+2 more</u);
+  assert.doesNotMatch(open, />Operator child [78]</u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { runStatusPanelOpen: true, subagents }), /aria-label="Sessions"/u);
+});
+
 test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", tool: "pi", status: "running", progress: {
     markdown: "Keep this card", steps: [{ step: "Verify", status: "in_progress" }],
@@ -695,6 +721,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    childSessions: [], runStatusPanelOpen: false,
     goalPanel: { editing: false, error: "" },
     progressRefresh: { pending: false, error: undefined }, onRecomputeProgress: () => {},
     chatPreferences: { sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },

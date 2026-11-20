@@ -6069,7 +6069,8 @@ error and leaves the previous card untouched. The Plan section stays open,
 with its current step and done-of-total; Recompute reads Recomputing… and is
 disabled while pending (and disabled without a live connection). A failure
 shows a small alert in Plan and allows retry without discarding the old card.
-The closed pill and panel head show unit-bearing live goal/helper/watcher detail,
+The closed pill and panel head show unit-bearing live goal/helper/session/watcher detail
+(the browser counts running, unarchived ordinary children from the existing session list),
 not plan completion; the Plan section alone carries done-of-total.
 
 ### Session-list progress

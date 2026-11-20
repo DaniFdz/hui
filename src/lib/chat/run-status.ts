@@ -1,12 +1,12 @@
 /**
  * The chat header's Run status: the compact summary of a conversation's goal,
- * its Task progress plan and the latest batch of helpers, the numbers the
+ * its Task progress plan, child sessions and the latest batch of helpers, the numbers the
  * trigger and its popover print, and whether that popover is open. The view in
  * `views/chat/run-status.ts` owns the markup and the app owns the state behind it.
  * The popover opens only when the operator opens it: a run never opens or closes
  * it, and neither does the width of the window.
  */
-import type { ProgressCard, ProgressStep, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
+import type { ProgressCard, ProgressStep, SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import type { Watcher } from "../../api/watchers.ts";
 import { latestSubagentBatch, subagentVisualState } from "../subagent-activity.ts";
 
@@ -54,6 +54,8 @@ export type RunStatusModel = {
   goal: SessionGoal | undefined;
   plan: RunStatusPlan | undefined;
   helpers: RunStatusHelpers | undefined;
+  childSessions: readonly SessionView[];
+  liveSessions: number;
   watchers: RunStatusWatchers | undefined;
   activity: RunStatusActivity;
   /** Blocks, failures and an unanswered question: the trigger carries a warn/danger mark. */
@@ -250,6 +252,8 @@ export function runStatus(options: {
   goal: SessionGoal | undefined;
   progress: ProgressCard | undefined;
   subagents: readonly SubagentTaskView[];
+  /** Preindexed ordinary children, already ordered by live status; never the whole registry. */
+  childSessions?: readonly SessionView[];
   /** HUI-run background watchers; a settled one writes its own transcript event and stays here until dismissed. */
   watchers?: readonly Watcher[];
   streaming: boolean;
@@ -268,12 +272,16 @@ export function runStatus(options: {
       finished: options.watchers.filter((watcher) => watcher.state !== "running").length,
     } satisfies RunStatusWatchers
     : undefined;
+  const childSessions = options.childSessions ?? [];
+  const runningSessions = childSessions.filter((session) => session.status === "running");
+  const liveSessions = runningSessions.length;
   const activeIds = [
     ...options.subagents.filter((task) => ["running", "queued"].includes(subagentVisualState(task.status))).map((task) => `helper:${task.taskId}`),
+    ...runningSessions.map((session) => `session:${session.id}`),
     ...(options.watchers ?? []).filter((watcher) => watcher.state === "running").map((watcher) => `watcher:${watcher.id}`),
   ].sort();
   const activity: RunStatusActivity = { count: activeIds.length, signature: activeIds.join("|") };
-  const visible = Boolean(goal || plan || helpers || watchers);
+  const visible = Boolean(goal || plan || helpers || childSessions.length || watchers);
   const attention = Boolean(goal?.status === "blocked" || helpers?.failed || watchers?.failed || options.waiting);
 
   let tone: RunStatusTone = "idle";
@@ -284,7 +292,7 @@ export function runStatus(options: {
   } else if (goal?.status === "blocked") {
     tone = "blocked";
     label = "Goal blocked";
-  } else if (options.streaming || (helpers && !helpers.allFinished) || watchers?.running) {
+  } else if (options.streaming || (helpers && !helpers.allFinished) || liveSessions || watchers?.running) {
     tone = "running";
     label = "Working";
   } else if (watchers?.failed) {
@@ -310,6 +318,7 @@ export function runStatus(options: {
   const details: string[] = [];
   if (goal && !label.toLowerCase().includes("goal")) details.push("goal");
   if (liveHelpers) details.push(`${liveHelpers} ${liveHelpers === 1 ? "helper" : "helpers"}`);
+  if (liveSessions) details.push(`${liveSessions} ${liveSessions === 1 ? "session" : "sessions"}`);
   if (watchers?.running) details.push(`${watchers.running} ${watchers.running === 1 ? "watcher" : "watchers"}`);
   const detail = details.length ? details.join(" · ") : undefined;
 
@@ -322,6 +331,7 @@ export function runStatus(options: {
       ? `${helpers.completed} of ${helpers.total} helpers completed`
       : `${helpers.running + helpers.queued} of ${helpers.total} helpers active`);
   }
+  if (liveSessions) parts.push(`${liveSessions} ${liveSessions === 1 ? "session" : "sessions"} running`);
   if (watchers) {
     parts.push(watchers.running
       ? `${watchers.running} of ${watchers.total} watchers running`
@@ -335,6 +345,8 @@ export function runStatus(options: {
     goal,
     plan,
     helpers,
+    childSessions,
+    liveSessions,
     watchers,
     activity,
     attention,
