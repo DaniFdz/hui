@@ -1652,6 +1652,32 @@ draft. A cached page must check its build against the reachable gateway before
 restoring live controls; a different build offers **Reload HUI** instead. Offline
 reload requires HTTPS or localhost, where browsers allow service workers.
 
+The boot screen never pretends to load forever. After six seconds it asks this page's
+own gateway for `GET /__hui/health` with a four-second deadline, and at ten seconds
+without the app it becomes the recovery card, whether or not the probe answered. The
+card is a second module entry that Vite folds into the page's entry chunk, so it keeps
+working when the app's own chunk or a request stalls; it cannot run when that entry
+chunk itself cannot load, and then the inline boot screen's **Reload** is all that is
+left. Both marks count from the page's own start, so a slow download moves neither. The
+card says **Can't reach this gateway.** — or **HUI is taking longer than usual to
+start.** when the gateway answered and the app has not painted — names the address this
+page came from, and offers **Retry**, every other gateway this device saved with
+**Switch**, and **Add a gateway** with **Name**, **Address** and **Add and switch**.
+Add refuses an address that is not `http(s)`, carries credentials, a query or a
+fragment, is this page's gateway, is already saved — including one another tab saved
+while the probe ran — or does not answer the identity handshake, and probes a new one
+exactly as the Add dialog does (SPEC.md "A device keeps
+a list of gateways"); a switch opens the chosen gateway in this page and carries this
+device's rows in its fragment. The card never navigates by itself, and never replaces the
+screen a failed module already drew. Once the app has painted, a gateway that stops
+answering marks the sidebar's footer **Offline** — the control reads `Gateway offline:
+<name>. Choose another gateway.`, where `<name>` is the gateway's name when known and
+otherwise the host it is reached at, because the boot entry cannot read `/__hui/health`
+while the gateway is down — and its menu keeps
+**Retry connection**, the other gateways and **Add a gateway…** until a status snapshot,
+a status stream the gateway answers (live, or a refusal), or a session list read it
+answered — a refusal included — names it again.
+
 Detailed chat connections receive an application heartbeat every 15 seconds.
 A heartbeat alone cannot make a conversation live, and 40 seconds without an
 incoming application frame after it is live causes a reconnect. A send unanswered for five seconds starts
@@ -2108,10 +2134,16 @@ with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
 data, trailing action instructions). Completions are batched until all active
-siblings finish and render as a system card, never as a "You" bubble. A
-child's task and `sessions_send` messages show as the sending session's. Delivery
-steers an active parent, prompts an idle one, or queues a follow-up if steering
-cannot be accepted. This does not abort the parent's current run. At most eight
+siblings finish and render as a system card, never as a "You" bubble. A child's
+run counts as completed only when it settles with a final assistant message. One
+that settles after a runtime error with no later answer is recorded `failed` with
+that error, or with `The subagent finished without a reply.` when the runtime
+reported none. A stored `completed` record that kept neither a non-blank
+summary nor an error is reported `failed` in its completion event and in
+`agents_wait`, never as an empty completion. A child's task and
+`sessions_send` messages show as the sending session's. Delivery steers an
+active parent, prompts an idle one, or queues a follow-up if steering cannot
+be accepted. This does not abort the parent's current run. At most eight
 ordinary descendants may be active in one tree.
 
 A spawn picks the child's model in one of three ways: a **route** name from the
@@ -2948,7 +2980,7 @@ everything the Bots tab can, through the same routes.
   and triggers, a line each with an enable switch and a + that opens their page
   on its add form; *Activity*, the latest runs of both, newest first; *Cost*,
   a Total of what its chat, the subagents under it and its memory summaries
-  (counted since HUI started) cost, read again whenever its chat changes state,
+  cost, read again whenever its chat changes state,
   that opens the cost per model (a bot on a worker says its cost is kept there;
   a cost no model reported reads *Not reported*, never $0.00); and
   *Setup*, a row each for Tagging (who may tag it), Model (its model and

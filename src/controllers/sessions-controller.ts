@@ -13,7 +13,7 @@ import { applySessionListUpdate } from "../api/session-list.ts";
 import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
-import { isGatewayUnavailable } from "../api/request.ts";
+import { GatewayHttpError, isGatewayUnavailable } from "../api/request.ts";
 import { reconnectDelay } from "../lib/event-stream.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
@@ -68,6 +68,9 @@ export class SessionsController {
 
   loading = true;
   error = "";
+  /** The gateway this page came from is not answering: the sidebar's footer says Offline and keeps a way to another
+   * one. A successful list read, a live status stream or its first snapshot clears it. */
+  unreachable = false;
   /** Revision of the gateway session list in `groups`; older lists lose. */
   revision = 0;
   statuses = new Map<string, SessionStatus>();
@@ -133,6 +136,7 @@ export class SessionsController {
       onStop: () => {
         if (this.#statusStreamStop === stop) this.#statusStreamStop = undefined;
       },
+      onConnection: (state: "live" | "lost") => this.#setUnreachable(state === "lost"),
       heldRevision: () => this.revision,
     });
     this.#statusStreamStop = stop;
@@ -180,14 +184,18 @@ export class SessionsController {
       // The status stream may have delivered newer changes while this loaded.
       this.receive(revision, this.#hasStatusSnapshot ? mergeSessionStatuses(groups, this.statuses) : groups);
       this.error = "";
+      this.#setUnreachable(false);
     } catch (error) {
       settled = true;
       if (isGatewayUnavailable(error)) {
+        this.#setUnreachable(true);
         const groups = await saved;
         if (!this.revision) this.groups = [];
         showSaved(groups);
-      } else if (!this.revision) {
-        this.groups = [];
+      } else {
+        // Any HTTP answer — a refusal included — is the gateway being reachable, so the footer stops offering a switch.
+        if (error instanceof GatewayHttpError) this.#setUnreachable(false);
+        if (!this.revision) this.groups = [];
       }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
       if (this.groups.length === 0) {
@@ -528,6 +536,7 @@ export class SessionsController {
   #applyStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
     // The status stream has just (re)connected, so the gateway is reachable
     // again: a list that failed to load earlier is worth asking for once more.
+    this.#setUnreachable(false);
     if (this.error && !this.loading) void this.refresh();
     this.statuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
@@ -616,4 +625,11 @@ export class SessionsController {
     this.error = "";
     this.#deps.listSettled();
   };
+
+  /** Assigns only when the answer changed: a stream that keeps failing must not redraw the shell for each attempt. */
+  #setUnreachable(unreachable: boolean): void {
+    if (this.unreachable === unreachable) return;
+    this.unreachable = unreachable;
+    this.#host.requestUpdate();
+  }
 }

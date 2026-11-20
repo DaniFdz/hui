@@ -1589,6 +1589,11 @@ running collected children with `completionDelivery: "delivered"`. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
 turn. On settlement HUI persists the terminal lifecycle and bounded summary,
 then prompts an idle parent or attempts steering on a running/waiting parent.
+A run that settles after a runtime error with no later answer is persisted
+`failed` with that error, or with `The subagent finished without a reply.`
+when it reported none; a stored `completed` record that kept neither a
+non-blank summary nor an error is reported `failed` in its completion event
+and in `agents_wait`.
 If steering fails or is unsupported, HUI queues the result as a follow-up;
 if the parent settled during that attempt, HUI prompts it directly instead.
 Successful steering does not also enqueue a follow-up or abort the parent.
@@ -2130,7 +2135,7 @@ type BotMemoryStatus = {
   usage: BotMemoryUsage;       // the compactor's spend in this memory, in total across restarts
 };
 
-type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
+type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // token totals and PI's USD estimate from available usage
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 
@@ -2160,7 +2165,10 @@ its creating commit, every turn starts fresh from the memory's view, and
 Durable's compactions are declined. The gateway reads it through
 `DurableHost.optchat` (`optChatBotMemory` in `server/bots/memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
-memory to read.
+memory to read. `memory.usage` counts the usage returned to the compactor; failed
+or aborted provider attempts may be billed without being counted. PI estimates
+cost from its model pricing, not the provider's bill. Earlier missing usage is
+not recovered; a clear or rewind starts the replacement memory's counter over.
 
 ### Prompt files
 

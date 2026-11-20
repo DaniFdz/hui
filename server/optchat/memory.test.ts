@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import type { Summarize } from "./compactor.ts";
 import { OptChatMemory, type OptChatOptions } from "./memory.ts";
+import { Store } from "./store.ts";
 import { localDateTime } from "./text.ts";
 import { PLACEHOLDER } from "./tree.ts";
 
@@ -217,6 +218,48 @@ test("the compaction view stays between its low and high marks, and merges whene
   assert(filled && chatBatches >= 2, String(chatBatches));
   assert(contexts.length > 100);
   for (const context of contexts) assert(Buffer.byteLength(context) <= 32_000 + 20 + 400, `a compaction context of ${Buffer.byteLength(context)} bytes`);
+});
+
+test("a reopened backlog bounds every model context even while missing parents keep its view oversized", { timeout: 20_000 }, async (t) => {
+  const dir = await directory(t);
+  const { store } = await Store.open(dir, { now: () => new Date(), report: assert.fail });
+  for (let i = 0; i < 30; i++) {
+    const text = `message ${i} ${"x".repeat(100)}`;
+    await store.appendMessage({ i, kind: "user", text, size: Buffer.byteLength(`user: ${text}`), date: new Date().toISOString() });
+    const summary = `summary ${i} ${"y".repeat(70)}`;
+    await store.appendNode({ l: 0, i, text: summary, size: Buffer.byteLength(summary) });
+  }
+  const tail = `message 30 ${"x".repeat(100)}`;
+  await store.appendMessage({ i: 30, kind: "user", text: tail, size: Buffer.byteLength(`user: ${tail}`), date: new Date().toISOString() });
+  await store.close();
+  const contexts: string[] = [];
+  let releaseMerges!: () => void;
+  const held = new Promise<void>((resolve) => { releaseMerges = resolve; });
+  let leafStarted!: () => void;
+  const leaf = new Promise<void>((resolve) => { leafStarted = resolve; });
+  const memory = await open(t, dir, {
+    node: 64, context: 300, jobs: 2,
+    summarize: async (request, signal) => {
+      const blocks = request.messages[0]!.content as readonly string[];
+      contexts.push(blocks[0]!);
+      if (blocks[1]!.includes("Compress this message")) leafStarted();
+      else await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        void held.then(() => { signal.removeEventListener("abort", abort); resolve(); });
+      });
+      return "merged";
+    },
+  });
+  await leaf;
+  releaseMerges();
+  await until(memory, () => memory.status().pending === 0);
+  assert(contexts.some((context) => context.includes("[Context shortened to fit the memory budget.]")), "the oversized persisted view reached a real compactor request");
+  for (const context of contexts) {
+    assert(Buffer.byteLength(context) <= 300 + Buffer.byteLength("<chat>\n\n</chat>"), `${Buffer.byteLength(context)} bytes`);
+    assert(!context.includes(PLACEHOLDER), "no request reads an unbuilt summary");
+  }
+  assert.equal(memory.message(0)?.text, `message 0 ${"x".repeat(100)}`, "the full history stays intact");
 });
 
 test("status says when a turn waits for summaries, and closing ends the wait", { timeout: 10_000 }, async (t) => {
