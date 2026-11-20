@@ -18,7 +18,7 @@
  * changes once it is old. With the length of Taelin's rollback list as the
  * budget, these are exactly the merges his `push` makes.
  */
-import { bytes, flatten } from "./text.ts";
+import { bytes, cutUtf8, flatten } from "./text.ts";
 import { endOf, label, PLACEHOLDER, startOf, type Part, type Tree } from "./tree.ts";
 
 /** What the view folds: how many messages exist and the nodes built so far. */
@@ -40,6 +40,7 @@ export type ViewHooks = {
 type Waiter = { readonly before: number; done(settled: boolean): void };
 
 const PLACEHOLDER_BYTES = bytes(PLACEHOLDER);
+const CONTEXT_SHORTENED = "[Context shortened to fit the memory budget.]";
 
 /** The tiling of [0, `before`) a view part contributes: the part itself, or its children when it straddles the bound. */
 function tile(part: Part, before: number, out: Part[]): void {
@@ -57,6 +58,8 @@ export class View {
   readonly #changed: () => void;
   readonly #edited: () => void;
   #parts: Part[] = [];
+  /** Absolute message position through which all view parts have already been checked as built. */
+  #firstCursor = 0;
   #size = 0;
   #batch = false;
   #batches = 0;
@@ -109,14 +112,27 @@ export class View {
    */
   restore(state: ViewState): void {
     this.#parts = state.parts.map(([l, i]) => [l, i] as const);
+    this.#firstCursor = 0;
     this.#size = this.#parts.reduce((total, part) => total + this.#bytes(part), 0);
     this.#batch = state.batch;
     this.fit();
   }
 
-  /** The first message whose part is not built; the message count when every part is. */
+  /** The first message whose part is not built; the message count when every part is. Built parts never become unbuilt,
+   * so an absolute cursor survives merges and visits each part at most once between restores. */
   first(): number {
-    for (const part of this.#parts) if (!this.#built(part)) return startOf(part);
+    let low = 0;
+    let high = this.#parts.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (endOf(this.#parts[middle]!) <= this.#firstCursor) low = middle + 1;
+      else high = middle;
+    }
+    for (let i = low; i < this.#parts.length; i++) {
+      const part = this.#parts[i]!;
+      if (!this.#built(part)) return this.#firstCursor = startOf(part);
+      this.#firstCursor = endOf(part);
+    }
     return this.#source.length;
   }
 
@@ -225,16 +241,52 @@ export class View {
   }
 
   /**
-   * A compaction's context: the texts of the parts before `end`, bare, with no ids, stopping at the first part not
-   * built, so a compaction never reads a placeholder or what follows one.
+   * A compaction's context: bare lines before `end`, stopping at the first unbuilt part. When missing parents keep a
+   * batch above its high mark, cap the context independently: keep the most recent built lines and say it was shortened.
+   * The omitted lines stay in the tree and in the chat view; only this model request's context is shortened.
    */
   context(end: number): string[] {
-    const lines: string[] = [];
-    for (const part of this.#parts) {
-      if (startOf(part) >= end || !this.#built(part)) break;
-      lines.push(flatten(this.#text(part)));
+    // Find the last built part before the cutoff without walking the whole prefix on every model call.
+    const cutoff = Math.min(end, this.first());
+    let low = 0;
+    let high = this.#parts.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (startOf(this.#parts[middle]!) < cutoff) low = middle + 1;
+      else high = middle;
     }
-    return lines;
+    const limit = Math.max(0, Math.floor(this.limits.high));
+    const lines: string[] = []; // newest first
+    let size = 0;
+    let overflow = "";
+    let i = low - 1;
+    for (; i >= 0; i--) {
+      const line = flatten(this.#text(this.#parts[i]!));
+      const needed = bytes(line) + (lines.length ? 1 : 0);
+      if (size + needed > limit) { overflow = line; break; }
+      lines.push(line);
+      size += needed;
+    }
+    if (i < 0) return lines.reverse();
+    const marker = cutUtf8(CONTEXT_SHORTENED, limit);
+    if (bytes(marker) >= limit) return marker ? [marker] : [];
+    let remaining = limit - bytes(marker) - 1; // The newline after the marker.
+    const recent: string[] = [];
+    // If even the newest line did not fit, retain its beginning without splitting a UTF-8 character.
+    if (!lines.length) lines.push(overflow);
+    for (const line of lines) {
+      const needed = bytes(line) + (recent.length ? 1 : 0);
+      if (needed > remaining) {
+        if (!recent.length) {
+          const shortened = cutUtf8(line, remaining);
+          if (shortened) recent.push(shortened);
+        }
+        break;
+      }
+      recent.push(line);
+      remaining -= needed;
+    }
+    return [marker, ...recent.reverse()];
   }
 
   /** `<chat>`, one `id+n|text` line per part, `</chat>`. Node texts never change, so a frozen list renders the same. */

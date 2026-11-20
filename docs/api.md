@@ -2130,7 +2130,7 @@ type BotMemoryStatus = {
   usage: BotMemoryUsage;       // the compactor's spend in this memory, in total across restarts
 };
 
-type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
+type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // token totals and PI's USD estimate from available usage
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 
@@ -2160,7 +2160,10 @@ its creating commit, every turn starts fresh from the memory's view, and
 Durable's compactions are declined. The gateway reads it through
 `DurableHost.optchat` (`optChatBotMemory` in `server/bots/memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
-memory to read.
+memory to read. `memory.usage` counts the usage returned to the compactor; failed
+or aborted provider attempts may be billed without being counted. PI estimates
+cost from its model pricing, not the provider's bill. Earlier missing usage is
+not recovered; a clear or rewind starts the replacement memory's counter over.
 
 ### Prompt files
 

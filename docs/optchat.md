@@ -181,15 +181,25 @@ summary is quick work a turn may be waiting on, so a model without medium gets
 low, not high. Its context is the compaction view's lines before
 the node ([The view](#the-view)), up to the first one that is not a summary yet:
 as revision `3c190e0` allows, a message starts while at most 7 earlier ones still
-wait for theirs, so a turn that brought many messages is summarized 8 at a time
-and the next turn's wait is that much shorter. Models cannot count bytes, so each
+wait for theirs, so a turn that brought many messages can be summarized in parallel
+instead of one by one. Models cannot count bytes, so each
 step shows the limit as a ruler of that many dashes: the realistic sample line it
-replaces could end up copied into summaries, as revision `3c190e0` observed. A
-call that has not answered after 2 minutes fails like any other. A failed node
-is retried every 10 seconds; only its first failure is reported
-(`optchat_memory` diagnostic) and shown in the memory's status. Its usage
-(tokens, cache, cost) is counted in the status in total: the calls it made since
-the memory was created, kept across restarts ([Storage](#storage)).
+replaces could end up copied into summaries, as revision `3c190e0` observed.
+Ready message and merge jobs take turns, with a slot available to each kind when
+both are ready; higher ready merges run first so a backlog can fold its oldest
+context while newer messages are summarized. A call that has not answered after
+2 minutes is aborted. A failed node retries after 10 seconds, doubling the delay
+on repeated failures up to five minutes, to limit repeated paid failures; only its
+first failure is reported (`optchat_memory` diagnostic) and shown in the
+memory's status. A cooling failure occupies no job; once eight failures of one
+kind are cooling, no new paid node of that kind starts (calls already running and
+due retries can still finish). An unavailable model therefore cannot sweep an
+entire backlog with failing requests. Free nodes and the other kind can still
+advance, and due retries take precedence over new work of their kind. Model
+changes apply on the next attempt, which may wait for a pending retry. Its usage
+(tokens, cache, estimated cost) is counted in the status in total and kept across
+restarts ([Storage](#storage)); failed and aborted model attempts may be billed
+but are not counted when their usage is not returned to the compactor.
 
 ## The view
 
@@ -220,12 +230,18 @@ message and each finished node until it reaches its mark. A line not summarized
 yet counts the bytes of its placeholder.
 
 **The compaction view.** Compactions read a view of their own: the chat view
-merged further, between 16,000 and 32,000 bytes. It gets the chat view's new
-lines and batches the same way, past 32,000 bytes down to 16,000, and also
-whenever the chat view starts a batch. A compaction's context is its lines before
-the node's end (for a merge, through the merge's last message), bare, stopping at
-the first line not built yet. Every compaction shares the start of that view, so
-each reads the others' prefix from the cache.
+merged further, between 16,000 and 32,000 bytes when the needed parents are
+built. It gets the chat view's new lines and batches the same way, past 32,000
+bytes down to 16,000, and also whenever the chat view starts a batch. A
+compaction's context is its lines before the node's end (for a merge, through
+the merge's last message), bare, stopping at the first line not built yet. If a
+backlog leaves the view above its high mark because its parents are not built,
+the request's context is independently capped at that mark: it keeps the newest
+built lines and marks that it was shortened. An oversized single line is cut at
+a UTF-8 character boundary. This affects only the model's context for that
+request; the complete log, tree and chat view are unchanged. Normally every
+compaction shares the start of that view, so each reads the others' prefix from
+the cache.
 
 **Kept across restarts.** Both views are saved in `view.json` ([Storage](#storage))
 whenever they change, and loaded when the memory opens, then caught up with the
@@ -351,7 +367,8 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   keeps counting where it left off and a bot's memory cost can be compared with
   what the memory is worth. A memory older than that file starts at zero: the
   spend before it is not reconstructed, and nothing reads it back into Durable's
-  `pi.usage`.
+  `pi.usage`. Clearing or rewinding abandons that memory and its usage, so the
+  replacement's total excludes spend on the previous memory.
 - **Subagents and computer use (spec section 9) are not implemented.** MASTER
   keeps its paragraph about them, verbatim.
 - **Turns and compactions keep their own system prompts.** Revision `3c190e0`

@@ -222,6 +222,58 @@ test("a compaction's context is the bare lines before its end, up to the first l
   assert.deepEqual(view.context(0), []);
 });
 
+test("a stalled compaction batch caps context to recent built lines without changing the view", () => {
+  const tree = new Tree();
+  for (const i of [0, 1, 2, 3, 5]) tree.set(0, i, `user: ${i} ${"é".repeat(12)}`);
+  const { view, append } = folded(tree, { high: 80, low: 40 });
+  for (let i = 0; i < 6; i++) append();
+  const before = view.parts();
+  assert(view.size > 80 && view.batching, "no built parents: the batch cannot fit the view yet");
+  const lines = view.context(6);
+  assert.equal(lines[0], "[Context shortened to fit the memory budget.]");
+  assert.deepEqual(lines.slice(1), [`user: 3 ${"é".repeat(12)}`], "keep the most recent built line, but nothing past the unbuilt line 4");
+  assert(Buffer.byteLength(lines.join("\n")) <= 80);
+  assert.deepEqual(view.parts(), before, "truncating a request never edits the view or tree");
+  assert.equal(tree.text(0, 0), `user: 0 ${"é".repeat(12)}`);
+
+  const oversized = new Tree();
+  oversized.set(0, 0, `user: ${"😀".repeat(100)}`);
+  const huge = folded(oversized, { high: 80, low: 40 });
+  huge.append();
+  const capped = huge.view.context(1);
+  assert.equal(capped[0], "[Context shortened to fit the memory budget.]");
+  assert(capped[1]?.startsWith("user: 😀"));
+  assert(!capped[1]?.includes("�"), "a UTF-8 boundary never splits a character");
+  assert(Buffer.byteLength(capped.join("\n")) <= 80);
+});
+
+test("bounded contexts do not rescan a long built prefix, and advance when a gap is built", () => {
+  class CountingTree extends Tree {
+    hasReads = 0;
+    textReads = 0;
+    override has(l: number, i: number): boolean { this.hasReads++; return super.has(l, i); }
+    override text(l: number, i: number): string | undefined { this.textReads++; return super.text(l, i); }
+  }
+  const tree = new CountingTree();
+  const count = 5_000;
+  for (let i = 0; i < count; i++) if (i !== 2_500) tree.set(0, i, `line ${i} ${"x".repeat(48)}`);
+  const { view, append } = folded(tree, { high: 1_000_000, low: 500_000 });
+  for (let i = 0; i < count; i++) append();
+  view.limits = { high: 300, low: 150 };
+  const before = view.context(count);
+  assert(before.at(-1)?.startsWith("line 2499 "), "context stops at the unbuilt gap");
+  tree.hasReads = 0;
+  tree.textReads = 0;
+  for (let n = 0; n < 8; n++) assert.deepEqual(view.context(count), before);
+  assert(tree.hasReads <= 8, `repeated calls rechecked ${tree.hasReads} nodes`);
+  assert(tree.textReads < 80, `repeated calls read ${tree.textReads} lines rather than the entire prefix`);
+  tree.set(0, 2_500, `line 2500 ${"x".repeat(48)}`);
+  view.built(0, 2_500);
+  const after = view.context(count);
+  assert(after.at(-1)?.startsWith("line 4999 "), "building the gap advances the cursor to the newly available prefix");
+  assert(Buffer.byteLength(after.join("\n")) <= 300);
+});
+
 test("a frozen prefix tiles exactly the messages before its bound", () => {
   const { view, append } = folded(fullTree(4), { high: 10, low: 10 });
   append(); append();
