@@ -468,7 +468,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-047",
     title: "Start a suggested task in a new session",
-    behaviour: "Start in a new session reads Starting…, then creates and opens a session titled after the card in its directory and group, whose first turn holds # <title>, ## Problem and ## Proposed fix; the card leaves the source conversation. If starting fails the card stays.",
+    behaviour: "Start in a new session reads Starting…, then creates and opens a session titled after the card in its directory and group, whose first turn renders the card's Markdown (the title, Problem and Proposed fix as headings with their text); the card leaves the source conversation. If starting fails the card stays.",
     spec: ["docs/api.md#suggested-tasks", "docs/api.md#post-__huisessionsidsuggestionssidstart"],
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
