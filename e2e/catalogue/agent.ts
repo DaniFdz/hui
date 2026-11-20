@@ -473,7 +473,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-048",
