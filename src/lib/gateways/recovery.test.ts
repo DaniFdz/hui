@@ -111,7 +111,7 @@ test("an address that does not answer as HUI is refused with the wording that fi
 
 test("a switch keeps the target and carries the gateway left behind first, with nothing typed into the address", () => {
   const saved = [entry("http://loft.test", "Loft", 300), entry("https://attic.test/hui", "", 100)];
-  const address = recoverySwitchAddress("http://studio.local:8787", { url: CURRENT, name: "" }, saved, 1_000);
+  const address = recoverySwitchAddress("http://studio.local:8787", { url: CURRENT, name: "" }, saved);
   const target = new URL(address);
 
   assert.equal(target.origin, "http://studio.local:8787");
@@ -121,8 +121,10 @@ test("a switch keeps the target and carries the gateway left behind first, with 
   assert.ok(address.includes(`${GATEWAY_HANDOFF_PARAM}=`));
   const carried = readGatewayHandoff(`#${address.slice(address.indexOf("#") + 1)}`);
   assert.deepEqual(carried, [
-    { url: CURRENT, name: "127.0.0.1", lastSeen: 1_000 },
     { url: "http://loft.test", name: "Loft", lastSeen: 300 },
     { url: "https://attic.test/hui", name: "", lastSeen: 100 },
+    // No sighting of its own, so it sorts last and a newer saved label for this address still wins when the page merges
+    // the fragment.
+    { url: CURRENT, name: "127.0.0.1", lastSeen: 0 },
   ], "the gateway this page leaves is one tap away from the page it opens");
 });

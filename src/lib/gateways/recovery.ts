@@ -1,8 +1,9 @@
 /**
  * The rules behind the boot screen's way out of a gateway that cannot be reached: when the app has not painted and the
  * page's own gateway does not answer, the card says what happened and offers Retry, every other gateway this device
- * saved, and an Add form. This module is pure — no DOM, no fetch, no Lit — because it runs as a second entry point
- * beside `main.ts`, before (and even without) the app: on the web, in HUI's desktop window and in a phone's WebView.
+ * saved, and an Add form. This module is pure — no DOM, no fetch, no Lit — because `boot-recovery.ts` shares the page's
+ * entry chunk with `main.ts` and runs before (and without) the app: on the web, in HUI's desktop window and in a phone's
+ * WebView.
  * The addresses, the saved list, the handoff fragment and the wording are `gateway-list.ts`'s; the two probes are
  * `api/boot-health.ts`'s. Nothing here repeats either.
  */
@@ -109,16 +110,17 @@ export function recoveryRefusal(probe: { ok: boolean }, url: string): string {
 
 /**
  * The address a switch opens: the target, carrying this device's rows, with the gateway this page is leaving first, so
- * it stays one tap away. Mirrors the rows the sidebar and Settings switch with (`GatewaysController`).
+ * it stays one tap away. Mirrors the rows the sidebar and Settings switch with (`GatewaysController`). The gateway left
+ * carries `lastSeen: 0` — no sighting of its own — so `adoptGateways` lets a newer saved label for the same address win
+ * instead of this card's hostname overwriting the name the person gave it.
  */
 export function recoverySwitchAddress(
   target: string,
   current: { url: string; name: string },
   saved: readonly GatewayEntry[],
-  now: number = Date.now(),
 ): string {
   return gatewayHandoffAddress(target, [
-    { url: current.url, name: gatewayName(current.name, current.url), lastSeen: now },
+    { url: current.url, name: gatewayName(current.name, current.url), lastSeen: 0 },
     ...saved,
   ]);
 }

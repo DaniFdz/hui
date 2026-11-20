@@ -13,7 +13,7 @@ import { applySessionListUpdate } from "../api/session-list.ts";
 import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
-import { isGatewayUnavailable } from "../api/request.ts";
+import { GatewayHttpError, isGatewayUnavailable } from "../api/request.ts";
 import { reconnectDelay } from "../lib/event-stream.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
@@ -192,8 +192,10 @@ export class SessionsController {
         const groups = await saved;
         if (!this.revision) this.groups = [];
         showSaved(groups);
-      } else if (!this.revision) {
-        this.groups = [];
+      } else {
+        // Any HTTP answer — a refusal included — is the gateway being reachable, so the footer stops offering a switch.
+        if (error instanceof GatewayHttpError) this.#setUnreachable(false);
+        if (!this.revision) this.groups = [];
       }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
       if (this.groups.length === 0) {

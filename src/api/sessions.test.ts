@@ -166,15 +166,23 @@ test("the status stream reports live once it delivers, and lost when a connectio
   assert.deepEqual(states, ["live", "lost", "lost"], "a connection that never becomes live is an outage, not silence");
 });
 
-test("a refused status stream reports no connection, and this client's own stop is not a loss", async () => {
-  const states: string[] = [];
-  const handlers = { onSnapshot: () => {}, onStatus: () => {}, onConnection: (state: "live" | "lost") => states.push(state) };
-  const refused = subscribeSessionStatuses(handlers, async () => new Response("{}", { status: 403 }));
-  for (let index = 0; index < 10 && !states.length; index += 1) await new Promise(setImmediate);
+test("a refused status stream reports the gateway as live, and this client's own stop is not a loss", async () => {
+  const refusedStates: string[] = [];
+  const refused = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state: "live" | "lost") => refusedStates.push(state),
+  }, async () => new Response("{}", { status: 403 }));
+  for (let index = 0; index < 10 && !refusedStates.length; index += 1) await new Promise(setImmediate);
   refused();
-  assert.deepEqual(states, [], "a gateway that answers with a refusal is not offline");
+  assert.deepEqual(refusedStates, ["live"], "a gateway that answers with a refusal is reachable, not offline");
 
-  const stop = subscribeSessionStatuses(handlers, (async (_input: RequestInfo | URL, init?: RequestInit) => new Response(new ReadableStream<Uint8Array>({
+  const stoppedStates: string[] = [];
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state: "live" | "lost") => stoppedStates.push(state),
+  }, (async (_input: RequestInfo | URL, init?: RequestInit) => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
       init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
     },
@@ -182,7 +190,7 @@ test("a refused status stream reports no connection, and this client's own stop 
   for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
   stop();
   for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
-  assert.deepEqual(states, [], "the caller stopping the stream is not the gateway going away");
+  assert.deepEqual(stoppedStates, [], "the caller stopping the stream is not the gateway going away");
 });
 
 test("a status stream that goes silent reconnects to resync", async (t) => {

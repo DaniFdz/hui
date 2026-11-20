@@ -420,7 +420,7 @@ test("a lost status stream marks the gateway offline until a snapshot or a live 
   sessions.stop();
 });
 
-test("an unanswered list read marks the gateway offline, a refusal does not, and a later read clears it", async () => {
+test("a list read the gateway never answered marks it offline, and a refusal answers it", async () => {
   const { sessions } = controller();
   fake.loadError = new TypeError("Failed to fetch");
   await sessions.refresh();
@@ -428,16 +428,20 @@ test("an unanswered list read marks the gateway offline, a refusal does not, and
 
   fake.loadError = new GatewayHttpError(403, "refused 403");
   await sessions.refresh();
-  assert.equal(sessions.unreachable, true, "a refusal leaves it as it was instead of guessing");
+  assert.equal(sessions.unreachable, false, "a 403 is the gateway answering, so the footer stops offering a switch");
+
+  fake.loadError = new TypeError("Failed to fetch");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, true, "silence marks it offline again");
+
+  fake.loadError = new GatewayHttpError(404, "refused 404");
+  await sessions.refresh();
+  assert.equal(sessions.unreachable, false, "a 404 answers too");
 
   fake.loadError = undefined;
   fake.list = { revision: 1, groups: [group(session("live"))] };
   await sessions.refresh();
   assert.equal(sessions.unreachable, false, "the gateway answered, so the footer names it again");
-
-  fake.loadError = new GatewayHttpError(404, "refused 404");
-  await sessions.refresh();
-  assert.equal(sessions.unreachable, false, "a refusal is an answer, not an outage");
 });
 
 test("a gateway that refuses the list shows its error, not the saved conversations", async () => {

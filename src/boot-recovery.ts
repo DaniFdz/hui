@@ -2,9 +2,13 @@
  * The page's own way out of a gateway that cannot be reached. index.html's boot screen is all there is until the app
  * paints; when that has not happened after six seconds and the gateway serving this page does not answer, this module
  * turns that screen into a recovery card: what happened, this page's address, Retry, every other gateway this device
- * saved, and Add a gateway. It is a second entry point beside `main.ts`, so it keeps running when the app's own code
- * never arrives, and it is why the boot screen no longer pretends to load forever on the web, in HUI's desktop window
- * and in a phone's WebView.
+ * saved, and Add a gateway. Vite folds it into the page's entry chunk as a second module entry, so it keeps working
+ * when the dynamic `hui-app` chunk or a request stalls — not when that entry chunk itself cannot load, where only
+ * index.html's inline boot screen with Reload can run. It is why the boot screen no longer pretends to load forever on
+ * the web, in HUI's desktop window and in a phone's WebView.
+ *
+ * Its clocks count from the page's own start (`performance.now()`), never from when this module happened to execute:
+ * the entry chunk is one download, and a slow link must not push the six- and ten-second marks later than the wait.
  *
  * It imports nothing from the app — no Lit, no styles, no controllers, no `main.ts`, and none of `src/api/request.ts`,
  * whose boundary reports browser errors and checks the offline build — only the pure gateway rules, the report to HUI's
@@ -168,7 +172,9 @@ function buildCard(boot: HTMLElement, origin: string, onRetry: () => void, onSub
 function install(): void {
   const boot = document.getElementById(BOOT_ID);
   if (!boot) return;
-  const startedAt = Date.now();
+  // The page's own clock: the entry chunk runs late on a slow link, and the deadline belongs to the person's wait.
+  const startedAt = Date.now() - performance.now();
+  const elapsed = (): number => Date.now() - startedAt;
   const origin = currentOrigin();
   let probeState: RecoveryProbe = "pending";
   let card: BootRecoveryCard | undefined;
@@ -211,6 +217,8 @@ function install(): void {
 
   const showCard = (): BootRecoveryCard | undefined => {
     if (!alive()) return undefined;
+    // A module failure already said what happened; the card never draws over it.
+    if (boot.dataset["state"] === "failed") return undefined;
     if (!card) {
       const built = buildCard(boot, origin, () => void retry(), (event) => void addGatewayAndSwitch(event));
       card = built;
@@ -271,7 +279,7 @@ function install(): void {
       if (card) card.title.textContent = recoveryHeadline(probeState);
       return;
     }
-    if (recoveryStage(Date.now() - startedAt, probeState) === "recovery") showCard();
+    if (recoveryStage(elapsed(), probeState) === "recovery") showCard();
   };
 
   /** Retry asks this page's gateway again: one reload when it answers, and the card stays with what it found when it does
@@ -327,9 +335,17 @@ function install(): void {
         setAlert(built.formError, refusal);
         return;
       }
-      let next = saved;
+      // The probe took up to ten seconds, and another tab may have saved this address meanwhile: refuse again rather
+      // than write a list that no longer holds what the person sees.
+      const latest = savedGateways();
+      const refusedNow = recoveryAddError({ address: url, current: origin, saved: latest, pageProtocol: location.protocol });
+      if (refusedNow) {
+        setAlert(built.formError, refusedNow);
+        return;
+      }
+      let next = latest;
       try {
-        next = addGateway(saved, { url, name: typedName || (probe.ok ? probe.name : ""), lastSeen: Date.now() }, origin);
+        next = addGateway(latest, { url, name: typedName || (probe.ok ? probe.name : ""), lastSeen: Date.now() }, origin);
         localStorage.setItem(GATEWAY_LIST_KEY, writeGatewayList(next));
       } catch {
         // The address is valid and answered as HUI; the page it opens still gets the way back in its fragment.
@@ -341,9 +357,10 @@ function install(): void {
     }
   };
 
-  later(RECOVERY_PROBE_AT_MS, () => void probeHealth());
+  // A module that runs after a mark fires it at once instead of waiting again: the page has already waited.
+  later(Math.max(0, RECOVERY_PROBE_AT_MS - elapsed()), () => void probeHealth());
   // Ten seconds without the app is the page's own deadline, whatever the probe is still doing.
-  later(RECOVERY_DEADLINE_MS, () => showCard());
+  later(Math.max(0, RECOVERY_DEADLINE_MS - elapsed()), () => showCard());
 }
 
 install();
