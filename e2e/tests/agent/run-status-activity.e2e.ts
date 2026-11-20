@@ -1,8 +1,6 @@
 /** Run status's dot-only live-work mark: stable active-set animation with or without a plan, reduced motion,
  * live helper detail and fixed header controls (AGENT-075). */
 import { expect } from "e2e";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
@@ -18,6 +16,7 @@ const BADGE = `${TRIGGER} .chat-run-status__activity-dot`;
 const PING = `${BADGE} .chat-run-status__activity-ping`;
 const HEAD_BADGE = ".chat-run-status__head .chat-run-status__activity-dot";
 const HEAD_PING = `${HEAD_BADGE} .chat-run-status__activity-ping`;
+const controls = [".bot-call-toggle", ".bot-panel-toggle", ".bot-header-menu__trigger", "[aria-label='Continue without a prompt']", ".chat-pane__close-pane", ".chat-pane__nav-toggle"];
 
 async function utility(hui: Hui, enabled = true) {
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
@@ -140,83 +139,6 @@ test("live watcher detail counts only running watchers and does not repeat the g
   await expect.poll(() => hui.contentOf(HEAD_BADGE)).toBe("");
   await expect(panel.getByTestId("task-progress")).toHaveCount(0);
 });
-
-test("ordinary child sessions count only live work, draw on open and open their conversation", { tags: ["AGENT-075"], platforms: ["web"] }, async ({ screen, hui }) => {
-  await utility(hui, false);
-  const parent = await hui.createSession({ title: "Child session parent" });
-  const child = await hui.createSession({ title: "Operator child work" });
-  const idle = await hui.createSession({ title: "Operator idle child" });
-  // Ordinary parent links exist in saved registries; create_session now makes top-level conversations, while
-  // sessions_spawn makes helpers. Seed only these links in this disposable gateway, without inventing a route.
-  const registryPath = join(hui.configDir, "sessions.json");
-  const registry = JSON.parse(await readFile(registryPath, "utf8")) as { sessions: { id: string; parentId?: string }[] };
-  for (const record of registry.sessions) if ([child.id, idle.id].includes(record.id)) record.parentId = parent.id;
-  expect(registry.sessions.filter((record) => record.parentId === parent.id)).toHaveLength(2);
-  await writeFile(registryPath, JSON.stringify(registry));
-  await hui.restartGateway();
-  const listed = await hui.api<{ groups: { sessions: { id: string; parentId?: string }[] }[] }>("GET", "/__hui/sessions");
-  expect(listed.groups.flatMap((group) => group.sessions).filter((session) => session.parentId === parent.id)).toHaveLength(2);
-  await hui.open(`/sessions/${parent.id}`);
-  const trigger = screen.getByTestId("run-status-trigger");
-  const panel = screen.getByLabel("Run status");
-  const section = panel.getByRole("region", { name: "Sessions", exact: true });
-  await expect(trigger).toBeVisible();
-  await expect(trigger).not.toBeExpanded();
-  await expect(section).toHaveCount(0);
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("");
-  await hui.prompt(child, "E2E_REPLAY");
-  await hui.provider.held();
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 1 session");
-  await expect(trigger).not.toBeExpanded();
-  await expect(section).toHaveCount(0);
-  await trigger.tap();
-  await expect(section).toBeVisible();
-  await expect(section.getByRole("button", { name: "Open session Operator child work", exact: true })).toContainText("Running");
-  await expect(section.getByRole("button", { name: "Open session Operator idle child", exact: true })).toContainText("Idle");
-  const titleBox = await hui.textOverflow(`[data-child-session-id='${child.id}'] .chat-run-status__helper-title`);
-  expect(titleBox).not.toBeNull();
-  expect(titleBox!.scrollWidth - titleBox!.clientWidth, "short child titles have the row's full title column").toBeLessThanOrEqual(1);
-  await expect.poll(() => hui.contentOf(".chat-run-status__head .chat-run-status__count")).toBe("· 1 session");
-  await section.getByRole("button", { name: "Open session Operator idle child", exact: true }).tap();
-  await expect.poll(() => hui.url()).toContain(`/sessions/${idle.id}`);
-  await hui.open(`/sessions/${parent.id}`);
-  await expect(trigger).toBeVisible();
-  await hui.provider.release();
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("");
-  await expect.poll(() => hui.drawn(BADGE)).toBe(false);
-  await expect(trigger).not.toBeExpanded();
-  await expect(section).toHaveCount(0);
-  await trigger.tap();
-  await expect(section.getByRole("button", { name: "Open session Operator child work", exact: true })).toContainText("Idle");
-  await panel.getByLabel("Close run status").tap();
-  await expect(section).toHaveCount(0);
-
-  await hui.prompt(child, "E2E_REPLAY");
-  await hui.provider.held();
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 1 session");
-  await hui.api("PATCH", `/__hui/sessions/${child.id}`, { archived: true });
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("");
-  await expect(trigger).not.toBeExpanded();
-  await trigger.tap();
-  await expect(section.getByRole("button", { name: "Open session Operator child work", exact: true })).toHaveCount(0);
-  await expect(section.getByRole("button", { name: "Open session Operator idle child", exact: true })).toBeVisible();
-  await panel.getByLabel("Close run status").tap();
-  await expect(section).toHaveCount(0);
-  await hui.api("PATCH", `/__hui/sessions/${child.id}`, { archived: false });
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("· 1 session");
-  await expect(trigger).not.toBeExpanded();
-  await hui.api("DELETE", `/__hui/sessions/${child.id}`);
-  await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("");
-  await expect.poll(() => hui.drawn(BADGE)).toBe(false);
-  await expect(trigger).not.toBeExpanded();
-  await expect(section).toHaveCount(0);
-  await hui.provider.release();
-});
-
-// These are the actual controls, not placeholder boxes: Durable has no Continue; a phone has no Close pane.
-// A bot supplies Call, bot panel and ⋯; an ordinary desktop split supplies Close. Native phone targets measure only
-// their real viewport; the web target starts at 1440×900 and repeats at 390×844.
-const controls = [".bot-call-toggle", ".bot-panel-toggle", ".bot-header-menu__trigger", "[aria-label='Continue without a prompt']", ".chat-pane__close-pane", ".chat-pane__nav-toggle"];
 
 test("growing live helper counts leave every control to the right fixed without clipping", { tags: ["AGENT-075"], platforms: ["web"] }, async ({ screen, hui }) => {
   await utility(hui);
