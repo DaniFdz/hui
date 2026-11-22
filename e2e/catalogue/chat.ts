@@ -1088,9 +1088,9 @@ const cases: UseCase[] = [
   },
   {
     id: "CHAT-091",
-    title: "See a draft's Markdown in the composer and the sent prompt",
+    title: "See a typed draft's formatting in the composer and the sent prompt",
     behaviour:
-      "While the operator types, the composer paints the draft's Markdown in a paint-only layer under the textarea — bold, italic, inline code, a fenced block, and a bullet with an ordered item nested under it — while the textarea's value stays the exact Markdown and every source marker stays visible but dimmed. The paint is the textarea's own box, so the two widths match and a multi-line draft grows the composer. Sending renders that operator prompt as real Markdown — bold, italic, code, the fence's code and a nested list — with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
+      "The composer is a rich editor, never a textarea with Markdown in it: typing `**bold**`, `*italic*` and `` `code` `` converts on the keystroke that closes the run, so the editor draws bold, italic and inline code and no source marker appears, and its own value is only the rendered text. A typed `- ` bullet grows a second item with Enter and nests it three spaces deeper with Tab, and a typed triple-backtick fence with a language becomes a code block whose lines follow it. The form's hidden field carries the canonical Markdown — `**bold**`, `*italic*`, `` `code` ``, `- ` bullets three spaces a level, and the fence with its language — and sending renders that operator prompt as real Markdown: the marks, the nested item under its parent and the fence's code, with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer"],
@@ -1101,12 +1101,23 @@ const cases: UseCase[] = [
     id: "CHAT-092",
     title: "Shape a list and wrap text from the composer keyboard",
     behaviour:
-      "On a keyboard, Tab adds three spaces of indent to a list line and Shift+Tab takes them back, three presses nest the line three levels deep, and Tab in a draft that holds no list leaves the composer. Enter on an empty list item ends the list: the draft empties and nothing is sent. Cmd/Ctrl+B wraps the selection in bold, and Cmd/Ctrl+Z puts the draft back as it was.",
+      "On a keyboard, Enter in prose sends, inside a non-empty list item it splits the item, and on an empty item it ends the list: the draft empties and nothing is sent. Tab sinks a list item under the one above it — three spaces a level, as the Markdown wire writes it — and Shift+Tab lifts it back, while Tab in a draft that holds no list leaves the composer. Cmd/Ctrl+B, I and E toggle bold, italic and inline code over the selection, Cmd/Ctrl+Z puts the draft back as it was, and `2 * 3 * 4` and `read_text_file` stay literal text.",
     spec: ["SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
     surfaces: [],
     journeys: ["chat-composer"],
     web: "required",
-    phone: { excluded: "A keyboard-only affordance: a phone has no hardware keyboard for Tab, Enter on an empty item or the wrap chord, and no visible control reaches these edits; the composer's own keys a phone does have are CHAT-002's.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+    phone: { excluded: "A keyboard-only affordance: a phone has no hardware keyboard for Tab, Enter on an empty item or the wrap and toggle chords, and no visible control reaches these edits; the composer's own keys a phone does have are CHAT-002's.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "CHAT-093",
+    title: "Edit a draft as Markdown source",
+    behaviour:
+      "A `Markdown` toggle beside the attachment picker is the way between the rich editor and a Markdown source editor that carries the same label: pressing it shows the draft's Markdown wire byte for byte — a rich draft's canonical Markdown, markers and all — and marks the toggle pressed. A draft the rich schema cannot draw, such as a table, stays in the source editor: the hidden field carries those exact bytes, pressing the toggle again neither converts nor discards them, and sending posts them, so the transcript draws the table instead of a mangled rich draft. Emptying the source draft always returns to the rich editor, with the toggle unpressed.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
   },
 ];
 
