@@ -66,7 +66,7 @@ import { renderGatewayDialog } from "./views/gateway-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
-import { childSessionsByParent, customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
+import { childSessionsByParent, customGroupOrder, mergeChildAndStartedSessions, moveGroupLabel, readSidebarSessionOptions, startedSessionsByBot, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
@@ -2098,6 +2098,9 @@ export class HuiApp extends HuiElement {
 
   /** Every pane reading the same registry shares one child projection, including the empty-array identity. */
   private static readonly childSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
+  /** Same sharing, for what a bot's chat started through `create_session`; built lazily, only while a bot's own chat
+   * is open, so an ordinary conversation never pays for it. */
+  private static readonly startedSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
   private static readonly noChildSessions: readonly SessionView[] = [];
   private get childSessions(): readonly SessionView[] {
     // Embedded panes overlay only their own status. Their children come from the canonical shared list.
@@ -2107,7 +2110,15 @@ export class HuiApp extends HuiElement {
       index = childSessionsByParent(groups);
       HuiApp.childSessionIndexes.set(groups, index);
     }
-    return index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
+    const children = index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
+    const bot = this.conversation.selected?.bot;
+    if (!bot) return children;
+    let startedIndex = HuiApp.startedSessionIndexes.get(groups);
+    if (!startedIndex) {
+      startedIndex = startedSessionsByBot(groups);
+      HuiApp.startedSessionIndexes.set(groups, startedIndex);
+    }
+    return mergeChildAndStartedSessions(children, startedIndex.get(bot.id) ?? HuiApp.noChildSessions);
   }
 
   /** Session lists never show bot chats; the Bots tab lists their bots. The

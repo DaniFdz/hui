@@ -1,7 +1,8 @@
 /**
  * The sidebar's projection of the session registry: grouping, sorting, filtering, the parent/child tree and
  * custom group order and Run status's child-session index, plus the per-browser view options in localStorage. Every projection is view-only; the
- * registry's groups and order are changed only through its API.
+ * registry's groups and order are changed only through its API. Run status's own Sessions section also merges in
+ * what a bot's chat started through `create_session`, by the same projection discipline.
  */
 import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../kanban.ts";
 import type { SessionGroup, SessionStatus, SessionView } from "../../api/sessions.ts";
@@ -51,6 +52,13 @@ export type SidebarSessionGroup = SessionGroup & {
 
 const CHILD_STATUS_ORDER: Partial<Record<SessionStatus, number>> = { running: 0, waiting: 1, error: 2, idle: 3 };
 
+/** A child or started session's place in Run status's Sessions section: running first, then waiting, error, idle,
+ * everything else last. Shared by `childSessionsByParent`'s sibling sort and `mergeChildAndStartedSessions`'s merge
+ * sort so neither keeps its own copy of the ranking. */
+function childStatusRank(status: SessionStatus): number {
+  return CHILD_STATUS_ORDER[status] ?? 4;
+}
+
 /** Index ordinary, unarchived children once per registry projection, never once per parent or streamed frame.
  * Stable sibling order breaks status ties; helpers belong in Helpers, not Sessions. */
 export function childSessionsByParent(groups: readonly SessionGroup[]): ReadonlyMap<string, readonly SessionView[]> {
@@ -65,9 +73,42 @@ export function childSessionsByParent(groups: readonly SessionGroup[]): Readonly
     }
   }
   for (const siblings of children.values()) {
-    siblings.sort((a, b) => (CHILD_STATUS_ORDER[a.status] ?? 4) - (CHILD_STATUS_ORDER[b.status] ?? 4));
+    siblings.sort((a, b) => childStatusRank(a.status) - childStatusRank(b.status));
   }
   return children;
+}
+
+/** Index every non-archived, non-subagent, ordinary session a bot started (its view carries `createdBy`) by that
+ * bot's id, once per registry projection. A bot's own forever chat is excluded defensively too, though its view can
+ * never carry both `createdBy` and `bot` (the server's `!bot` guard on `createdBy`). */
+export function startedSessionsByBot(groups: readonly SessionGroup[]): ReadonlyMap<string, readonly SessionView[]> {
+  const started = new Map<string, SessionView[]>();
+  for (const group of groups) {
+    for (const session of group.sessions) {
+      const botId = session.createdBy?.id;
+      if (!botId || session.archived || session.subagent || session.bot) continue;
+      const siblings = started.get(botId);
+      if (siblings) siblings.push(session);
+      else started.set(botId, [session]);
+    }
+  }
+  for (const siblings of started.values()) {
+    siblings.sort((a, b) => childStatusRank(a.status) - childStatusRank(b.status));
+  }
+  return started;
+}
+
+/** A parent's own children plus whatever else a bot's chat started, as one Sessions list: the parent's own entry
+ * wins a clash by id, then every row sorts by status, newest-updated first and finally by id so two redraws of the
+ * same data never reorder. An empty `started` returns `children` unchanged, so a non-bot chat's identity is kept. */
+export function mergeChildAndStartedSessions(
+  children: readonly SessionView[], started: readonly SessionView[],
+): readonly SessionView[] {
+  if (!started.length) return children;
+  const byId = new Map(children.map((session) => [session.id, session]));
+  for (const session of started) if (!byId.has(session.id)) byId.set(session.id, session);
+  return [...byId.values()].sort((a, b) =>
+    childStatusRank(a.status) - childStatusRank(b.status) || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
 }
 
 /** Only an open Run status draws rows; keep the cap separate from the complete live-work count. */

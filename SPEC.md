@@ -2279,6 +2279,18 @@ and terminals only after persistence succeeds, and leaves all PI transcripts and
 worktrees untouched. A failed write rolls back every deletion guard. The delete
 dialog states that subagents, including nested ones, are included.
 
+### A bot's chat lists the sessions it started (2026-11-22)
+
+A session view carries `createdBy` (the bot that started it with `create_session`, see
+[Shapes](docs/api.md#shapes)) whenever one such bot exists and the session is not that bot's own forever chat.
+Opening that bot's chat and its Run status popover shows those sessions under the same **Sessions** section a
+parent shows its spawned children in, merged with whatever children it has of its own (a bot's chat has none
+today, but the merge holds regardless): the same cap-8 rows, "+N more" note, status ordering and "N sessions
+running" pill text, because the section draws whatever list it is given without asking where a row came from. A
+session a `lead` record with no `createdByBot` predates the field; it is still credited by reading its first
+prompt's `[from @handle] ` bot tag from the transcript PI already keeps, resolved against the bot roster at read
+time rather than backfilled into the registry (see [Shapes](docs/api.md#shapes)).
+
 ## Background watchers
 
 Some work is a wait, not a task: a pull request needs approval before `/merge`,

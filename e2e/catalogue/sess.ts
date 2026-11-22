@@ -790,6 +790,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "SESS-082",
+    title: "A bot's chat lists the sessions it started",
+    behaviour: "Opening a Chief of Staff's own chat and its Run status popover shows a Sessions section listing every session it started with create_session, the same section and row shape a parent's own spawned children draw in (one row per session, capped at eight with a \"+N more\" note, newest and live work first). A started session's row reads its live status (such as Running) while it runs, and tapping the row opens that session, landing on /sessions/<id>.",
+    spec: ["SPEC.md#a-bots-chat-lists-the-sessions-it-started-2026-11-22", "docs/api.md#shapes"],
+    surfaces: ["nav:bot", "nav:session"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

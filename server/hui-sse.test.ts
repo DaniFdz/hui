@@ -39,7 +39,7 @@ const {
   updateSession,
 } = createSessionLifecycle({
   views: createSessionViews({
-    bots: () => ({ identity: () => undefined }),
+    bots: () => ({ identity: () => undefined, byHandle: () => undefined }),
     botRegistry: { list: async () => [] },
     pullRequestStatuses: () => ({ view: (ref) => ref }),
     jiraIssues: () => [],
