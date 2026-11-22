@@ -9,6 +9,7 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";
 import { runtimeMemoryByPid } from "../runtimes/resources.ts";
 import type { RuntimeQuestion, TranscriptEntry } from "../runtimes/types.ts";
+import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { groupSessions, readSessionRegistry, sessionRegistryWrites, updateRegistry, type SessionRecord, type SubagentRecord } from "./sessions.ts";
 import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
@@ -99,7 +100,7 @@ function subagentView({ task: _task, summary: _summary, ...view }: SubagentRecor
 }
 
 export type SessionViewDeps = {
-  bots: () => { identity(botId: string): SessionView["bot"] };
+  bots: () => { identity(botId: string): SessionView["bot"]; byHandle(handle: string): SessionView["bot"] };
   botRegistry: { list(): Promise<unknown> };
   pullRequestStatuses: () => Pick<PullRequestStatuses, "view">;
   jiraIssues: (record: SessionRecord, transcript: readonly TranscriptEntry[]) => SessionJiraIssue[];
@@ -176,7 +177,17 @@ export function createSessionViews(deps: SessionViewDeps) {
     const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => deps.pullRequestStatuses().view(ref));
     const jiraIssues = deps.jiraIssues(record, transcript);
     const bot = record.bot ? deps.bots().identity(record.bot) : undefined;
-    const createdBy = record.createdByBot ? deps.bots().identity(record.createdByBot) : undefined;
+    // `createdByBot` is written by every lead a bot starts today; a lead from before it existed has none, so its
+    // creator is read from the transcript it already keeps (its first prompt's `[from @handle] ` tag) instead of a
+    // migration or a backfill write.
+    const legacyCreator = !record.createdByBot && record.lead && !record.bot && !record.subagent
+      ? (() => {
+        const origin = botTurnOrigin(transcript.find((entry): entry is Extract<TranscriptEntry, { kind: "message" }> =>
+          entry.kind === "message" && entry.role === "user")?.text);
+        return origin.kind === "bot" ? deps.bots().byHandle(origin.handle) : undefined;
+      })()
+      : undefined;
+    const createdBy = (record.createdByBot ? deps.bots().identity(record.createdByBot) : undefined) ?? legacyCreator;
     return {
       id: record.id,
       progress: record.progress,

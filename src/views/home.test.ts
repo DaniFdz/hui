@@ -617,6 +617,22 @@ test("Run status counts live child sessions while closed and draws capped sessio
   assert.match(open, /class="chat-run-status__note">\+2 more</u);
   assert.doesNotMatch(open, />Operator child [78]</u);
   assert.doesNotMatch(await renderWorkerSession("idle", { runStatusPanelOpen: true, subagents }), /aria-label="Sessions"/u);
+
+  // A bot's own chat lists what it started through create_session too: Run status draws it under the same
+  // Sessions section, merged into the same cap-8 list and counted in the pill, with no idea where the row came from.
+  const { mergeChildAndStartedSessions, startedSessionsByBot } = await import("../lib/session/sidebar-sessions.ts");
+  const started = startedSessionsByBot([{ label: "", sessions: [{
+    id: "bot-started", title: "Bot started session", createdBy: { id: "bot-x", handle: "bot-x", name: "Bot X" },
+    status: "running", tool: "durable", cwd: "/repo", displayCwd: "", group: "", stage: "investigation", stageOrigin: "default", createdAt: "", updatedAt: "2099-01-01T00:00:00Z",
+  }] }]).get("bot-x") ?? [];
+  const merged = mergeChildAndStartedSessions(childSessions, started);
+  const openWithStarted = await renderWorkerSession("idle", { childSessions: merged, subagents, watchers, runStatusPanelOpen: true });
+  assert.match(openWithStarted, /class="chat-run-status__count"> · 1 helper · 2 sessions · 1 watcher</u);
+  assert.match(openWithStarted, /2 sessions running/u);
+  assert.match(openWithStarted, /aria-label=Open session Bot started session/u);
+  assert.ok(openWithStarted.indexOf(">Bot started session<") < openWithStarted.indexOf(">Operator child 9<"),
+    "the newest running session sorts first, whether it came from a parent's children or a bot's started list");
+  assert.match(openWithStarted, /class="chat-run-status__note">\+3 more</u, "the merged session counts toward the same cap");
 });
 
 test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {

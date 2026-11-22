@@ -26,8 +26,12 @@ export type BrowserStatus = Static<typeof BrowserStatus>;
 export const BrowserViewTab = Type.Object({ id: Type.String(), title: Type.String(), url: Type.String() }, { $id: "BrowserViewTab" });
 export type BrowserViewTab = Static<typeof BrowserViewTab>;
 
-/** A tab the agent handed to the operator: the agent waits until they continue. */
-export const BrowserHandoff = Type.Object({ tabId: Type.String(), message: Type.String(), since: Type.String() }, { $id: "BrowserHandoff" });
+/** A tab waiting for the operator: `by` says whether the agent handed it over and waits, or the operator took it
+ * and the agent's run was stopped. */
+export const BrowserHandoff = Type.Object({
+  tabId: Type.String(), message: Type.String(), since: Type.String(),
+  by: Type.Union([Type.Literal("agent"), Type.Literal("operator")]),
+}, { $id: "BrowserHandoff" });
 export type BrowserHandoff = Static<typeof BrowserHandoff>;
 
 export const BrowserViewState = Type.Object({
@@ -42,20 +46,29 @@ export const BrowserViewAction = Type.Object({
 }, { $id: "BrowserViewAction" });
 export type BrowserViewAction = Static<typeof BrowserViewAction>;
 
+export const BrowserViewClipboard = Type.Object({ type: Type.Literal("clipboard"), text: Type.String() }, { $id: "BrowserViewClipboard" });
+export type BrowserViewClipboard = Static<typeof BrowserViewClipboard>;
+
 export const BrowserViewMessage = Type.Union([
   Type.Object({ type: Type.Literal("state"), ...BrowserViewState.properties }),
   Type.Object({ type: Type.Literal("action"), ...BrowserViewAction.properties }),
+  BrowserViewClipboard,
 ], { $id: "BrowserViewMessage" });
 export type BrowserViewMessage = Static<typeof BrowserViewMessage>;
 
-/** What a browser view sends back: pick a tab, or drive a tab the agent handed over. Input is only
- * applied while that tab's handoff waits, and only by the conversation that owns it. */
+/** What a browser view sends back: pick a tab, take one from the agent, or drive the tab the operator holds.
+ * Input is only applied while that tab waits for the operator, and only by the conversation that owns it. */
 export const BrowserViewControl = Type.Union([
   Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }),
+  Type.Object({ action: Type.Literal("takeover"), tabId: Type.String() }),
+  Type.Object({ action: Type.Literal("copy"), tabId: Type.String() }),
+  // The published schema has no length keywords; the transport enforces 1–1024 code units.
+  Type.Object({ action: Type.Literal("insert"), tabId: Type.String(), text: Type.String() }),
   Type.Object({
     action: Type.Literal("pointer"), tabId: Type.String(),
     kind: Type.Union([Type.Literal("move"), Type.Literal("down"), Type.Literal("up")]),
     x: Type.Number(), y: Type.Number(), button: Type.Union([Type.Literal("left"), Type.Literal("right")]),
+    clickCount: Type.Optional(Type.Number()),
   }),
   Type.Object({ action: Type.Literal("wheel"), tabId: Type.String(), x: Type.Number(), y: Type.Number(), deltaX: Type.Number(), deltaY: Type.Number() }),
   Type.Object({ action: Type.Literal("key"), tabId: Type.String(), key: Type.String() }),

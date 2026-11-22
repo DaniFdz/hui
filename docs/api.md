@@ -1537,7 +1537,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `model`, `thinking`, `fast`, `autonomous` | HUI | Session preference passed back to the runtime on reopen; `fast` and `autonomous` are optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
-| `createdByBot` | HUI | Optional id of the bot (bots.json) that started this session with `create_session`, shown as `createdBy` in views. Written only there, additive with no registry version bump; a session created before the field existed, and a bot's own chat, have none, and one whose bot is gone is an ordinary session |
+| `createdByBot` | HUI | Optional id of the bot (bots.json) that started this session with `create_session`, shown as `createdBy` in views. Written only there, additive with no registry version bump; a session created before the field existed, and a bot's own chat, have none, and one whose bot is gone is an ordinary session. A `lead` session with no `createdByBot` (one that predates the field) is credited by reading its first prompt's `[from @handle] ` bot tag instead, derived at read time from the transcript it already keeps, never written back. |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `progress` | HUI | Optional Task progress card `{ markdown, steps }` that HUI's utility model last wrote. Additive, so existing registries need no migration; absent means no card yet. See [Task progress](#task-progress). |
@@ -5270,13 +5270,17 @@ terminal streams. The server sends JSON text messages:
   on connect and whenever the conversation's tabs, the agent's current tab or
   the process change. `watching` is the tab whose frames follow; `following` is
   false while the viewer watches a tab other than the agent's. `handoff` is
-  `null`, or `{ tabId, message, since }` while the agent waits for the operator
-  in that tab.
+  `null`, or `{ tabId, message, since, by }` while that tab waits for the
+  operator: `by` is `agent` while the agent waits on it and `operator` while they
+  hold a tab they took.
 - `{ type: "action", tabId, text, point?, at }` for each agent browser action.
   `text` summarizes it (for example `Clicked e2 (button "Greet")`) and never
   contains typed text; `point` is the viewport CSS pixel of a click or hover.
   On connect, the conversation's latest action is sent once right after the
   first state and before any frame, without `point`.
+- `{ type: "clipboard", text }` is the page's selected text, sent only to the
+  view that asked to copy it. The pane writes it to the device's clipboard; it is
+  never stored in the conversation.
 
 Frames are binary messages: a big-endian `u32` header length, a JSON header
 `{ tabId, width, height, seq }` (`width`/`height` are the viewport in CSS
@@ -5286,14 +5290,23 @@ newest. Switching tabs sends that tab's last frame at once.
 
 The client sends `BrowserViewControl`; anything else is ignored. `{ action:
 "select", tabId }` watches a tab of the same conversation, or `null` to follow
-the agent. The rest reach the page only while that tab's handoff waits, only for
-the conversation that owns it: `{ action: "pointer", tabId, kind: "move" |
-"down" | "up", x, y, button: "left" | "right" }` and `{ action: "wheel",
- tabId, x, y, deltaX, deltaY }` (page CSS pixels, from the view's scaled frame),
-`{ action: "key", tabId, key }` (a key name such as `Enter`, `Tab` or `a`, or a
-chord such as `Control+a`) and `{ action: "continue", tabId }`, which ends the
-wait. Every other message leaves the view untouched, and a view that never
-selects a tab can only watch.
+the agent. `{ action: "takeover", tabId }` takes the conversation's own tab for
+the operator: their view stops the agent's run once, keeps the tab open and
+shows it, and asks again without stopping anything a second time. The rest
+reach the page only while that tab belongs to the operator, only for the
+conversation that owns it: `{ action: "pointer", tabId, kind: "move" | "down" |
+"up", x, y, button: "left" | "right", clickCount? }` (a press, its moves and its
+release become the click, drag or double/triple click the page sees) and
+`{ action: "wheel", tabId, x, y, deltaX, deltaY }` (page CSS pixels, from the
+view's scaled frame), `{ action: "key", tabId, key }` (a key name such as
+`Enter`, `Tab`, `Backspace` or `a`, or a chord such as `Control+a`), `{ action:
+"insert", tabId, text }` for text the operator pasted into the page's focused
+element (1–1024 UTF-16 code units; it is never echoed in a state or action
+message; if the page has no editable focus, the field at the last press is
+focused first), `{ action: "copy", tabId }` to read the page's selected text and
+answer with a `clipboard` message and
+`{ action: "continue", tabId }`, which ends it. Every other message leaves the
+view untouched, and a view that never selects a tab can only watch.
 
 The PI tool `browser` uses the authenticated agent bridge in both SDK and CLI
 backends and is registered only while `browser.enabled` is on. Caller identity
@@ -5437,8 +5450,19 @@ URL and a fresh snapshot, at most 8 000 characters, whose refs the agent acts on
 next), `timeout` (the operator may be away; the tab returns to the agent),
 `closed` (the tab went away under them) or `stopped` (the browser did). Input
 from the live view is applied to the handed-over tab only and is ignored once
-the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and stopping
-the turn settles the handoff with `closed`.
+the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and an ordinary
+Stop settles the handoff with `closed`; a takeover's stop keeps the tab until
+the operator continues.
+
+The operator can also take a tab without waiting for an agent: `takeover` stops
+the conversation's run once (a second takeover only asks for the tab again), and
+the tab survives the stop, so their click or paste still lands in it. Every
+other agent action is refused with 409 and told the operator has control. Their
+`insert` pastes into the page's focused element and is never echoed in a state,
+action or log. A takeover's Continue releases the tab without resuming
+anything: the view says the agent is stopped and that the operator writes in
+chat to continue. A lease lasts until the operator continues, the tab closes or
+the browser stops, and the ordinary Stop still closes the conversation's tabs.
 
 ### Files view API
 

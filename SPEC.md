@@ -1322,15 +1322,25 @@ password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
 with one sentence saying what to do and waits: ten minutes by default, at most
 thirty. That tab is the operator's until they continue. It stays open, the
 live view shows Your turn with the message and a Continue button, and every
-other agent action on the browser is refused. The browser view forwards the
-operator's pointer, wheel and keys to that one tab over the existing live-view
-socket; nothing else about a view becomes interactive, and input is ignored once
-the wait ends. Continue returns the page as it is then — title, URL and a fresh
-snapshot — so the agent acts on current refs rather than guessing whether the
-human step worked. A wait nobody answers ends with the tab back in the agent's
-control and a result saying the operator may be away; a tab that closes or a
-browser that stops ends it too. The chat's preview card carries the same
-message and opens the browser view where the operator can act.
+other agent action on the browser is refused. The browser pane is the page: the
+operator's pointer, wheel and keys reach that one tab over the existing
+live-view socket — a click is a press and its release, a drag selects its text,
+a double or triple click selects a word or line, and a long press opens the
+page's context menu. Cmd/Ctrl+C copies the page's selected text to this device's
+clipboard, Cmd/Ctrl+V pastes that clipboard into the page's focused field at
+its caret, and HUI never echoes the value in a state, action or log. Nothing
+else about a
+view becomes interactive, and input is ignored once the wait ends. Continue
+returns the page as it is then — title, URL and a fresh snapshot — so the agent
+acts on current refs rather than guessing whether the human step worked. A wait
+nobody answers ends with the tab back in the agent's control and a result saying
+the operator may be away; a tab that closes or a browser that stops ends it too.
+The chat's preview card carries the same message and opens the browser view
+where the operator can act. The operator need not wait for the agent to offer
+the tab either: taking it stops the conversation's run once, keeps the tab open
+for their own click or paste, and refuses the agent the browser until they
+continue, which releases the tab without resuming the stopped run — writing in
+chat is how the work resumes.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
@@ -2305,6 +2315,18 @@ Deleting a session removes the complete subtree from HUI, closes its live runtim
 and terminals only after persistence succeeds, and leaves all PI transcripts and
 worktrees untouched. A failed write rolls back every deletion guard. The delete
 dialog states that subagents, including nested ones, are included.
+
+### A bot's chat lists the sessions it started (2026-11-22)
+
+A session view carries `createdBy` (the bot that started it with `create_session`, see
+[Shapes](docs/api.md#shapes)) whenever one such bot exists and the session is not that bot's own forever chat.
+Opening that bot's chat and its Run status popover shows those sessions under the same **Sessions** section a
+parent shows its spawned children in, merged with whatever children it has of its own (a bot's chat has none
+today, but the merge holds regardless): the same cap-8 rows, "+N more" note, status ordering and "N sessions
+running" pill text, because the section draws whatever list it is given without asking where a row came from. A
+session a `lead` record with no `createdByBot` predates the field; it is still credited by reading its first
+prompt's `[from @handle] ` bot tag from the transcript PI already keeps, resolved against the bot roster at read
+time rather than backfilled into the registry (see [Shapes](docs/api.md#shapes)).
 
 ## Background watchers
 

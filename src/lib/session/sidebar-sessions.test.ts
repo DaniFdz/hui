@@ -7,11 +7,13 @@ import {
   filterSessionGroups,
   customGroupOrder,
   childSessionsByParent,
+  mergeChildAndStartedSessions,
   runStatusChildRows,
   moveGroupLabel,
   normalizeSidebarSessionOptions,
   sessionTreeRows,
   sidebarSessionGroups,
+  startedSessionsByBot,
 } from "./sidebar-sessions.ts";
 
 function session(id: string, overrides: Partial<SessionView> = {}): SessionView {
@@ -174,6 +176,56 @@ test("child session rows prioritize running, waiting, error, idle then other sta
   assert.deepEqual(runStatusChildRows(children), { rows: children.slice(0, 8), more: 2 });
   assert.deepEqual(runStatusChildRows([]), { rows: [], more: 0 });
   assert.deepEqual(source[0]!.sessions.map(({ id }) => id), before, "projection never mutates registry order");
+});
+
+test("sessions a bot started are indexed once for all bots, excluding archived, subagents and bot chats", () => {
+  let createdByReads = 0;
+  const bot = (index: number) => ({ id: `bot-${index % 2}`, handle: `bot-${index % 2}`, name: `Bot ${index % 2}` });
+  const started = Array.from({ length: 64 }, (_, index) => ({
+    ...session(`started-${index}`),
+    get createdBy() { createdByReads += 1; return bot(index); },
+  }));
+  const source = [{ label: "Work", sessions: [
+    session("plain"),
+    ...started,
+    session("archived", { createdBy: bot(0), archived: true }),
+    session("helper", { createdBy: bot(0), subagent: { taskId: "helper", status: "running", startedAt: "", updatedAt: "" } }),
+    session("own-chat", { createdBy: bot(0), bot: bot(0) }),
+  ] }];
+  const index = startedSessionsByBot(source);
+  assert.equal(createdByReads, started.length, "one read per candidate session, not one scan per bot");
+  assert.equal(index.get("bot-0")?.length, 32);
+  assert.equal(index.get("bot-1")?.length, 32);
+  assert.equal(index.get("bot-2"), undefined, "a session without createdBy is never indexed");
+  assert.ok(!index.get("bot-0")?.some(({ id }) => ["archived", "helper", "own-chat"].includes(id)),
+    "archived, subagent and a bot's own chat never count as sessions it started");
+});
+
+test("started sessions sort like children: running, waiting, error, idle then other statuses", () => {
+  const statuses = ["idle", "running", "error", "waiting"] as const;
+  const source = [{ label: "Work", sessions: statuses.map((status, i) =>
+    ({ ...session(String(i), { status }), createdBy: { id: "bot-1", handle: "bot-1", name: "Bot" } })) }];
+  assert.deepEqual(startedSessionsByBot(source).get("bot-1")?.map(({ id }) => id), ["1", "3", "2", "0"]);
+});
+
+test("merging a parent's children with a bot's started sessions dedupes by id and sorts status, then recency, then id", () => {
+  const child = session("shared", { status: "idle", updatedAt: "2026-09-20T00:00:00Z" });
+  const started = session("shared", { status: "running", updatedAt: "2099-01-01T00:00:00Z" });
+  assert.deepEqual(mergeChildAndStartedSessions([child], [started]).map(({ id, status }) => [id, status]), [["shared", "idle"]],
+    "a parent's own entry for an id wins over a clashing started entry");
+
+  const children = [session("child-running", { status: "running", updatedAt: "2026-01-01T00:00:00Z" })];
+  const startedOnly = [
+    session("started-older", { status: "running", updatedAt: "2025-01-01T00:00:00Z" }),
+    session("started-newer", { status: "running", updatedAt: "2027-01-01T00:00:00Z" }),
+    session("started-idle", { status: "idle", updatedAt: "2099-01-01T00:00:00Z" }),
+  ];
+  assert.deepEqual(
+    mergeChildAndStartedSessions(children, startedOnly).map(({ id }) => id),
+    ["started-newer", "child-running", "started-older", "started-idle"],
+  );
+
+  assert.strictEqual(mergeChildAndStartedSessions(children, []), children, "an empty started list returns children unchanged");
 });
 
 test("search recognizes OTHER and raw labels across every grouping mode", () => {
