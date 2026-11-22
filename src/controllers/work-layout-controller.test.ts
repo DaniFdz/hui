@@ -31,7 +31,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 const press = (binding: string) => {
   const [code = ""] = binding.split("+").slice(-1);
   const prevented: string[] = [];

@@ -28,7 +28,7 @@ beforeEach(() => {
   fake.actions = [];
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => {}, updateComplete: Promise.resolve(true) };
 const group = { label: "repo", cwd: "/repo", workspaceMode: "worktree", baseRef: "release", sessions: [] } as unknown as SessionGroup;
 
@@ -137,12 +137,18 @@ test("connecting a worker from the picker shows it connecting at once and follow
   fake.workers = [{ id: "w1", name: "Remote", state: "error", error: "ssh: connect to host box port 22: Connection refused" } as WorkerView];
   launch.loadWorkers();
   await settle();
-  launch.props().onConnectLaunchWorker!("w1");
-  assert.equal(launch.workers[0]!.state, "connecting", "the row leaves offline before the gateway answers");
-  assert.deepEqual(fake.actions, ["connect w1"]);
-  fake.workers = [{ id: "w1", name: "Remote", state: "connected", host: { hostname: "box" } } as WorkerView];
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  assert.equal(launch.workers[0]!.state, "connected", "the list follows the connection until it settles");
+  // The picker's own follow-up poll is the timer the controller arms; the test drives it instead of waiting it out.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    launch.props().onConnectLaunchWorker!("w1");
+    assert.equal(launch.workers[0]!.state, "connecting", "the row leaves offline before the gateway answers");
+    assert.deepEqual(fake.actions, ["connect w1"]);
+    fake.workers = [{ id: "w1", name: "Remote", state: "connected", host: { hostname: "box" } } as WorkerView];
+    await vi.advanceTimersByTimeAsync(400);
+    assert.equal(launch.workers[0]!.state, "connected", "the list follows the connection until it settles");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a group that names a worker opens New Session on it, and one that does not keeps the sticky choice", () => {

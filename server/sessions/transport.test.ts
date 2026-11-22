@@ -6,6 +6,10 @@ import { test, vi } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { attachSessionTransport, SESSION_STREAM_GONE, sessionStreamTicket } from "./transport.ts";
 
+/** The one wait a test takes only to assert that something never happens: the comment above each call names what must
+ * stay quiet. Awaiting state is otherwise what a test does. */
+const quietWindow = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 test("session views stream over one-use, same-origin WebSocket tickets", { timeout: 10_000 }, async (t) => {
   let emit: (event: string, data: unknown) => void = () => {};
   let unsubscribed = 0;
@@ -112,7 +116,8 @@ test("an open session socket gets an application heartbeat every 15 seconds", { 
   await until(() => frames.length === 1);
   assert.deepEqual(frames, [{ event: "snapshot", data: { transcript: [], status: "idle" } }]);
   vi.advanceTimersByTime(14_999);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Quiet: the 15 s interval is not due yet, so no heartbeat may reach the socket.
+  await quietWindow(50);
   assert.equal(frames.length, 1, "no heartbeat before the interval is due");
   vi.advanceTimersByTime(1);
   await until(() => frames.length === 2);

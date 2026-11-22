@@ -215,6 +215,10 @@ test("the server starts lazily, once, and reports what it runs", { timeout: 60_0
   assert.equal(alive(node), false, "stopping reaches the server behind the launcher, not only the script");
 });
 
+/** The one wait a test takes only to assert that something never happens: the comment above each call names what must
+ * stay quiet. Awaiting state is otherwise what a test does. */
+const quietWindow = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
@@ -227,7 +231,8 @@ test("a server with no connections stops after the idle period; a connection hol
 
   await vscode.ensure();
   const release = vscode.acquire();
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  // Quiet: the idle period is shorter than this window, so an open connection must hold the server running.
+  await quietWindow(400);
   assert.equal((await vscode.status()).state, "running", "an open connection keeps it running");
   release();
   await waitFor("idle stop", async () => (await vscode.status()).state === "stopped");
@@ -249,7 +254,8 @@ test("a crash is reported, not restarted, and the next open starts a new instanc
   assert.match(failed.lastError, /^VS Code exited unexpectedly \(exit code 137\)/u, "the launcher reports node's death");
   assert.doesNotMatch(failed.lastError, /Extension host agent listening/u, "routine stdout is not presented as the error");
   assert.equal(vscode.current(), undefined, "a crashed server is not offered to the proxy");
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // Quiet: a crash is reported, never restarted, so the status must stay failed on its own.
+  await quietWindow(300);
   assert.equal((await vscode.status()).state, "failed", "nothing restarts it on its own");
   const again = await vscode.ensure();
   assert.equal(again.instance, 2);

@@ -953,7 +953,18 @@ test("a run that ends on a dropped connection retries itself, and one that ends 
     { kind: "error", message: "API key auth failed for provider keyed: exit 1" },
   ];
   stuck.emit({ type: "settled" });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // A dropped run in the same manager retries on the timer a refused request must never arm: its retry prompt is the
+  // proof the refused session's timer was never scheduled.
+  other.ensure(recordFor("retries"));
+  await waitForBoot(other, "retries");
+  const retries = refused[1]!;
+  await other.prompt("retries", "Use pup");
+  retries.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "error", message: "fetch failed" },
+  ];
+  retries.emit({ type: "settled" });
+  await waitFor("the dropped run to retry itself", () => retries.prompts.length === 2);
   assert.deepEqual(stuck.prompts, ["Use pup"], "a refused request is not retried");
   other.disposeAll();
 });

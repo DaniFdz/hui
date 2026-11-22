@@ -111,7 +111,7 @@ type Shell = {
 
 const shell = () => new HuiApp() as unknown as Shell;
 /** Lets every promise chain already queued run, without waiting on a wall-clock delay. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 const session = (id: string, extra: Partial<SessionView> = {}) => ({ id, title: "Build", status: "idle", ...extra }) as SessionView;
 const pane = { id: "pane-1", sessionId: "s1" };
 const presented = { active: true, visible: true, narrow: false, split: true };

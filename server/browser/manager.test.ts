@@ -143,6 +143,10 @@ async function eventually<T>(read: () => Promise<T>, accept: (value: T) => boole
   }
 }
 
+/** The one wait a test takes only to assert that something never happens: the comment above each call names what must
+ * stay quiet. Awaiting state is otherwise what a test does. */
+const quietWindow = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const detected = await resolveBrowserExecutable("");
 
 test("a real headless browser serves agent tabs end to end", {
@@ -822,7 +826,8 @@ test("a taken tab outlives the agent's idle clock until the operator continues",
   // The agent's call armed the clock; the lease must pause it before it fires.
   browser.operator("alpha", { action: "takeover", tabId: "t1" });
   await eventually(() => Promise.resolve(states.at(-1)), (state) => state?.handoff?.by === "operator");
-  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  // Quiet: the operator's lease pauses the agent's idle clock, so no tab may close inside its own interval.
+  await quietWindow(1_500);
   assert.equal(states.at(-1)?.tabs.length, 1, "the lease keeps the tab past the agent's idle clock");
 
   // Continue starts the ordinary clock again.
@@ -1153,7 +1158,8 @@ test("the operator's wheel scrolls the handed-over tab, and input waits for no h
   const settled = await scrollY();
   browser.operator("alpha", { action: "wheel", tabId: "t1", x: 200, y: 200, deltaX: 0, deltaY: 600 });
   browser.operator("alpha", { action: "key", tabId: "t1", key: "End" });
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // Quiet: nothing waits on the page now, so no further operator input may scroll it.
+  await quietWindow(300);
   assert.equal(await scrollY(), settled);
 });
 

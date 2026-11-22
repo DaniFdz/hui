@@ -67,7 +67,7 @@ beforeEach(() => {
   fake.sideQuestions = [];
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection; launching?: boolean } = {}) {
   const notes: string[] = [];
