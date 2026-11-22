@@ -4,10 +4,10 @@
  * Same capability model as shared terminals: WebSocket cannot carry x-hui, so
  * a guarded POST mints a short-lived, single-use ticket bound to one
  * conversation, and the upgrade also enforces same-origin and Host checks.
- * The stream is view-only except for a tab the agent handed to the operator:
- * there the socket also carries their pointer, wheel and key input, and the
- * Continue that ends the wait. Frames go out in the binary layout
- * `encodeBrowserFrame` writes.
+ * The stream is view-only except for a tab the agent handed to the operator or
+ * the operator took: there the socket also carries their pointer, wheel, key
+ * and pasted-text input, the takeover that stops the run, and the Continue that
+ * ends it. Frames go out in the binary layout `encodeBrowserFrame` writes.
  */
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
@@ -29,11 +29,13 @@ const TICKET_MS = 15_000;
 export type BrowserViewSource = {
   watch(owner: string, listener: BrowserViewListener): BrowserViewHandle;
   /** Operator input for a tab its agent handed over; ignored for every other tab. */
-  operator(owner: string, control: BrowserViewControl): void;
+  operator(owner: string, control: BrowserViewControl, reply?: (text: string) => void): void;
 };
 
 const TAB_ID = /^t\d{1,6}$/u;
 const MAX_COORDINATE = 100_000;
+/** A pasted value the operator's view may insert, in UTF-16 code units. */
+const MAX_INSERTED = 1_024;
 
 /** Untrusted client frame → the control it may be. Anything else is ignored. */
 export function parseBrowserViewControl(value: unknown): BrowserViewControl | undefined {
@@ -49,6 +51,12 @@ export function parseBrowserViewControl(value: unknown): BrowserViewControl | un
   const coordinate = (raw: unknown): number | undefined =>
     typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) <= MAX_COORDINATE ? raw : undefined;
   if (action === "continue") return { action: "continue", tabId };
+  if (action === "takeover") return { action: "takeover", tabId };
+  if (action === "copy") return { action: "copy", tabId };
+  if (action === "insert") {
+    const text = record["text"];
+    return typeof text === "string" && text.length >= 1 && text.length <= MAX_INSERTED ? { action: "insert", tabId, text } : undefined;
+  }
   if (action === "key") {
     const key = record["key"];
     return typeof key === "string" && key.length >= 1 && key.length <= 40 ? { action: "key", tabId, key } : undefined;
@@ -66,7 +74,9 @@ export function parseBrowserViewControl(value: unknown): BrowserViewControl | un
   if (kind !== "move" && kind !== "down" && kind !== "up") return undefined;
   const button = record["button"];
   if (button !== "left" && button !== "right") return undefined;
-  return { action: "pointer", tabId, kind, x, y, button };
+  const rawCount = record["clickCount"];
+  const clickCount = typeof rawCount === "number" && Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 3 ? rawCount : 1;
+  return { action: "pointer", tabId, kind, x, y, button, clickCount };
 }
 
 const tickets = new Map<string, { owner: string; expires: number }>();
@@ -81,7 +91,7 @@ export function browserViewTicket(owner: string): string {
 }
 
 export function attachBrowserTransport(server: EventEmitter, source: BrowserViewSource, allowedHosts?: ReadonlySet<string>): () => void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024, perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024, perMessageDeflate: false });
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== BROWSER_STREAM_PATH) return;
@@ -124,7 +134,7 @@ export function attachBrowserTransport(server: EventEmitter, source: BrowserView
           const control = parseBrowserViewControl(JSON.parse(data.toString()) as unknown);
           if (!control) return;
           if (control.action === "select") view.select(control.tabId);
-          else source.operator(ticket.owner, control);
+          else source.operator(ticket.owner, control, (text) => sendText({ type: "clipboard", text }));
         } catch {
           // Malformed control messages are ignored; the view stays as it is.
         }

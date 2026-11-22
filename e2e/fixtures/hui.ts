@@ -140,6 +140,8 @@ export type Hui = {
   /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
   statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  /** Writes text to this target's clipboard and presses its paste chord on the focused element. */
+  paste(text: string): Promise<void>;
   /** Models the phone shell's soft keyboard from the Keyboard plugin's show/hide events: the root mark it sets and the
    * CSS viewport a phone leaves above the keys. Browser-only; the Android app's keyboard is the system's. */
   softKeyboard(open: boolean): Promise<void>;
@@ -237,6 +239,8 @@ export type Hui = {
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
+  /** Drags across a target's box from one fraction of it to another, selecting page text. */
+  dragWithin(target: Locator, from: { x: number; y: number }, to: { x: number; y: number }): Promise<void>;
   /** Drags the pointer from a target's centre by a pixel offset, holding it there for `whileOver` before letting go. */
   dragBy(target: Locator, offset: { dx: number; dy: number }, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
@@ -721,6 +725,46 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      dragWithin: async (target, from, to) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("hui.dragWithin: the target is not laid out");
+        const page = browser();
+        const point = (step: number) => ({
+          x: box.x + box.width * (from.x + (to.x - from.x) * step / 4),
+          y: box.y + box.height * (from.y + (to.y - from.y) * step / 4),
+        });
+        const start = point(0);
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        for (let step = 1; step <= 4; step += 1) {
+          const next = point(step);
+          await page.mouse.move(next.x, next.y);
+        }
+        await page.mouse.up();
+      },
+      paste: async (text) => {
+        const page = browser();
+        const wrote = await page.evaluate(async (value) => {
+          try {
+            await navigator.clipboard.writeText(value);
+            return true;
+          } catch {
+            // A browser that refuses the async clipboard still copies a selected value.
+            const area = document.createElement("textarea");
+            area.value = value;
+            document.body.append(area);
+            area.select();
+            const copied = document.execCommand("copy");
+            area.remove();
+            // The temporary field took focus; the driving frame is what the chord must reach.
+            document.querySelector<HTMLElement>(".hui-browser-frame")?.focus();
+            return copied;
+          }
+        }, text);
+        if (!wrote) throw new Error("hui.paste: this browser refused to write its clipboard");
+        const apple = await page.evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await page.keyboard.press(apple ? "Meta+V" : "Control+V");
+      },
       softKeyboard: async (open) => {
         await browser().setViewport(open ? { width: 390, height: 664 } : { width: 390, height: 844 });
         await browser().evaluate((open) => {
