@@ -13,7 +13,8 @@
  * Tab sinks a list item and Shift+Tab lifts it, both returning `false` outside a list so Tab still moves focus out of
  * the editor; inside a code block Tab indents by two spaces (the dialect's list indent) instead. Cmd/Ctrl+B, I and E
  * toggle strong, emphasis and inline code, Cmd/Ctrl+Shift+E fences the selection, and undo/redo/select-all are
- * prosemirror-history's and prosemirror-commands' own.
+ * prosemirror-history's and prosemirror-commands' own. In a literal draft (see `editor.ts`) the formatting chords are
+ * consumed and change nothing (`richKeymap`'s `formatting`).
  */
 import { chainCommands, selectAll, setBlockType, toggleMark } from "prosemirror-commands";
 import { redo, undo } from "prosemirror-history";
@@ -137,19 +138,23 @@ export { redo, selectAll, undo };
 /**
  * The composer's key bindings, for the view to install: Enter follows `enterPolicy` (sending through `onSend`),
  * Shift+Enter hard-breaks, Tab and Shift+Tab indent code or change a list's depth, and the formatting chords and
- * history are bound to the commands above.
+ * history are bound to the commands above. `formatting` says whether the chords act; while it is false a chord is
+ * consumed without a transaction. A consumed key is handled, so the view prevents its default action and the browser's
+ * own bold, italic or code command does not run for it.
  */
-export function richKeymap(options: { onSend: () => void }): Plugin {
+export function richKeymap(options: { onSend: () => void; formatting?: () => boolean }): Plugin {
+  const formatting = options.formatting ?? (() => true);
+  const chord = (command: Command): Command => (state, dispatch, view) => (formatting() ? command(state, dispatch, view) : true);
   return keymap({
     Enter: (state, dispatch, view) => enterPolicy(state) === "send" ? (options.onSend(), true) : enterKey(state, dispatch, view),
     "Shift-Enter": chainCommands(codeBlockNewline, newline),
     "Mod-Enter": sendKey(options.onSend),
     Tab: chainCommands(indentCodeBlock, tabInList),
     "Shift-Tab": chainCommands(outdentCodeBlock, shiftTabInList),
-    "Mod-b": toggleStrong,
-    "Mod-i": toggleEmphasis,
-    "Mod-e": toggleInlineCode,
-    "Mod-Shift-e": fenceSelection,
+    "Mod-b": chord(toggleStrong),
+    "Mod-i": chord(toggleEmphasis),
+    "Mod-e": chord(toggleInlineCode),
+    "Mod-Shift-e": chord(fenceSelection),
     "Mod-z": undo,
     "Shift-Mod-z": redo,
     "Mod-y": redo,

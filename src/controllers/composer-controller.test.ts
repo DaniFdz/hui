@@ -48,7 +48,6 @@ function fakeEditor(initial = "", onFocus?: () => void) {
     },
     focus: () => control.focus(),
     caretAtEnd: () => control.caretAtEnd(),
-    sourceMode: () => false,
     destroy: () => {},
   };
   return { editor, state, onChange: (handler: (markdown: string) => void) => { changed = handler; } };

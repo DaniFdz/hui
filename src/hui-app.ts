@@ -1550,11 +1550,11 @@ export class HuiApp extends HuiElement {
     return host && host.closest("hui-app") === this ? host : null;
   }
 
-  /** The element the update dialog hands focus back to: the surface editing the draft, not the host around it. */
+  /** The element the update dialog hands focus back to: the rich surface editing the draft, not the host around it. */
   private composerFocusTarget(): HTMLElement | null {
     const host = this.composerEditorHost;
     if (!host) return null;
-    return host.querySelector<HTMLElement>(this.composerEditor?.sourceMode() ? ":scope > textarea" : ":scope > .ProseMirror");
+    return host.querySelector<HTMLElement>(":scope > .ProseMirror");
   }
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {

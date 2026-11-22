@@ -6,8 +6,8 @@
  * its canonical Markdown, and every node and mark carries the `toDOM`/`parseDOM` pair an HTML paste needs.
  *
  * Images, horizontal rules, tables, task lists and math have no node here on purpose. They are not unrenderable by the
- * transcript, but the composer cannot edit them as rich content, so `sourceMode` opens a draft holding one in the
- * source editor instead of dropping or corrupting it.
+ * transcript, but the composer cannot edit them as rich content, so `sourceMode` loads a draft holding one as literal
+ * text instead of dropping or corrupting it.
  */
 import { Schema, type DOMOutputSpec, type MarkSpec, type MarkType, type NodeSpec, type NodeType } from "prosemirror-model";
 import { bulletList, listItem, orderedList } from "prosemirror-schema-list";

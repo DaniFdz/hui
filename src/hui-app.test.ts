@@ -628,7 +628,6 @@ test("the composer editor follows its host: kept while it is the same, destroyed
       destroy: () => composers.destroyed.push(`destroy ${id}`),
       focus: () => {},
       caretAtEnd: () => {},
-      sourceMode: () => false,
       control: { editable: () => true },
     } as unknown as import("./lib/composer/rich/editor.ts").ComposerEditor);
     return { id, isConnected: true, closest: (selector: string) => selector === "hui-app" ? app : null } as unknown as HTMLElement;

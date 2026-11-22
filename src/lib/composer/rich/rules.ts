@@ -6,7 +6,8 @@
  * `**` stay exactly as typed. A star may open inside a word (`a*b*` is emphasis in Markdown), an underscore may not
  * (`read_text_file` is a name), no run's content may start or end with whitespace, and no rule fires inside a code mark
  * or a code block. Block rules (heading, quote, bullet, ordered item, fence) fire only in a paragraph, so `# ` typed
- * inside a heading stays text instead of silently converting it.
+ * inside a heading stays text instead of silently converting it. A literal draft (see `editor.ts`) has no rules: the
+ * plugin's `enabled` check is off there, so its markers stay text.
  *
  * Undo is exact. The typed character is dispatched as its own ordinary edit first and the conversion second, marked
  * with `closeHistory`, so prosemirror-history keeps the literal markers as an event of their own: one undo brings
@@ -153,18 +154,22 @@ export function applyInputRules(view: RuleView, from: number, to: number, text: 
   return false;
 }
 
-/** The composer's Markdown input rules as a plugin: `handleTextInput`, plus the rules once an IME composition ends. */
-export function richInputRules(schema: Schema): Plugin {
+/**
+ * The composer's Markdown input rules as a plugin: `handleTextInput`, plus the rules once an IME composition ends. Both
+ * run only while `enabled` says so, which is always for a rich draft.
+ */
+export function richInputRules(schema: Schema, enabled: () => boolean = () => true): Plugin {
   rulesOf(schema);
   const rule: Plugin = new Plugin({
     props: {
       handleTextInput(view, from, to, text) {
-        return applyInputRules(view, from, to, text, schema);
+        return enabled() ? applyInputRules(view, from, to, text, schema) : false;
       },
       handleDOMEvents: {
         compositionend(view) {
           // The composed text is in the document by now, so the rules read it the way the next keystroke would.
           setTimeout(() => {
+            if (!enabled()) return;
             const cursor = view.state.selection.empty ? view.state.selection.from : undefined;
             if (cursor !== undefined) applyInputRules(view, cursor, cursor, "", schema);
           }, 0);

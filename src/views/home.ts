@@ -247,10 +247,7 @@ function composerEditorOptions(props: HomeProps, host: HTMLElement, surface: Com
     },
   };
   if (chat) options.keyShortcuts = "Enter Control+Enter Meta+Enter";
-  else {
-    options.id = "launch-prompt";
-    options.className = "new-session-page__message";
-  }
+  else options.id = "launch-prompt";
   return options;
 }
 
@@ -879,7 +876,6 @@ function renderLaunchForm(props: HomeProps) {
             <div class="agent-chat__composer-footer">
               <div class="agent-chat__composer-lead">
                 ${renderAttachmentPicker(props, props.launching)}
-                <span class="agent-chat__composer-mode" data-composer-mode-toggle></span>
               </div>
               <div class="agent-chat__composer-trail">
                 <div class="agent-chat__composer-controls new-session-page__launch-controls chat-controls__model-settings">
@@ -1878,7 +1874,6 @@ function renderComposer(props: HomeProps) {
         <div class="agent-chat__composer-footer">
           <div class="agent-chat__composer-lead agent-chat__composer-meta">
             ${renderAttachmentPicker(props, booting || props.sending)}
-            <span class="agent-chat__composer-mode" data-composer-mode-toggle></span>
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">

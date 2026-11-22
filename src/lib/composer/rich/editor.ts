@@ -3,16 +3,21 @@
  * renders — to the ProseMirror document the rest of this directory defines, and keeps the form's hidden field carrying
  * the Markdown wire.
  *
- * One host holds three things: a `div.ProseMirror` contenteditable, a source `<textarea>` for a draft the schema cannot
- * represent, and the hidden input the form submits (`name="text"` in the chat, `name="prompt"` on New Session). The
- * visible editor carries rendered text; only the hidden field carries Markdown, so a send never has to read the DOM. An
- * unedited draft sends the exact source it was loaded with, a rich edit sends `serializeMarkdown`'s canonical form, and
- * an edit in the source editor sends the exact bytes typed there. A draft that ends on a blank line keeps an empty
- * paragraph there, so the caret and the operator's next word sit below the quote they loaded, not inside it.
+ * One host holds two things: a `div.ProseMirror` contenteditable, the only surface the operator edits, and the hidden
+ * input the form submits (`name="text"` in the chat, `name="prompt"` on New Session). The visible editor carries
+ * rendered text; only the hidden field carries Markdown, so a send never has to read the DOM. An unedited draft sends the
+ * exact source it was loaded with, and a rich edit sends `serializeMarkdown`'s canonical form. A draft that ends on a
+ * blank line keeps an empty paragraph there, so the caret and the operator's next word sit below the quote they loaded,
+ * not inside it.
  *
- * The Markdown toggle lives in the composer's lead (`[data-composer-mode-toggle]`) and is the only way between the two:
- * a draft holding raw HTML, math, a table, an alert, an image or anything else the schema has no node for opens in the
- * source editor and stays there until it is representable again. The toggle never sends.
+ * A draft the schema cannot hold (raw HTML, a table, math, an alert, an image, a link reference, a `session:` chip) is a
+ * literal draft instead. It loads as its own text, one paragraph with every marker and pipe visible, and the hidden field
+ * keeps its exact bytes until the operator edits it. A literal draft is never formatted as it is typed: typed, pasted and
+ * dropped text enter as plain text and line breaks, the input rules are off, and the formatting chords do nothing. So
+ * every character the editor shows is one the wire carries, and after an edit the wire is that text (`literalWire`), not
+ * the serializer's rewrite. The trade-off is deliberate: an unrepresentable draft sends what it shows, but editing it
+ * cannot turn it into formatting. It stays literal until a load of a draft the schema can hold replaces it (a send's
+ * clear, a rewind, a restored draft).
  *
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
  * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
@@ -24,21 +29,20 @@
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { history } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
-import type { Node as ProseMirrorNode, Slice } from "prosemirror-model";
+import { Fragment, Slice, type Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection, type Command, type Plugin, type Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import type { PromptMode } from "../../../api/sessions.ts";
 import { composerEnterMode } from "../state.ts";
-import { adjustTextareaHeight, disconnectTextareaOverflowObserver, observeTextareaOverflow } from "../textarea.ts";
 import { codeBlockNewline, enterKey, enterPolicy, newline, richKeymap } from "./keys.ts";
-import { parseMarkdown, serializeMarkdown, sourceMode } from "./markdown.ts";
+import { literalDocument, literalInline, literalWire, parseMarkdown, serializeMarkdown, sourceMode } from "./markdown.ts";
 import { htmlSlice, plainTextSlice } from "./paste.ts";
 import { richInputRules } from "./rules.ts";
 import { richSchema, schemaNode } from "./schema.ts";
 
-/** The composer as the controller and the view's own glue see it, whichever mode it is in. */
+/** The composer as the controller and the view's own glue see it. */
 export type ComposerControl = {
-  /** The wire the form sends: the loaded source, the serializer's output, or the exact source typed in source mode. */
+  /** The wire the form sends: the loaded source, the serializer's output, or a literal draft's text. */
   markdown(): string;
   /** The current textblock's text, with a leading newline when it is not the document's first block. */
   text(): string;
@@ -49,7 +53,7 @@ export type ComposerControl = {
   focus(): void;
   caretAtEnd(): void;
   editable(): boolean;
-  /** Whether a key or focus event came from this composer, in either mode. */
+  /** Whether a key or focus event came from this composer. */
   isTarget(target: Node | null): boolean;
 };
 
@@ -57,27 +61,25 @@ export type ComposerControl = {
 export type ComposerEditorOptions = {
   /** The hidden field's name: `text` in the chat, `prompt` on New Session. */
   name: "text" | "prompt";
-  /** The accessible name of whichever surface is editing, and of the hidden field's label. */
+  /** The accessible name of the editing surface, and of the hidden field's label. */
   label: string;
   placeholder: string;
   /** The draft's Markdown wire. */
   markdown: string;
   /** A send, a start or a boot in flight: the composer takes no edits. */
   locked: boolean;
-  /** Extra classes for the source textarea, which the reference composer sheet styles through the host. */
-  className?: string;
-  /** The id the active surface carries, such as `launch-prompt`. */
-  id?: string;
   /** Whether a run is in flight, which is what plain Enter means while it is. */
   streaming: boolean;
   /** The operator's Enter preference; `modifierEnter` leaves plain Enter as a line break. */
   sendShortcut?: "enter" | "modifierEnter";
   /** The `aria-keyshortcuts` the chat composer announces. */
   keyShortcuts?: string;
-  /** The completion menus the editor announces on whichever surface is active. */
+  /** The completion menus the editor announces on the surface. */
   ariaExpanded?: boolean;
   ariaControls?: string;
   ariaActiveDescendant?: string;
+  /** The id the surface carries, such as `launch-prompt`. */
+  id?: string;
   onChange(markdown: string): void;
   onSelection(): void;
   /** The slash and mention menus, before the editor reads the key itself. */
@@ -87,7 +89,6 @@ export type ComposerEditorOptions = {
   onPaste(event: ClipboardEvent): boolean;
   onFocus?(): void;
   onBlur?(event: FocusEvent): void;
-  onSourceModeChange?(source: boolean): void;
 };
 
 /** One mounted composer. `update` is idempotent: a render may call it as often as it likes. */
@@ -98,7 +99,6 @@ export type ComposerEditor = {
   setMarkdown(source: string): void;
   focus(): void;
   caretAtEnd(): void;
-  sourceMode(): boolean;
   destroy(): void;
 };
 
@@ -138,9 +138,9 @@ function endsOnBlankLine(source: string): boolean {
 }
 
 /**
- * The document a loaded draft becomes. A source that ends on a blank line — a reply's quote, a round trip through the
- * source editor — keeps one empty paragraph there, because Markdown has nowhere else to put the operator's caret: a
- * blockquote's last line would otherwise take the first thing the operator types. The serializer writes no line for it.
+ * The document a loaded draft becomes. A source that ends on a blank line — a reply's quote — keeps one empty paragraph
+ * there, because Markdown has nowhere else to put the operator's caret: a blockquote's last line would otherwise take the
+ * first thing the operator types. The serializer writes no line for it.
  */
 function draftDocument(source: string): ProseMirrorNode {
   const doc = source === "" ? emptyDocument() : parseMarkdown(source);
@@ -185,15 +185,14 @@ class ComposerEditorImpl implements ComposerEditor {
   };
   readonly #host: HTMLElement;
   readonly #view: EditorView;
-  readonly #source: HTMLTextAreaElement;
   readonly #hidden: HTMLInputElement;
   readonly #plugins: readonly Plugin[];
   readonly #events = new AbortController();
   #options: ComposerEditorOptions;
-  #toggle: HTMLButtonElement | undefined;
-  #sourceMode = false;
+  /** Whether the document is a literal draft: its text is the wire, and no rule or chord formats it. */
+  #literal = false;
   #destroyed = false;
-  /** The lock the view's `editable` prop was last set from, and the attributes the active surface carries. */
+  /** The lock the view's `editable` prop was last set from, and the attributes the surface carries. */
   #locked: boolean;
   #applied: readonly string[] = [];
   /** The selection the app last read, so a key or click that moved nothing asks for no read of its own. */
@@ -205,17 +204,10 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#host = host;
     this.#options = options;
     this.#locked = options.locked;
-    this.#source = document.createElement("textarea");
-    this.#source.rows = 1;
-    this.#source.dir = "auto";
-    this.#source.hidden = true;
-    // A view styles the source surface through its className from the first frame, not the first render after it.
-    this.#source.className = options.className ?? "";
-    host.append(this.#source);
     this.#plugins = [
       history(),
-      richInputRules(richSchema),
-      richKeymap({ onSend: () => this.#send(this.#enterMode()) }),
+      richInputRules(richSchema, () => !this.#literal),
+      richKeymap({ onSend: () => this.#send(this.#enterMode()), formatting: () => !this.#literal }),
       keymap(baseKeymap),
     ];
     this.#view = new EditorView(host, {
@@ -225,6 +217,7 @@ class ComposerEditorImpl implements ComposerEditor {
       handleKeyDown: (view, event) => this.#keyDown(view, event),
       handleTextInput: (view, from, to, text) => this.#textInput(view, from, to, text),
       handlePaste: (view, event) => this.#paste(view, event),
+      handleDrop: (view, event, _slice, moved) => this.#drop(view, event, moved),
       handleDOMEvents: {
         focus: () => {
           this.#options.onFocus?.();
@@ -245,16 +238,15 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#listen();
     this.#syncSurface();
     this.setMarkdown(options.markdown);
-    // A ref runs before its element is connected, so the toggle's container in the composer's lead is looked up once the
-    // render has committed, and once more on the next frame for a host that was still detached at the microtask.
+    // A ref runs before its element is connected, so the measured height waits for the commit: once in a microtask, and
+    // once more on the next frame for a host that was still detached at the microtask.
     queueMicrotask(() => this.#afterMount());
     requestAnimationFrame(() => this.#afterMount());
   }
 
-  /** The parts of a mount that need the element in the document: its toggle and its measured height. Both are idempotent. */
+  /** The part of a mount that needs the element in the document: its measured height. Idempotent. */
   #afterMount(): void {
     if (this.#destroyed) return;
-    this.#syncToggle();
     this.#measureScroll();
   }
 
@@ -262,44 +254,29 @@ class ComposerEditorImpl implements ComposerEditor {
     if (this.#destroyed) return;
     this.#options = options;
     if (options.markdown !== this.#hidden.value) this.setMarkdown(options.markdown);
-    this.#source.className = options.className ?? "";
     this.#syncSurface();
-    this.#syncToggle();
   }
 
   setMarkdown(source: string): void {
     if (this.#destroyed) return;
     this.#hidden.value = source;
-    if (source !== "" && sourceMode(source)) {
-      this.#openSource(source);
-      return;
-    }
-    this.#loadRich(draftDocument(source));
+    // A draft the schema cannot hold loads as its own text (see the module header); any other draft loads as a document.
+    if (source !== "" && sourceMode(source)) this.#load(literalDocument(source), true);
+    else this.#load(draftDocument(source), false);
     this.#syncSurface();
     this.#syncEmpty();
-    this.#syncToggle();
   }
 
   focus(): void {
     if (this.#destroyed) return;
-    if (this.#sourceMode) this.#source.focus({ preventScroll: true });
-    else this.#view.focus();
+    this.#view.focus();
   }
 
   caretAtEnd(): void {
     if (this.#destroyed) return;
-    if (this.#sourceMode) {
-      const end = this.#source.value.length;
-      this.#source.setSelectionRange(end, end);
-      return;
-    }
     const { state } = this.#view;
     const end = TextSelection.atEnd(state.doc);
     if (!state.selection.eq(end)) this.#view.dispatch(state.tr.setSelection(end));
-  }
-
-  sourceMode(): boolean {
-    return this.#sourceMode;
   }
 
   destroy(): void {
@@ -310,12 +287,8 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#scrollObserver = undefined;
     if (this.#scrollFrame !== null) cancelAnimationFrame(this.#scrollFrame);
     this.#scrollFrame = null;
-    disconnectTextareaOverflowObserver(this.#source);
     this.#view.destroy();
-    this.#source.remove();
     this.#hidden.remove();
-    this.#toggle?.remove();
-    this.#toggle = undefined;
     if (editors.get(this.#host) === this) editors.delete(this.#host);
   }
 
@@ -332,10 +305,9 @@ class ComposerEditorImpl implements ComposerEditor {
       this.#reportSelection(true);
       return;
     }
-    // A rich edit's wire is the serializer's own Markdown; the visible document never holds a marker.
-    this.#hidden.value = serializeMarkdown(state.doc);
+    // A rich edit's wire is the serializer's own Markdown; a literal draft's is the text its document shows.
+    this.#hidden.value = this.#literal ? literalWire(state.doc) : serializeMarkdown(state.doc);
     this.#syncEmpty();
-    this.#syncToggle();
     this.#measureScroll();
     this.#options.onChange(this.#hidden.value);
     this.#reportSelection(true);
@@ -354,50 +326,11 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#options.onSelection();
   }
 
-  /** Loads a representable document and leaves source mode if it was in it. Clears history, puts the caret at the end. */
-  #loadRich(doc: ProseMirrorNode): void {
+  /** Loads a document as a fresh state, and says whether it is a literal draft. The app's last read no longer applies. */
+  #load(doc: ProseMirrorNode, literal: boolean): void {
+    this.#literal = literal;
     this.#view.updateState(this.#state(doc));
-    // A loaded draft has its own text and its own caret: whatever the app last read no longer applies to it.
     this.#reported = null;
-    if (this.#sourceMode) {
-      this.#sourceMode = false;
-      disconnectTextareaOverflowObserver(this.#source);
-      this.#options.onSourceModeChange?.(false);
-    }
-    this.#syncEmpty();
-  }
-
-  /** Shows the source editor with these exact bytes: the draft cannot be drawn as rich text. */
-  #openSource(source: string): void {
-    this.#source.value = source;
-    const entered = !this.#sourceMode;
-    this.#sourceMode = true;
-    this.#reported = null;
-    this.#syncSurface();
-    this.#syncEmpty();
-    observeTextareaOverflow(this.#source);
-    adjustTextareaHeight(this.#source);
-    this.#syncToggle();
-    if (entered) this.#options.onSourceModeChange?.(true);
-  }
-
-  /** The source editor holds the bytes: the wire is its value, and the draft follows it. */
-  #fromSource(): void {
-    this.#hidden.value = this.#source.value;
-    this.#syncToggle();
-    this.#options.onChange(this.#source.value);
-    this.#reportSelection(true);
-  }
-
-  /** An emptied source-mode draft is a rich empty draft again, with the caret back in it. */
-  #enterRich(): void {
-    this.#loadRich(emptyDocument());
-    this.#syncSurface();
-    this.#hidden.value = "";
-    this.#syncToggle();
-    this.#options.onChange("");
-    this.focus();
-    this.caretAtEnd();
   }
 
   /** The selection's textblock, with the position its content starts at and the newline that prefixes `text()`. */
@@ -421,14 +354,12 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #text(): string {
-    if (this.#sourceMode) return this.#source.value;
     const { node, prefix } = this.#block();
     // A hard break is one character of the text the completions read, so offsets stay in the operator's coordinates.
     return prefix + node.textBetween(0, node.content.size, undefined, "\n");
   }
 
   #selection(): { start: number; end: number } {
-    if (this.#sourceMode) return { start: this.#source.selectionStart, end: this.#source.selectionEnd };
     const { node, prefix } = this.#block();
     const { $from, $to } = this.#view.state.selection;
     const start = prefix.length + ($from.parent === node ? $from.parentOffset : 0);
@@ -437,18 +368,6 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #replaceRange(from: number, to: number, insert: string, caret: number): void {
-    if (this.#sourceMode) {
-      const value = this.#source.value;
-      const head = Math.max(0, Math.min(value.length, from));
-      const tail = Math.max(head, Math.min(value.length, to));
-      this.#source.setRangeText(insert, head, tail, "end");
-      const at = Math.max(0, Math.min(this.#source.value.length, caret));
-      this.#source.setSelectionRange(at, at);
-      this.#source.focus({ preventScroll: true });
-      adjustTextareaHeight(this.#source);
-      this.#fromSource();
-      return;
-    }
     const { node, start, prefix } = this.#block();
     const position = (offset: number) => start + Math.max(0, Math.min(node.content.size, offset - prefix.length));
     const head = position(from);
@@ -461,8 +380,7 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #isTarget(target: Node | null): boolean {
-    if (target === null) return false;
-    return target === this.#source || target === this.#view.dom || this.#view.dom.contains(target);
+    return target !== null && this.#view.dom.contains(target);
   }
 
   /** What Enter means right now, from the operator's device, preference and the running turn. */
@@ -487,6 +405,7 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#options.onBeforeKeyDown(event);
     if (event.defaultPrevented) return true;
     if (view.composing || event.isComposing) return false;
+    // Every other key, the formatting chords included, is the keymap's: a literal draft's chords are consumed there.
     if (event.key !== "Enter" || event.altKey) return false;
     // Shift+Enter is always one hard break, and Mod-Enter always sends, whatever the cursor sits in.
     if (event.shiftKey) return this.#edit(view, hardBreak);
@@ -511,6 +430,11 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #textInput(view: EditorView, from: number, to: number, text: string): boolean {
+    // A literal draft takes typed text as it is: no rule runs and no stored mark is applied, so the text stays the wire.
+    if (this.#literal) {
+      view.dispatch(view.state.tr.replaceWith(from, to, literalInline(text)).scrollIntoView());
+      return true;
+    }
     // A multi-line fill or a pasted block arrives as one insertion: its newlines become hard breaks, never Markdown.
     if (!text.includes("\n")) return false;
     const { state } = view;
@@ -528,6 +452,12 @@ class ComposerEditorImpl implements ComposerEditor {
     if (this.#options.onPaste(event)) return true;
     const data = event.clipboardData;
     if (!data) return false;
+    if (this.#literal) {
+      // A literal draft takes the clipboard's plain text, as a textarea does: pasted markup would bring marks the wire drops.
+      const text = data.getData("text/plain");
+      if (text) view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.from(literalInline(text)), 0, 0)).scrollIntoView());
+      return true;
+    }
     const html = data.getData("text/html");
     const plain = data.getData("text/plain");
     const mapped = html ? htmlSlice(richSchema, html) : undefined;
@@ -537,119 +467,36 @@ class ComposerEditorImpl implements ComposerEditor {
     return true;
   }
 
-  /** After an edit the toggle says what the wire needs, and the source editor why it cannot become rich. */
-  #syncToggle(): void {
-    if (this.#destroyed) return;
-    const container = this.#host.closest("form")?.querySelector<HTMLElement>("[data-composer-mode-toggle]");
-    if (container && !this.#toggle) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "agent-chat__composer-mode-toggle";
-      button.textContent = "Markdown";
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.#toggleSource();
-      }, { signal: this.#events.signal });
-      container.append(button);
-      this.#toggle = button;
-    }
-    const toggle = this.#toggle;
-    if (!toggle) return;
-    // A rich edit's wire is the serializer's own output, so only a source draft has to be checked for representability:
-    // this runs on every keystroke, and it is the one parse the rich path would be paying for nothing.
-    const representable = !this.#sourceMode || !sourceMode(this.#hidden.value);
-    toggle.setAttribute("aria-pressed", String(this.#sourceMode));
-    toggle.title = this.#sourceMode
-      ? representable ? "Show the formatted draft" : "This draft holds Markdown the formatted editor cannot show"
-      : "Edit the Markdown source";
-    if (this.#sourceMode && !representable) {
-      this.#source.setAttribute("aria-description", `${toggle.title}. It sends exactly these bytes.`);
-    } else {
-      this.#source.removeAttribute("aria-description");
-    }
-  }
-
-  /** The toggle: rich → source shows the current wire, source → rich needs a representable draft. An empty one is. */
-  #toggleSource(): void {
-    if (this.#options.locked) return;
-    if (!this.#sourceMode) {
-      this.#openSource(this.#hidden.value);
-      this.#source.focus({ preventScroll: true });
-      return;
-    }
-    if (sourceMode(this.#source.value)) {
-      this.#syncToggle();
-      return;
-    }
-    this.#hidden.value = this.#source.value;
-    this.#loadRich(draftDocument(this.#source.value));
-    this.#syncSurface();
-    this.#syncToggle();
-    this.#view.focus();
+  /** A literal draft takes dropped text as plain text, as its paste does. A move inside the draft, and files, are not its. */
+  #drop(view: EditorView, event: DragEvent, moved: boolean): boolean {
+    if (!this.#literal || moved || !event.dataTransfer || event.dataTransfer.files.length > 0) return false;
+    event.preventDefault();
+    const text = event.dataTransfer.getData("text/plain");
+    const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (text && at) view.dispatch(view.state.tr.insert(at.pos, literalInline(text)).scrollIntoView());
+    view.focus();
+    return true;
   }
 
   #listen(): void {
     const signal = this.#events.signal;
-    this.#source.addEventListener("input", () => {
-      if (!this.#sourceMode) return;
-      if (this.#source.value === "") {
-        this.#enterRich();
-        return;
-      }
-      adjustTextareaHeight(this.#source);
-      this.#fromSource();
-    }, { signal });
-    this.#source.addEventListener("keydown", (event) => this.#sourceKeyDown(event), { signal });
-    this.#source.addEventListener("paste", (event) => {
-      if (this.#options.onPaste(event)) event.preventDefault();
-    }, { signal });
     for (const type of ["click", "select", "keyup"] as const) {
       // A caret this browser moved without a transaction (a click, an arrow key) still has to re-read the completions.
-      this.#source.addEventListener(type, () => {
-        if (this.#sourceMode) this.#reportSelection();
-      }, { signal });
-      this.#view.dom.addEventListener(type, () => {
-        if (!this.#sourceMode) this.#reportSelection();
-      }, { signal });
+      this.#view.dom.addEventListener(type, () => this.#reportSelection(), { signal });
     }
-    this.#source.addEventListener("focus", () => this.#options.onFocus?.(), { signal });
-    this.#source.addEventListener("blur", (event) => this.#options.onBlur?.(event), { signal });
   }
 
-  /** The source editor's keys: the menus first, then Enter as the composer's Enter means it. Tab leaves. */
-  #sourceKeyDown(event: KeyboardEvent): void {
-    this.#options.onBeforeKeyDown(event);
-    if (event.defaultPrevented || event.isComposing || event.key !== "Enter" || event.altKey) return;
-    // Shift+Enter is the textarea's own newline, which is exactly the hard break the rich editor writes.
-    if (event.shiftKey) return;
-    const mode = this.#enterMode(false, event.ctrlKey, event.metaKey);
-    if (!mode || mode === "newline") return;
-    event.preventDefault();
-    this.#options.onSubmit(mode);
-  }
-
-  /** The active surface's identity: one labeled editor at a time, and the completion menus on whichever it is. */
+  /** The surface's identity: the combobox attributes and the id it carries, and the lock the editor applies to it. */
   #syncSurface(): void {
     if (this.#destroyed) return;
     const { id, locked } = this.#options;
     const rich = this.#view.dom;
-    const active = this.#sourceMode ? this.#source : rich;
-    const inactive = this.#sourceMode ? rich : this.#source;
     const attributes = this.#attributes();
-    // One control at a time carries the combobox: the other surface loses every attribute this one sets, including a
-    // menu attribute this render no longer has.
-    for (const name of new Set([...this.#applied, ...Object.keys(attributes)])) {
-      inactive.removeAttribute(name);
-      if (!(name in attributes)) active.removeAttribute(name);
-    }
-    for (const [name, value] of Object.entries(attributes)) active.setAttribute(name, value);
+    for (const name of this.#applied) if (!(name in attributes)) rich.removeAttribute(name);
+    for (const [name, value] of Object.entries(attributes)) rich.setAttribute(name, value);
     this.#applied = Object.keys(attributes);
-    for (const element of [rich, this.#source]) element.removeAttribute("id");
-    if (id) active.id = id;
-    // Only the surface that is editing carries a placeholder: a hidden source box never answers a query for it.
-    this.#source.hidden = !this.#sourceMode;
-    rich.hidden = this.#sourceMode;
-    this.#source.disabled = locked;
+    rich.removeAttribute("id");
+    if (id) rich.id = id;
     if (this.#locked !== locked) {
       this.#locked = locked;
       this.#view.setProps({ editable: () => !locked });
@@ -667,7 +514,7 @@ class ComposerEditorImpl implements ComposerEditor {
       "aria-placeholder": placeholder,
       // The rich surface is not a form control, so the sheet draws its own placeholder from `data-placeholder`; the
       // `placeholder` attribute is there because a control found by placeholder is how a test and an operator reach the
-      // draft, and both surfaces answer to that one attribute.
+      // draft.
       placeholder,
       dir: "auto",
       "data-placeholder": placeholder,
@@ -684,8 +531,7 @@ class ComposerEditorImpl implements ComposerEditor {
 
   /** The placeholder shows while the rich document holds no text at all. */
   #syncEmpty(): void {
-    const empty = this.#sourceMode ? this.#source.value === "" : this.#view.state.doc.textContent === "";
-    this.#view.dom.toggleAttribute("data-empty", empty && !this.#sourceMode);
+    this.#view.dom.toggleAttribute("data-empty", this.#view.state.doc.textContent === "");
   }
 
   /** A scrollable draft keeps the sheet's fade; measured after a frame, never from inside a transaction. */

@@ -3,7 +3,8 @@
  * writes the canonical Markdown the wire format carries, and `canonicalize`/`sourceMode` decide whether a draft fits
  * the editor at all. The browser sends the same Markdown a textarea would have sent; only its spelling is normalized
  * (bullets become `- `, `*emphasis*` is kept, `__strong__` becomes `**strong**`, indented code becomes a fence, CRLF
- * becomes LF), and a draft holding a construct the editor cannot represent opens in source mode instead of losing it.
+ * becomes LF), and a draft holding a construct the editor cannot represent loads as literal text (`literalDocument`)
+ * instead of losing it.
  *
  * The parser is markdown-it 15 with the transcript's CJK-friendly emphasis rules, `html: false`, `linkify: false` and
  * `breaks: true`, plus one core rule that turns every `softbreak` into a `hardbreak`: in a composer a plain newline is
@@ -18,13 +19,18 @@
  * becomes `\*genuine markdown\*`). `serializeMarkdown` re-parses its own output and falls back to escaping every
  * metacharacter when the result would not read back as the same document. An empty paragraph at the end of a document
  * holds the editor's caret below a quote and writes no line, because no Markdown spells one.
+ *
+ * A literal draft is its own source as one paragraph of text, each line break a `hard_break` node: ProseMirror's DOM
+ * reader turns a newline inside a text node into a space when it reads an edit back, so a newline is never stored as
+ * text. `literalWire` writes that text back as the wire, so the bytes survive without the serializer's rewrite. The one
+ * exception is a carriage return, which is read as a line break and written as LF.
  */
 import MarkdownIt, { type Env, type StateCore, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
 import type { Mark, Node } from "prosemirror-model";
 import { MarkdownParser, MarkdownSerializer, type MarkdownSerializerState, type ParseSpec } from "prosemirror-markdown";
 import { markdownTokens } from "../../markdown/parser.ts";
-import { richSchema } from "./schema.ts";
+import { richSchema, schemaNode } from "./schema.ts";
 
 /** What the dialect holds and how the canonical form writes it. `markdown.test.ts` holds the round trip to this. */
 export const SUPPORTED_DIALECT = {
@@ -61,7 +67,7 @@ function fenceLanguage(info: string): string {
   return info.trim().split(/\s+/u)[0] ?? "";
 }
 
-/** Every markdown-it token the schema can hold. Anything else makes the draft a source-mode draft. */
+/** Every markdown-it token the schema can hold. Anything else makes the draft a literal draft. */
 const DIALECT_TOKENS: ReadonlySet<string> = new Set([
   "paragraph_open", "paragraph_close", "inline", "text", "hardbreak", "softbreak",
   "blockquote_open", "blockquote_close",
@@ -154,15 +160,39 @@ function representable(source: string): Node | undefined {
   }
 }
 
-/** The lossless stand-in a caller that ignores `sourceMode` gets: the whole source as literal text, in one paragraph. */
-function sentinel(source: string): Node {
-  const { doc, paragraph } = richSchema.nodes;
-  return doc.create(null, paragraph.create(null, source ? richSchema.text(source) : undefined));
+/**
+ * The inline content of literal text: a text run per line, a `hard_break` between two lines and no marks. A carriage
+ * return ends a line as a newline does, so the document never holds one.
+ */
+export function literalInline(text: string): Node[] {
+  const content: Node[] = [];
+  for (const [index, line] of text.split(/\r\n?|\n/u).entries()) {
+    if (index > 0) content.push(schemaNode(richSchema, "hard_break").create());
+    if (line) content.push(richSchema.text(line));
+  }
+  return content;
 }
 
-/** Parses a draft. Never throws: a draft the editor cannot represent comes back as `sourceMode`'s sentinel document. */
+/**
+ * A literal draft's document: the whole source as one paragraph of text (see the module header). It is the stand-in
+ * for a source `sourceMode` flags, whatever `parseMarkdown` would make of it, so a literal draft never carries a mark.
+ */
+export function literalDocument(source: string): Node {
+  return schemaNode(richSchema, "doc").create(null, schemaNode(richSchema, "paragraph").create(null, literalInline(source)));
+}
+
+/**
+ * The wire a literal document sends: the text it shows, with every line break written as one newline and no Markdown.
+ * A line break is a `hard_break`, or the boundary between two paragraphs that a browser's own edit (a filled or dictated
+ * newline) made; both are one line, so the bytes come back the same either way.
+ */
+export function literalWire(doc: Node): string {
+  return doc.textBetween(0, doc.content.size, "\n", "\n");
+}
+
+/** Parses a draft. Never throws: a draft the editor cannot represent comes back as the literal document of its source. */
 export function parseMarkdown(source: string): Node {
-  return representable(source) ?? sentinel(source);
+  return representable(source) ?? literalDocument(source);
 }
 
 /**
@@ -199,7 +229,7 @@ export function canonicalize(source: string): string {
 }
 
 /**
- * Whether a draft must open in the source editor: it holds a construct the schema cannot hold, the parser rejects it,
+ * Whether a draft must load as literal text: it holds a construct the schema cannot hold, the parser rejects it,
  * or canonicalizing it twice does not settle on one text and document.
  */
 export function sourceMode(source: string): boolean {

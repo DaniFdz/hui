@@ -1,9 +1,9 @@
-/* HUI-owned: the composer's rich editor (`src/lib/composer/rich/editor.ts`) — the ProseMirror surface, the source
- * textarea it falls back to for a draft the schema cannot hold, and the Markdown toggle in the composer's lead.
+/* HUI-owned: the composer's rich editor (`src/lib/composer/rich/editor.ts`) — the ProseMirror surface every composer
+ * draws, a literal draft's plain text included.
  *
  * The reference sheets keep the composer's geometry and apply it to `.agent-chat__composer-combobox > :is(textarea,
- * input)`; the rich root takes the same box from the same tokens here, so switching modes never moves the sheet. The
- * visible editor draws the formatted draft, so the marks and blocks it can hold are drawn as the transcript draws them,
+ * input)`; the rich root takes the same box from the same tokens here. The visible editor draws the formatted draft, so
+ * the marks and blocks it can hold are drawn as the transcript draws them,
  * and no rule here changes where the caret sits: no transform, no negative margin, no inline-block box.
  */
 
@@ -37,7 +37,7 @@
 }
 
 /* New Session's first prompt is not a chat message: it grows to its reference textarea's ten-line cap, on that
-   textarea's own expression, so the rich box and the source box keep one height on that sheet (CHAT-091). */
+   textarea's own expression, so the rich box keeps the sheet's height (CHAT-091). */
 .new-session-page__composer .agent-chat__composer-combobox > .ProseMirror {
   max-height: calc(10lh + var(--chat-box-inset) + var(--chat-box-inset));
 }
@@ -167,60 +167,8 @@
   text-underline-offset: 2px;
 }
 
-/* The source editor holds the bytes, so it reads as Markdown: the reference geometry, the mono face. */
-.agent-chat__composer-combobox > textarea {
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: max(16px, var(--chat-composer-editor-size));
-}
-
-/* The Markdown toggle beside the attachment picker: small, always visible, and pressed while the source is showing. */
-.agent-chat__composer-mode {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.agent-chat__composer-mode-toggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  padding: 2px 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--chat-composer-tertiary);
-  font: inherit;
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color var(--duration-fast) ease, background-color var(--duration-fast) ease;
-}
-
-.agent-chat__composer-mode-toggle:hover {
-  background: color-mix(in srgb, var(--text-strong) 6%, transparent);
-  color: var(--text-strong);
-}
-
-.agent-chat__composer-mode-toggle[aria-pressed="true"] {
-  border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.agent-chat__composer-mode-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-chat__composer-mode-toggle {
-    transition: none;
-  }
-}
-
-/* Forced colours drop every paint we own: the prose keeps the system face, and code and the toggle are marked by a
-   border the system draws, so a fence is still a fence and the pressed toggle still reads as pressed. */
+/* Forced colours drop every paint we own: the prose keeps the system face, and code is marked by a border the system
+   draws, so a fence is still a fence. */
 @media (forced-colors: active) {
   .agent-chat__composer-combobox > .ProseMirror {
     color: CanvasText;
@@ -239,10 +187,5 @@
   .agent-chat__composer-combobox > .ProseMirror:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
-  }
-
-  .agent-chat__composer-mode-toggle[aria-pressed="true"] {
-    border-color: Highlight;
-    color: Highlight;
   }
 }
