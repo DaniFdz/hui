@@ -20,8 +20,7 @@ import { closeDrawerOnEscape } from "./views/shell.ts";
 import { HuiApp } from "./hui-app.ts";
 
 const api = vi.hoisted(() => ({ calls: [] as unknown[][] }));
-const textarea = vi.hoisted(() => ({ calls: [] as string[] }));
-const mirror = vi.hoisted(() => ({ calls: [] as string[] }));
+const composers = vi.hoisted(() => ({ destroyed: [] as string[], byHost: new Map<string, { destroy: () => void }>() }));
 const powerApi = vi.hoisted(() => ({ lidAwake: [] as boolean[] }));
 const launchApi = vi.hoisted(() => ({ created: [] as Record<string, unknown>[], checkouts: [] as ((checkout: unknown) => void)[] }));
 
@@ -43,16 +42,10 @@ vi.mock("./api/sessions.ts", async (importOriginal) => ({
   loadGitCheckout: () => new Promise((resolve) => launchApi.checkouts.push(resolve)),
 }));
 
-vi.mock("./lib/composer/textarea.ts", async (importOriginal) => ({
-  ...await importOriginal<typeof import("./lib/composer/textarea.ts")>(),
-  observeTextareaOverflow: (element: { id: string }) => textarea.calls.push(`observe ${element.id}`),
-  disconnectTextareaOverflowObserver: (element: { id: string }) => textarea.calls.push(`disconnect ${element.id}`),
-  scheduleTextareaHeightAdjustment: (element: { id: string }) => textarea.calls.push(`measure ${element.id}`),
-}));
-
-vi.mock("./lib/composer/composer-mirror.ts", async (importOriginal) => ({
-  ...await importOriginal<typeof import("./lib/composer/composer-mirror.ts")>(),
-  disconnectComposerMirror: (element: { id: string }) => mirror.calls.push(`disconnect ${element.id}`),
+vi.mock("./lib/composer/rich/editor.ts", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./lib/composer/rich/editor.ts")>(),
+  // A host finds the editor a render mounted there; the test registry decides which hosts have one.
+  composerEditorFor: (host: { id: string }) => composers.byHost.get(host.id),
 }));
 
 vi.mock("./api/control-surfaces.ts", async (importOriginal) => ({
@@ -151,8 +144,8 @@ function escape() {
 
 beforeEach(() => {
   api.calls = [];
-  textarea.calls = [];
-  mirror.calls = [];
+  composers.destroyed = [];
+  composers.byHost = new Map();
   powerApi.lidAwake = [];
   launchApi.created = [];
   launchApi.checkouts = [];
@@ -215,7 +208,7 @@ test("a failed pane lookup never focuses another pane's composer", async () => {
   app.work.layout = undefined;
   app.focusActiveComposer();
   await Promise.resolve();
-  assert.deepEqual(queried, [".agent-chat__composer-combobox > textarea"], "a chat this element renders itself is still focused");
+  assert.deepEqual(queried, ["[data-composer-editor]"], "a chat this element renders itself is still focused");
 });
 
 test("a chat with no selected conversation is handed no sleep notice", () => {
@@ -626,44 +619,46 @@ test("renaming the selected session sends only its new title", () => {
   assert.deepEqual(api.calls, [["renameSession", "s1", { title: "New" }]]);
 });
 
-test("the composer textarea is observed, remeasured when code replaces its draft, and released", () => {
+test("the composer editor follows its host: kept while it is the same, destroyed when a render replaces it", () => {
   const app = shell();
-  let current: { id: string } | null = { id: "first" };
-  app.embeddedPane = true;
-  app.renderRoot = { querySelector: (selector) => selector === ".agent-chat__composer-combobox > textarea" ? current : null };
+  let current: HTMLElement | null = null;
+  /** A host as the render draws it: connected, and owned by this app. The one it replaces is gone from the document. */
+  const host = (id: string) => {
+    composers.byHost.set(id, {
+      destroy: () => composers.destroyed.push(`destroy ${id}`),
+      focus: () => {},
+      caretAtEnd: () => {},
+      sourceMode: () => false,
+      control: { editable: () => true },
+    } as unknown as import("./lib/composer/rich/editor.ts").ComposerEditor);
+    return { id, isConnected: true, closest: (selector: string) => selector === "hui-app" ? app : null } as unknown as HTMLElement;
+  };
+  app.renderRoot = { querySelector: (selector) => selector === "[data-composer-editor]" ? current : null };
+  current = host("first");
   app.updated(new Map());
-  assert.deepEqual(textarea.calls, ["observe first", "measure first"]);
+  assert.deepEqual(composers.destroyed, [], "the composer this render drew keeps its editor");
   app.updated(new Map());
-  app.composer.setDraft("replaced");
+  assert.deepEqual(composers.destroyed, [], "a render that reuses its host keeps the same editor");
+  // A rewind, a route change or a closed pane hands back a new host: the one it replaced must not stay reachable from
+  // its ProseMirror view, its listeners and its observers.
+  const first = current;
+  current = host("second");
+  (first as unknown as { isConnected: boolean }).isConnected = false;
   app.updated(new Map());
-  assert.deepEqual(textarea.calls.slice(2), ["measure first"]);
+  assert.deepEqual(composers.destroyed, ["destroy first"]);
+  const second = current;
   current = null;
+  (second as unknown as { isConnected: boolean }).isConnected = false;
   app.updated(new Map());
-  assert.deepEqual(textarea.calls.slice(3), ["disconnect first"]);
-});
-
-test("the mirrored textarea is released when a render replaces it and when the app goes away", () => {
-  const app = shell();
-  let current: { id: string } | null = { id: "first" };
-  app.renderRoot = { querySelector: (selector) => selector === "textarea[data-composer-markdown]" ? current : null };
-  app.updated(new Map());
-  assert.deepEqual(mirror.calls, [], "the composer this render drew keeps its mirror");
-  // A rewind, a route change or a closed pane hands back a new textarea: the one it replaced must not stay reachable
-  // from `document.fonts` and a ResizeObserver.
-  current = { id: "second" };
-  app.updated(new Map());
-  assert.deepEqual(mirror.calls, ["disconnect first"]);
-  current = null;
-  app.updated(new Map());
-  assert.deepEqual(mirror.calls, ["disconnect first", "disconnect second"]);
+  assert.deepEqual(composers.destroyed, ["destroy first", "destroy second"]);
 
   // Leaving the page releases the one it still holds.
-  current = { id: "last" };
+  current = host("last");
   app.updated(new Map());
   vi.stubGlobal("window", { clearTimeout: () => {}, clearInterval: () => {}, addEventListener: () => {}, removeEventListener: () => {} });
   vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, removeEventListener: () => {} });
   app.disconnectedCallback();
-  assert.deepEqual(mirror.calls.slice(2), ["disconnect last"]);
+  assert.deepEqual(composers.destroyed.slice(2), ["destroy last"]);
 });
 
 test("showing earlier rows preserves the retained row's fractional position, including native scroll anchoring", async () => {

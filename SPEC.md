@@ -1864,17 +1864,40 @@ following OpenClaw's durable-draft model. Text and attachments survive navigatio
 between chats; a successful send retires only that session's draft, while a
 rejected send restores its exact payload ahead of any newer draft.
 
-While the operator types, the composer previews the draft's Markdown under the
-caret, and the textarea stays the only editor: bold, italic, inline code, fenced
-blocks and list bullets paint as they will be sent, every source marker stays
-visible but dimmed because the draft is still Markdown, and inline code keeps the
-composer's body face in a tinted chip, since a monospace face would move the
-caret. Tab and Shift+Tab change a selected list line's depth (three spaces, three
-levels), Enter on an empty list item ends the list instead of sending it,
-Cmd/Ctrl+B, I and E wrap the selection in bold, italic and inline code, and
-Cmd/Ctrl+Shift+E wraps it in a fence. A sent prompt renders that same Markdown in
-the transcript, while the prompts HUI writes for routines and triggers stay plain
-text.
+The composer is a rich editor in both places it appears (a chat and New Session),
+never a textarea with Markdown in it: no marker is ever visible, because typing
+one converts live. `**bold**`, `*italic*`, `~~strikethrough~~`, `` `code` ``,
+`# heading`, `> quote`, `- item`, `1. item` and a triple-backtick fence each
+become their node or mark the moment the run completes, while `2 * 3 * 4`,
+`a * b`, `read_text_file`, a lone `*` and an unmatched `**` stay exactly as
+typed. The
+form submits the draft's canonical Markdown through a hidden field — the exact
+source an unedited draft was loaded with, the serializer's own spelling after a
+rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break) —
+and the transcript renders that same Markdown. Prompts HUI writes for routines and
+triggers stay plain text.
+
+A draft holding something the editor cannot represent — raw HTML, math, a table,
+an alert or details block, an image, a rule, a task list, a link reference, a
+`session:`/file chip — opens in a Markdown source editor instead, showing the
+exact bytes it will send, and a `Markdown` toggle beside the attachment picker is
+the way between the two in either direction: the source stays the draft's own
+bytes until a rich edit replaces them, and a source draft may only become rich once
+it is representable again (emptying it always is). The toggle is always visible
+and pressed while the source shows; when the draft cannot become rich it says so
+in its title and in the source editor's description.
+
+Enter sends in prose; inside a non-empty list item it splits the item, on an empty
+list item it ends the list, and inside a fence it adds a line. Shift+Enter always
+inserts one line break, Send and Cmd/Ctrl+Enter always send, and on a coarse
+pointer (or with the modifier-Enter preference) plain Enter stays a line break.
+Tab and Shift+Tab change a list item's depth (three spaces per level) or indent
+a fence, and leave the editor outside both. Cmd/Ctrl+B, I and E toggle bold,
+italic and inline code, and Cmd/Ctrl+Shift+E fences the selection. Pasted plain
+text is literal: one paragraph per blank-line group and one line break per newline,
+so pasted Markdown syntax is escaped rather than executed, while pasted rich HTML
+maps to the same nodes and marks; a pasted code block stays a code block, and a
+pasted image or a very long paste becomes an attachment instead of a draft.
 
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
 New Session offers the skills of the session it will start, never those of the

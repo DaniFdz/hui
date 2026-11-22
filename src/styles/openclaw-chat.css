@@ -20,7 +20,7 @@
 
 @import "./chat-metrics.css";
 @import "./chat-run-status.css";
-@import "./composer-markdown.css";
+@import "./composer-rich.css";
 
 /* Keep compact tables intrinsic: forced column stretching can round their last cell past the scroll viewport in
    WebKit. Wide tables still scroll as a unit. This is HUI's adaptation, not a change to the reviewed snapshot. */
@@ -2228,3 +2228,21 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .context-usage__part-tokens { margin-inline-start: auto; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .context-usage__part-percent { min-width: 26px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: end; }
 .context-usage__note { margin: 8px 0 0; color: var(--muted); font-size: 11px; font-style: italic; }
+
+/* The operator's own prompt is the Markdown the composer wrote, so its fence is code in the transcript too. The
+ * reference sheet strips a user bubble's `pre` back to the body face — a fence typed into a message reads as the prose
+ * around it — and that is what a bot's, a session's, a routine's or a trigger's message (`chat-group--peer`) keeps. */
+.chat-group.user:not(.chat-group--peer) .chat-text :is(.code-block-wrapper pre, pre code) {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* A code block the operator asked to wrap still wraps: its own control outranks the rule above, as it does for every
+ * other message's fence. */
+.chat-group.user:not(.chat-group--peer) .chat-text .code-block-wrapper.is-wrapped pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
