@@ -47,7 +47,7 @@ test("plain text is never read as Markdown, linked or changed", () => {
   assert.equal(sourceMode(markdown), false, "the escaped text is ordinary rich-composer content");
 });
 
-test("a pasted table stays literal text instead of opening source mode", () => {
+test("a pasted table is escaped rich text, so it never becomes a literal draft", () => {
   const text = "| a | b |\n| --- | --- |";
   const doc = documentOf(plainTextSlice(richSchema, text));
   assert.equal(doc.childCount, 1);

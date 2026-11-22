@@ -4,8 +4,8 @@
  * formatting and no source marker; the hidden field carries the canonical Markdown a textarea would have sent, and the
  * sent prompt renders it (CHAT-091). Enter splits a list item and Tab nests it, Enter on an empty item ends the list,
  * the formatting chords toggle and undo, and arithmetic and a file name stay literal (CHAT-092). A draft the editor
- * cannot draw opens in the Markdown source editor, byte for byte, through the `Markdown` toggle, and emptying it
- * returns to the rich editor (CHAT-093).
+ * cannot draw loads as its own text, shown and sent byte for byte, with no Markdown control and no source editor
+ * (CHAT-093).
  */
 import { expect, type Locator, type Role } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -29,6 +29,10 @@ test("a typed draft draws its formatting with no marker and sends the canonical 
   const session = await hui.createSession({ title: "Formatted draft" });
   await hui.open(`/sessions/${session.id}`);
   await expect(idle).toBeVisible();
+  // One rich editor and no Markdown control: the composer has no source box to fall back to, so one visible surface is
+  // labeled Message.
+  await expect(screen.getByRole("button", "Markdown")).toHaveCount(0);
+  await expect(screen.getByLabel("Message", { visible: true })).toHaveCount(1);
 
   // Typing closes each run, so the markers become the marks they name and the editor draws no marker at all.
   await message.pressSequentially("Hello **bold** and *italic* with `code`:");
@@ -181,54 +185,55 @@ test("Enter splits and ends a list, Tab nests it, and the chords toggle and undo
   await expect(message).not.toBeFocused();
 });
 
-test("the Markdown toggle edits a draft's source and sends its bytes", { tags: ["CHAT-093"] }, async ({ screen, hui }) => {
+test("a draft the rich editor cannot draw keeps its own text, edits as plain text and sends its bytes", { tags: ["CHAT-093"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const wire = screen.getByTestId("composer-markdown");
-  const toggle = screen.getByRole("button", "Markdown");
   const transcript = screen.getByTestId("transcript", { visible: true });
   const idle = screen.getByLabel("Session status: Idle");
 
-  const session = await hui.createSession({ title: "Source draft" });
+  const session = await hui.createSession({ title: "Literal draft" });
   await hui.open(`/sessions/${session.id}`);
   await expect(idle).toBeVisible();
-
-  // A rich draft draws "Ship bold"; the toggle shows the Markdown behind it, markers and all, in the same label.
-  await message.pressSequentially("Ship **bold**");
-  await expect(message).toHaveValue("Ship bold");
-  await expect(wire).toHaveValue("Ship **bold**");
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await toggle.tap();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await expect(message).toHaveValue("Ship **bold**");
-  await expect(wire).toHaveValue("Ship **bold**");
-
-  // A table has no node in the rich schema: the source keeps its exact bytes, and pressing the toggle again cannot
-  // make it rich, so it stays where the operator typed it.
-  await message.fill(TABLE);
-  await expect(message).toHaveValue(TABLE);
-  await expect(wire).toHaveValue(TABLE);
-  await toggle.tap();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await expect(message).toHaveValue(TABLE);
-  await expect(wire).toHaveValue(TABLE);
-
-  // Sending posts those bytes, and the transcript draws the table rather than a mangled rich draft.
-  await screen.getByRole("button", "Send message").tap();
+  // The table is a prompt the operator sent, so the transcript draws it as a table.
+  await hui.prompt(session, TABLE);
   await expect(transcript.getByRole("table")).toBeVisible();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await expect(idle).toBeVisible();
+
+  // Rewind to here gives the prompt back. A table has no node in the rich schema, so the composer shows its own text:
+  // the pipes and dashes stay visible, no table is drawn in the composer, and the hidden field carries exactly those bytes.
+  await transcript.getByRole("button", "Rewind to here").tap();
+  await expect(screen.getByText("Message restored to the composer. The previous branch is kept.")).toBeVisible();
+  await expect(wire).toHaveValue(TABLE);
+  await expect(message).toHaveValue(TABLE);
+  await expect(message.getByRole("table")).toHaveCount(0);
+  await expect(screen.getByRole("button", "Markdown")).toHaveCount(0);
+
+  // Formatting does not convert in that text: a chord over the whole draft changes nothing, and a typed marker stays text.
+  await message.press("ControlOrMeta+a");
+  await message.press("ControlOrMeta+b");
+  await expect(wire).toHaveValue(TABLE);
+  await expect(mark(message, "strong")).toHaveCount(0);
+  await message.press("ControlOrMeta+End");
+  await message.pressSequentially(" **bold**");
+  await expect(wire).toHaveValue(`${TABLE} **bold**`);
+  await expect(mark(message, "strong")).toHaveCount(0);
+  await message.fill(TABLE);
+  await expect(wire).toHaveValue(TABLE);
+
+  // Sending posts those bytes: the transcript draws the table, and the send's clear loads the rich editor again.
+  await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await expect(idle).toBeVisible();
+  await expect(transcript.getByRole("table")).toHaveCount(1);
   await expect(transcript.getByRole("columnheader")).toHaveText(["name", "count"]);
   await expect(transcript.getByRole("cell")).toHaveText(["alpha", "1", "beta", "2"]);
   await expect(transcript.getByText("| name | count |")).toHaveCount(0);
-  await expect(idle).toBeVisible();
   await expect(wire).toHaveValue("");
 
-  // The source the send retired opens empty, and emptying a source draft is what always makes it rich again.
-  await toggle.tap();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await message.fill("A **draft**");
-  await expect(wire).toHaveValue("A **draft**");
-  await message.fill("");
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await message.pressSequentially("Back **rich**");
   await expect(message).toHaveValue("Back rich");
   await expect(wire).toHaveValue("Back **rich**");
+  await expect(mark(message, "strong")).toHaveText("rich");
+  await expect(screen.getByRole("button", "Markdown")).toHaveCount(0);
 });

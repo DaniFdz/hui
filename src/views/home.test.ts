@@ -224,7 +224,6 @@ test("the composer ports OpenClaw input interactions without unsupported control
   assert.match(source, /data-attachment-drop-active/);
   assert.match(source, /@click=\$\{focusComposerFromSurface\}/);
   assert.match(source, /options\.id = "launch-prompt"/);
-  assert.match(source, /options\.className = "new-session-page__message"/);
   assert.match(source, /options\.keyShortcuts = "Enter Control\+Enter Meta\+Enter"/);
   assert.match(source, /onBlur: \(event\) => \{/);
   assert.match(styles, /\.agent-chat__composer-combobox > \.ProseMirror\[data-scroll-fade-top\]/);
@@ -351,13 +350,13 @@ test("both composers mount one rich editor whose hidden field carries the wire",
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
 
-  // One host per composer; the editor builds the contenteditable, the source textarea and the hidden field inside it,
-  // so neither surface renders an editable control of its own any more.
+  // One host per composer; the editor builds the contenteditable and the hidden field inside it, so the composer renders
+  // no editable control of its own, and no Markdown toggle sits in its lead.
   assert.equal(source.match(/class="agent-chat__composer-combobox" data-composer-editor/gu)?.length, 2);
   assert.equal(source.match(/<div class="agent-chat__composer-input-row">\s*<div class="agent-chat__composer-combobox" data-composer-editor/gu)?.length, 2,
     "each composer row holds the host and nothing else");
   assert.equal(source.match(/mountComposerEditor\(element, composerEditorOptions\(props, element, "/gu)?.length, 2);
-  assert.equal(source.match(/class="agent-chat__composer-mode" data-composer-mode-toggle/gu)?.length, 2);
+  assert.doesNotMatch(source, /composer-mode|data-composer-mode-toggle/u, "no Markdown toggle in either composer's lead");
   assert.doesNotMatch(source, /name="(?:text|prompt)"/u, "the wire is a hidden field only the editor builds");
   assert.doesNotMatch(source, /data-composer-markdown|agent-chat__composer-mirror/u);
 
@@ -367,18 +366,18 @@ test("both composers mount one rich editor whose hidden field carries the wire",
   assert.match(editor, /this\.#hidden\.name = options\.name;/u);
   assert.match(editor, /this\.#hidden\.dataset\.testid = "composer-markdown";/u);
   assert.match(source, /name: chat \? "text" : "prompt",/u);
-  assert.match(editor, /this\.#hidden\.value = serializeMarkdown\(state\.doc\);/u, "only a rich edit rewrites the wire");
+  assert.match(editor, /this\.#hidden\.value = this\.#literal \? literalWire\(state\.doc\) : serializeMarkdown\(state\.doc\);/u, "only a rich edit rewrites the wire");
 
   // The accessible names the e2e finds by label, and the launch id on whichever surface is editing.
   assert.match(source, /label: chat \? "Message" : "What should this session work on\?",/u);
   assert.match(editor, /"aria-label": label,/u);
   assert.match(source, /options\.id = "launch-prompt";/u);
-  assert.match(source, /options\.className = "new-session-page__message";/u);
 
-  // The Markdown toggle lives in the composer's lead and presses while the source is showing.
-  assert.match(editor, /querySelector<HTMLElement>\("\[data-composer-mode-toggle\]"\)/u);
-  assert.match(editor, /button\.textContent = "Markdown";/u);
-  assert.match(editor, /toggle\.setAttribute\("aria-pressed", String\(this\.#sourceMode\)\);/u);
+  // One surface and no second input: the editor builds no source textarea and no Markdown button, and it holds no
+  // source-mode state or query any more.
+  assert.doesNotMatch(editor, /createElement\("textarea"\)|button\.textContent = "Markdown"|aria-pressed|data-composer-mode-toggle/u);
+  assert.doesNotMatch(editor, /sourceMode\(\): boolean|#toggleSource|#syncToggle|#sourceMode|#source\b/u);
+  assert.match(editor, /role: "combobox",/u);
 });
 
 test("composer keys run the menus first, then the editor's Enter policy, then the send", () => {
@@ -399,7 +398,7 @@ test("composer keys run the menus first, then the editor's Enter policy, then th
   assert.match(editor, /if \(event\.shiftKey\) return this\.#edit\(view, hardBreak\);/u);
   assert.match(editor, /if \(mode !== "newline" && enterPolicy\(view.state\) === "send"\) \{/u);
   // Tab says nothing to the glue outside a list: the keys module's bindings leave the focus alone.
-  assert.match(editor, /richKeymap\(\{ onSend: \(\) => this\.#send\(this\.#enterMode\(\)\) \}\)/u);
+  assert.match(editor, /richKeymap\(\{ onSend: \(\) => this\.#send\(this\.#enterMode\(\)\), formatting: \(\) => !this\.#literal \}\)/u);
   assert.match(editor, /keymap\(baseKeymap\)/u);
   // Text that arrives with newlines becomes hard breaks, never Markdown.
   assert.match(editor, /if \(!text\.includes\("\\n"\)\) return false;/u);
@@ -410,21 +409,25 @@ test("composer keys run the menus first, then the editor's Enter policy, then th
   assert.match(editor, /htmlSlice\(richSchema, html\)/u);
 });
 
-test("a draft the schema cannot hold opens in the source editor and stays there", () => {
+test("a draft the schema cannot hold loads as literal text, and editing it stays plain", () => {
   const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
 
-  // The mode decision is `sourceMode` over the wire, never over the rendered document.
-  assert.match(editor, /if \(source !== "" && sourceMode\(source\)\) \{/u);
-  assert.match(editor, /#openSource\(source: string\): void \{/u);
-  assert.match(editor, /if \(sourceMode\(this\.#source\.value\)\) \{/u, "source to rich needs a representable draft");
-  // An emptied source-mode draft is a rich empty one again.
-  assert.match(editor, /if \(this\.#source\.value === ""\) \{\s*this\.#enterRich\(\);/u);
-  // The source keeps the exact bytes, so a source edit sends them and only a rich edit serializes.
-  assert.match(editor, /#fromSource\(\): void \{\s*this\.#hidden\.value = this\.#source\.value;/u);
-  // A loaded draft starts with empty history and its caret at the end.
+  // The mode decision is `sourceMode` over the wire, never over the rendered document. A literal draft loads as the
+  // literal document of its own source, never as `parseMarkdown`'s parse, which can carry marks the wire would drop.
+  assert.match(editor, /if \(source !== "" && sourceMode\(source\)\) this\.#load\(literalDocument\(source\), true\);/u);
+  assert.match(editor, /else this\.#load\(draftDocument\(source\), false\);/u);
+  // Its wire stays the source until an edit; after one it is the text the document shows, never the serializer's rewrite.
+  assert.match(editor, /this\.#hidden\.value = this\.#literal \? literalWire\(state\.doc\) : serializeMarkdown\(state\.doc\);/u);
+  // Typed text enters a literal draft as plain text, with no stored mark; the input rules and the chords are off.
+  assert.match(editor, /if \(this\.#literal\) \{\s*view\.dispatch\(view\.state\.tr\.replaceWith\(from, to, literalInline\(text\)\)/u);
+  assert.match(editor, /richInputRules\(richSchema, \(\) => !this\.#literal\)/u);
+  assert.match(editor, /formatting: \(\) => !this\.#literal/u);
+  // Pasted text is the clipboard's plain text, and a dropped one is too; a move inside the draft is ProseMirror's own.
+  assert.match(editor, /if \(this\.#literal\) \{\s*\/\/ A literal draft takes the clipboard's plain text[^\n]*\n\s*const text = data\.getData\("text\/plain"\);/u);
+  assert.match(editor, /if \(!this\.#literal \|\| moved \|\| !event\.dataTransfer/u);
+  // No source editor, no toggle and no source-mode query; a loaded draft starts with empty history and its caret at the end.
+  assert.doesNotMatch(editor, /sourceMode\(\): boolean|#openSource|#toggleSource|#enterRich|onSourceModeChange/u);
   assert.match(editor, /selection: TextSelection\.atEnd\(doc\)/u);
-  // Tab leaves the source editor: nothing there reads it.
-  assert.doesNotMatch(editor, /#sourceKeyDown[\s\S]{0,600}?"Tab"/u);
 });
 
 test("the rich composer's styles take the composer's own tokens", () => {
@@ -439,17 +442,16 @@ test("the rich composer's styles take the composer's own tokens", () => {
   assert.match(rich, /overflow-y: auto;/u);
   // A visible focus ring on the surface, as the reference textarea has.
   assert.match(rich, /\.agent-chat__input:has\(\.agent-chat__composer-combobox > \.ProseMirror:focus\)/u);
-  // The placeholder hangs off the empty document, the toggle off its pressed state.
+  // The placeholder hangs off the empty document; the sheet styles no source box and no Markdown toggle.
   assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror\[data-empty\]::before \{\s*content: attr\(data-placeholder\);/u);
-  assert.match(rich, /\.agent-chat__composer-mode-toggle\[aria-pressed="true"\]/u);
+  assert.doesNotMatch(rich, /composer-mode|> textarea/u);
   // The blocks the dialect holds are drawn as the transcript draws them.
   for (const block of ["pre", "code", "blockquote", "strong", "em", "s", "a"]) {
     assert.ok(rich.includes(`.agent-chat__composer-combobox > .ProseMirror ${block}`), block);
   }
   assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror :is\(ul, ol\) \{\s*padding-inline-start:/u);
-  // Forced colours and reduced motion are answered, and the sheet that painted under a textarea is gone.
+  // Forced colours are answered, and the sheet has no source box or toggle left to paint.
   assert.match(rich, /@media \(forced-colors: active\)/u);
-  assert.match(rich, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.doesNotMatch(styles, /hui-draft-|composer-mirror|data-composer-markdown/u);
   // The operator-only fence rule the transcript needs moved into this sheet unchanged.
   assert.match(styles, /\.chat-group\.user:not\(\.chat-group--peer\) \.chat-text :is\(\.code-block-wrapper pre, pre code\)/u);

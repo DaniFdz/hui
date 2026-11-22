@@ -1,6 +1,6 @@
 /**
- * The dialect's round trip: what a draft parses to, the canonical Markdown it is sent as, and which drafts open in
- * source mode instead. `SUPPORTED_DIALECT` in `markdown.ts` is the contract these cases hold to, including the literals
+ * The dialect's round trip: what a draft parses to, the canonical Markdown it is sent as, and which drafts load as
+ * literal text instead. `SUPPORTED_DIALECT` in `markdown.ts` is the contract these cases hold to, including the literals
  * the serializer must reproduce byte for byte (`2 * 3 * 4`, `read_text_file`, an unmatched `**`).
  */
 import assert from "node:assert/strict";
@@ -9,6 +9,9 @@ import { test } from "vitest";
 import {
   canonicalize,
   hasUnsupportedMarkdown,
+  literalDocument,
+  literalInline,
+  literalWire,
   parseMarkdown,
   serializeMarkdown,
   sourceMode,
@@ -24,7 +27,7 @@ const hardBreak = () => schemaNode(richSchema, "hard_break").create();
 type Case = {
   source: string;
   canonical: string;
-  mode?: "rich" | "source";
+  mode?: "rich" | "literal";
 };
 
 /** One case per construct and per literal the dialect must keep, in the order the module header describes them. */
@@ -59,28 +62,28 @@ const CASES: readonly Case[] = [
   { source: "* item", canonical: "- item" },
   { source: "+ item", canonical: "- item" },
   { source: "1) x", canonical: "1. x" },
-  { source: "| a | b |\n| --- | --- |", canonical: "| a | b |\n| --- | --- |", mode: "source" },
-  { source: "![alt](x.png)", canonical: "![alt](x.png)", mode: "source" },
-  { source: "<div>x</div>", canonical: "<div>x</div>", mode: "source" },
-  { source: "$$x$$", canonical: "$$x$$", mode: "source" },
-  { source: "$x$", canonical: "$x$", mode: "source" },
-  { source: "- [ ] task", canonical: "- [ ] task", mode: "source" },
-  { source: "> [!NOTE]\n> hi", canonical: "> [!NOTE]\n> hi", mode: "source" },
-  { source: "[a]: https://x", canonical: "[a]: https://x", mode: "source" },
-  { source: "session:195c3659", canonical: "session:195c3659", mode: "source" },
-  { source: "`src/lib/composer/rich/schema.ts`", canonical: "`src/lib/composer/rich/schema.ts`", mode: "source" },
+  { source: "| a | b |\n| --- | --- |", canonical: "| a | b |\n| --- | --- |", mode: "literal" },
+  { source: "![alt](x.png)", canonical: "![alt](x.png)", mode: "literal" },
+  { source: "<div>x</div>", canonical: "<div>x</div>", mode: "literal" },
+  { source: "$$x$$", canonical: "$$x$$", mode: "literal" },
+  { source: "$x$", canonical: "$x$", mode: "literal" },
+  { source: "- [ ] task", canonical: "- [ ] task", mode: "literal" },
+  { source: "> [!NOTE]\n> hi", canonical: "> [!NOTE]\n> hi", mode: "literal" },
+  { source: "[a]: https://x", canonical: "[a]: https://x", mode: "literal" },
+  { source: "session:195c3659", canonical: "session:195c3659", mode: "literal" },
+  { source: "`src/lib/composer/rich/schema.ts`", canonical: "`src/lib/composer/rich/schema.ts`", mode: "literal" },
 ];
 
 for (const entry of CASES) {
   const label = JSON.stringify(entry.source);
   test(`the dialect keeps ${label}`, () => {
-    const sourceDraft = entry.mode === "source";
-    assert.equal(sourceMode(entry.source), sourceDraft, `${label} opens in ${sourceDraft ? "source" : "rich"} mode`);
-    assert.equal(hasUnsupportedMarkdown(entry.source), sourceDraft, `${label} unsupported construct detection`);
+    const literal = entry.mode === "literal";
+    assert.equal(sourceMode(entry.source), literal, `${label} loads as ${literal ? "literal text" : "a rich document"}`);
+    assert.equal(hasUnsupportedMarkdown(entry.source), literal, `${label} unsupported construct detection`);
     assert.equal(canonicalize(entry.source), entry.canonical, `${label} canonical Markdown`);
     const doc = parseMarkdown(entry.source);
-    if (sourceDraft) {
-      assert.equal(doc.textContent, entry.source, `${label} is kept whole in the sentinel document`);
+    if (literal) {
+      assert.equal(literalWire(doc), entry.source, `${label} is kept whole as the literal document's text`);
     } else {
       assert.equal(serializeMarkdown(doc), entry.canonical, `${label} serializes to its canonical Markdown`);
       assert.ok(parseMarkdown(entry.canonical).eq(doc), `${label} reads back as the same document`);
@@ -161,4 +164,57 @@ test("the dialect documents every node and mark the schema draws", () => {
     .sort();
   assert.deepEqual(Object.keys(SUPPORTED_DIALECT.blocks).sort(), schemaBlocks);
   assert.deepEqual(Object.keys(SUPPORTED_DIALECT.marks).sort(), Object.keys(richSchema.marks).sort());
+});
+
+/** Drafts the schema cannot hold, each with the characters a literal draft must keep: pipes, dollars, markers and breaks. */
+const LITERAL_DRAFTS = [
+  "| name | $ count |\n| --- | --- |\n| **alpha** | 1 |\n\n$$x$$",
+  "a | b\n2 * 3 * 4 ** ` _ ~~ [x]\n\n![alt](x.png)",
+  "![line one](x.png)\n\n\nline four\n",
+  "<div>*x*</div>\nnext",
+] as const;
+
+test("an unrepresentable draft loads as one literal paragraph, and writing its displayed text gives back its exact source", () => {
+  for (const source of LITERAL_DRAFTS) {
+    assert.equal(sourceMode(source), true, `${JSON.stringify(source)} is a literal draft`);
+    const doc = literalDocument(source);
+    assert.equal(doc.childCount, 1, "the document is one block");
+    assert.equal(doc.firstChild?.type.name, "paragraph", "the block is a paragraph");
+    assert.ok(inlineShape(doc).every((run) => run.marks.length === 0), "no run carries a mark, so no marker is hidden");
+    assert.equal(literalWire(doc), source, "the displayed text is the exact source");
+    assert.ok(parseMarkdown(source).eq(doc), "parseMarkdown gives the same literal document");
+  }
+});
+
+test("a draft flagged literal whose parse is a rich block loads as its own text, not as that block", () => {
+  // The serializer drops this fence's odd info string, so the draft is not stable and `sourceMode` flags it, yet
+  // `parseMarkdown` would make a code block of it. The literal document keeps the text the operator wrote.
+  const source = "```**";
+  assert.equal(sourceMode(source), true);
+  assert.equal(parseMarkdown(source).firstChild?.type.name, "code_block", "the parse alone would be a code block");
+  const doc = literalDocument(source);
+  assert.equal(doc.firstChild?.type.name, "paragraph");
+  assert.equal(literalWire(doc), source);
+});
+
+test("typed or pasted text enters a literal draft as plain text, with one hard break per newline", () => {
+  const nodes = literalInline("a **b**\n| c |");
+  assert.deepEqual(nodes.map((node) => node.type.name), ["text", "hard_break", "text"]);
+  assert.ok(nodes.every((node) => node.marks.length === 0), "no node carries a mark");
+  assert.equal(literalInline("").length, 0, "empty text inserts nothing");
+  assert.equal(literalWire(literalDocument("x\n\ny")), "x\n\ny", "blank lines survive");
+});
+
+test("a carriage return reads as a line break, so a literal draft's wire is written with LF", () => {
+  const doc = literalDocument("first\r\nsecond\rthird");
+  assert.equal(literalWire(doc), "first\nsecond\nthird");
+  assert.equal(doc.firstChild?.childCount, 5, "each line is a text run, with a hard break between them");
+});
+
+test("a literal document a browser split into paragraphs writes one newline per boundary, so the bytes survive", () => {
+  // A filled or dictated newline can split a literal draft into paragraphs instead of hard breaks: each boundary is a
+  // line, and an empty paragraph is a blank line.
+  const split = docOf(paragraph(richSchema.text("a")), paragraph(), paragraph(richSchema.text("b")));
+  assert.equal(literalWire(split), "a\n\nb");
+  assert.equal(literalWire(docOf(paragraph(richSchema.text("| a |")), paragraph(richSchema.text("| --- |")))), "| a |\n| --- |");
 });

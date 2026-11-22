@@ -172,3 +172,27 @@ test("a block rule leaves a heading alone", () => {
   assert.equal(editor.state.doc.firstChild?.attrs["level"], 2);
   assert.equal(editor.state.doc.textContent, "# ");
 });
+
+test("a disabled rule plugin leaves every marker as typed, so a literal draft is never formatted", () => {
+  // The composer turns the rules off for a literal draft: the same keystrokes that convert in a rich draft stay text.
+  const off = richInputRules(richSchema, () => false);
+  let state = EditorState.create({ doc: emptyDoc() });
+  const view = {
+    get state() {
+      return state;
+    },
+    dispatch(transaction: Transaction) {
+      state = state.apply(transaction);
+    },
+    composing: false,
+  };
+  for (const character of "**bold** *it* `code` ~~gone~~") {
+    const position = state.selection.from;
+    // The fifth argument is the view's own insert, which a rule that converts does instead of the keystroke.
+    const insert = () => state.tr.insertText(character, position, position);
+    const handled = off.props.handleTextInput?.call(off, view as unknown as EditorView, position, position, character, insert) ?? false;
+    if (!handled) state = state.apply(state.tr.insertText(character, position, position));
+  }
+  assert.equal(state.doc.textContent, "**bold** *it* `code` ~~gone~~");
+  assert.deepEqual(inlineShape(state.doc), [{ text: "**bold** *it* `code` ~~gone~~", marks: [] }]);
+});

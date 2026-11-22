@@ -1090,7 +1090,7 @@ const cases: UseCase[] = [
     id: "CHAT-091",
     title: "See a typed draft's formatting in the composer and the sent prompt",
     behaviour:
-      "The composer is a rich editor, never a textarea with Markdown in it: typing `**bold**`, `*italic*` and `` `code` `` converts on the keystroke that closes the run, so the editor draws bold, italic and inline code and no source marker appears, and its own value is only the rendered text. A typed `- ` bullet grows a second item with Enter and nests it three spaces deeper with Tab, and a typed triple-backtick fence with a language becomes a code block whose lines follow it. The form's hidden field carries the canonical Markdown — `**bold**`, `*italic*`, `` `code` ``, `- ` bullets three spaces a level, and the fence with its language — and sending renders that operator prompt as real Markdown: the marks, the nested item under its parent and the fence's code, with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
+      "The composer is a rich editor, never a textarea with Markdown in it: typing `**bold**`, `*italic*` and `` `code` `` converts on the keystroke that closes the run, so the editor draws bold, italic and inline code and no source marker appears, and its own value is only the rendered text; no Markdown control or source box sits beside it. A typed `- ` bullet grows a second item with Enter and nests it three spaces deeper with Tab, and a typed triple-backtick fence with a language becomes a code block whose lines follow it. The form's hidden field carries the canonical Markdown — `**bold**`, `*italic*`, `` `code` ``, `- ` bullets three spaces a level, and the fence with its language — and sending renders that operator prompt as real Markdown: the marks, the nested item under its parent and the fence's code, with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer"],
@@ -1110,9 +1110,9 @@ const cases: UseCase[] = [
   },
   {
     id: "CHAT-093",
-    title: "Edit a draft as Markdown source",
+    title: "Preserve an unrepresentable draft without a source editor",
     behaviour:
-      "A `Markdown` toggle beside the attachment picker is the way between the rich editor and a Markdown source editor that carries the same label: pressing it shows the draft's Markdown wire byte for byte — a rich draft's canonical Markdown, markers and all — and marks the toggle pressed. A draft the rich schema cannot draw, such as a table, stays in the source editor: the hidden field carries those exact bytes, pressing the toggle again neither converts nor discards them, and sending posts them, so the transcript draws the table instead of a mangled rich draft. Emptying the source draft always returns to the rich editor, with the toggle unpressed.",
+      "The composer has no Markdown control and no source editor. A draft the rich schema cannot draw, such as a table that Rewind to here gives back, loads as its own text: every marker and pipe shows, no table is drawn in the composer, and nothing becomes formatting while the operator types, since a formatting chord and a typed `**` change nothing there. The hidden field carries those exact bytes, and sending posts them, so the transcript draws the table. The send clears the draft, which loads the rich editor again.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer"],
