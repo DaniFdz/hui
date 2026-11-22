@@ -6,8 +6,52 @@ import { MAX_ATTACHMENT_BYTES, MAX_FILES_PANE_BYTES } from "../lib/attachments.t
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
 import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
+import type { ComposerControl, ComposerEditor } from "../lib/composer/rich/editor.ts";
 import { ComposerController } from "./composer-controller.ts";
 import type { ConversationController } from "./conversation-controller.ts";
+
+/**
+ * A stand-in for the mounted rich editor over one plain string: the controller only ever reads and writes its control,
+ * so a draft, a caret and a focus counter are the whole surface a completion needs.
+ */
+function fakeEditor(initial = "", onFocus?: () => void) {
+  const state = { value: initial, start: initial.length, end: initial.length, focused: 0 };
+  let changed: ((markdown: string) => void) | undefined;
+  const control: ComposerControl = {
+    markdown: () => state.value,
+    text: () => state.value,
+    selection: () => ({ start: state.start, end: state.end }),
+    replaceRange: (from, to, insert, caret) => {
+      state.value = `${state.value.slice(0, from)}${insert}${state.value.slice(to)}`;
+      state.start = caret;
+      state.end = caret;
+      changed?.(state.value);
+    },
+    focus: () => {
+      state.focused += 1;
+      onFocus?.();
+    },
+    caretAtEnd: () => {
+      state.start = state.value.length;
+      state.end = state.value.length;
+    },
+    editable: () => true,
+    isTarget: () => true,
+  };
+  const editor: ComposerEditor = {
+    control,
+    update: () => {},
+    setMarkdown: (source) => {
+      state.value = source;
+      state.start = source.length;
+      state.end = source.length;
+    },
+    focus: () => control.focus(),
+    caretAtEnd: () => control.caretAtEnd(),
+    destroy: () => {},
+  };
+  return { editor, state, onChange: (handler: (markdown: string) => void) => { changed = handler; } };
+}
 
 const fake = vi.hoisted(() => ({
   mutations: [] as { id: string; mutation: unknown; resolve: () => void; reject: (error: Error) => void }[],
@@ -69,7 +113,7 @@ beforeEach(() => {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection; launching?: boolean } = {}) {
+function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; editor?: ComposerEditor; connection?: SessionConnection; launching?: boolean } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
   let updates = 0;
@@ -91,7 +135,7 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
     draftCommands: () => [],
     defaultCwd: () => "~/default",
     mentionable: () => [],
-    textarea: () => options.textarea ?? null,
+    editor: () => options.editor ?? null,
     handleUpdateCommand: () => false,
     launching: () => options.launching ?? false,
   });
@@ -288,7 +332,7 @@ test("an embedded pane never reads or writes the New Session draft", async () =>
   assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: "launch text", attachments: [] });
 });
 
-test("typing renders only when the composer starts or stops holding text; a draft HUI sets is measured again", () => {
+test("typing renders only when the composer starts or stops holding text; a draft HUI sets is rendered once", () => {
   const { controller, updates } = composer({ current: undefined });
   const typed = controller.props().onDraftInput;
   const before = updates();
@@ -296,9 +340,8 @@ test("typing renders only when the composer starts or stops holding text; a draf
   assert.equal(updates(), before + 1);
   typed("hi");
   assert.equal(updates(), before + 1);
-  assert.equal(controller.draftRevision, 0);
   controller.setDraft("from HUI");
-  assert.equal(controller.draftRevision, 1);
+  assert.equal(updates(), before + 2, "a code-owned draft reaches the editor through the render it schedules");
 });
 
 test("retrying a failed command catalog restores a blurred query and focuses the editor before replacing Retry", async () => {
@@ -306,8 +349,8 @@ test("retrying a failed command catalog restores a blurred query and focuses the
     assert.equal(controller.commandsLoading, false, "focus returns before loading replaces Retry");
     assert.equal(fake.commandRequests.length, 1, "focus returns before the retry request starts");
   });
-  const textarea = { focus, selectionStart: 1, selectionEnd: 1 } as unknown as HTMLTextAreaElement;
-  const { controller } = composer({ current: { id: "s1", status: "idle" } as SessionView }, { textarea });
+  const { editor } = fakeEditor("/", focus);
+  const { controller } = composer({ current: { id: "s1", status: "idle" } as SessionView }, { editor });
   // WebKit can blur the editor without focusing the tapped Retry button.
   vi.stubGlobal("document", { activeElement: null });
   try {
@@ -341,7 +384,9 @@ test("retrying a failed command catalog restores a blurred query and focuses the
 });
 
 test("an @ path query loads suggestions for the session's folder and a pick completes the draft", async () => {
-  const { controller } = composer({ current: { id: "s1", cwd: "~/repo" } as SessionView });
+  const { editor, onChange } = fakeEditor("open @sr");
+  const { controller } = composer({ current: { id: "s1", cwd: "~/repo" } as SessionView }, { editor });
+  onChange(controller.props().onDraftInput);
   controller.setDraft("open @sr");
   controller.props().onLocalPathQuery({ input: "sr", start: 5, end: 8, mention: true });
   await settle();
@@ -446,10 +491,8 @@ test("a launched session's first prompt waits for idle and returns to the compos
 });
 
 test("rewinding works while the session runs and puts the message back in the composer, caret at its end", async () => {
-  let caret: [number, number] | undefined;
-  let focused = false;
-  const textarea = { focus: () => { focused = true; }, setSelectionRange: (start: number, end: number) => { caret = [start, end]; } } as unknown as HTMLTextAreaElement;
-  const { controller, notes } = composer({ current: { id: "s1" } as SessionView }, { streaming: true, textarea });
+  const { editor, state } = fakeEditor();
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView }, { streaming: true, editor });
   const target = { entryId: "e1" } as unknown as Parameters<ReturnType<ComposerController["props"]>["onRewind"]>[0];
   controller.props().onRewind(target, "try again", ["notes.txt"]);
   assert.equal(controller.rewindPending, true);
@@ -457,8 +500,8 @@ test("rewinding works while the session runs and puts the message back in the co
   assert.deepEqual(fake.rewinds, [["s1", target, true]]);
   assert.equal(controller.draft, "try again");
   assert.deepEqual(controller.attachments.map(({ name }) => name), ["notes.txt"]);
-  assert.ok(focused);
-  assert.deepEqual(caret, [9, 9]);
+  assert.equal(state.focused, 1);
+  assert.deepEqual([state.start, state.end], [9, 9]);
   assert.equal(controller.rewindPending, false);
   assert.deepEqual(notes, ["info:", "info:Message restored to the composer. The previous branch is kept."]);
 });

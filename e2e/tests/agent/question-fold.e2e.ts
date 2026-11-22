@@ -67,7 +67,7 @@ test("the question card folds to one row to show the conversation, and opens aga
   await expect.poll(async () => (await box(card)).height).toBeLessThanOrEqual(60);
   // The conversation takes back the room the card was covering: the prompt the
   // card hid now sits fully inside the transcript.
-  const prompt = transcript.getByText(/^E2E_CALL:/u).first();
+  const prompt = transcript.getByTestId("message-text").first();
   await expect.poll(async () => {
     const [thread, bubble] = [await box(transcript), await box(prompt)];
     return bubble.y >= thread.y && bubble.y + bubble.height <= thread.y + thread.height;

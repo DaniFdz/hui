@@ -1086,6 +1086,39 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "The shared test drives the wide layout's 1440px morph geometry, which a phone has no room for; a phone's own header is SHELL-047 and its Run status controls are the shared ones (CHAT-073, AGENT-053).", decision: "SPEC.md#run-status-opens-only-when-the-operator-opens-it-2026-11-17" },
   },
+  {
+    id: "CHAT-091",
+    title: "See a typed draft's formatting in the composer and the sent prompt",
+    behaviour:
+      "The composer is a rich editor, never a textarea with Markdown in it: typing `**bold**`, `*italic*` and `` `code` `` converts on the keystroke that closes the run, so the editor draws bold, italic and inline code and no source marker appears, and its own value is only the rendered text; no Markdown control or source box sits beside it. A typed `- ` bullet grows a second item with Enter and nests it three spaces deeper with Tab, and a typed triple-backtick fence with a language becomes a code block whose lines follow it. The form's hidden field carries the canonical Markdown — `**bold**`, `*italic*`, `` `code` ``, `- ` bullets three spaces a level, and the fence with its language — and sending renders that operator prompt as real Markdown: the marks, the nested item under its parent and the fence's code, with no source marker left in the transcript, while the prompts HUI writes for a routine or a trigger stay plain text with their markers showing.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "CHAT-092",
+    title: "Shape a list and wrap text from the composer keyboard",
+    behaviour:
+      "On a keyboard, Enter in prose sends, inside a non-empty list item it splits the item, and on an empty item it ends the list: the draft empties and nothing is sent. Tab sinks a list item under the one above it — three spaces a level, as the Markdown wire writes it — and Shift+Tab lifts it back, while Tab in a draft that holds no list leaves the composer. Cmd/Ctrl+B, I and E toggle bold, italic and inline code over the selection, Cmd/Ctrl+Z puts the draft back as it was, and `2 * 3 * 4` and `read_text_file` stay literal text.",
+    spec: ["SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: { excluded: "A keyboard-only affordance: a phone has no hardware keyboard for Tab, Enter on an empty item or the wrap and toggle chords, and no visible control reaches these edits; the composer's own keys a phone does have are CHAT-002's.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "CHAT-093",
+    title: "Preserve an unrepresentable draft without a source editor",
+    behaviour:
+      "The composer has no Markdown control and no source editor. A draft the rich schema cannot draw, such as a table that Rewind to here gives back, loads as its own text: every marker and pipe shows, no table is drawn in the composer, and nothing becomes formatting while the operator types, since a formatting chord and a typed `**` change nothing there. The hidden field carries those exact bytes, and sending posts them, so the transcript draws the table. The send clears the draft, which loads the rich editor again.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

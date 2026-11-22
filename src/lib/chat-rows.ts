@@ -2,7 +2,7 @@
  * The chat's rows as a client that draws the chat itself takes them (the web draws its own and doesn't import this),
  * in one call per change: `projectChatTranscript`'s rows with each activity row's labels, its question summary (`questionnaireSummary`) and each tool's card presentation and
  * printed input attached, each message's shown text (a bot's or session's without HUI's header) and whether it renders
- * as Markdown (the agent's and those senders', not the operator's, a routine's or a trigger's), each message row's footer (the text Reply and Copy use, without a sender's header, and the
+ * as Markdown (the agent's, the operator's own and those senders', not a routine's or a trigger's), each message row's footer (the text Reply and Copy use, without a sender's header, and the
  * Copy button's label, as the web's footer reads them), and a `key` on every row
  * and item that stays unique when tool call ids repeat across turns (the id, plus how many earlier rows or items
  * shared it). The `progress_card` call never becomes a row, because the composer's task progress card already shows it.
@@ -33,7 +33,9 @@ type ActivityRow = Extract<ChatProjectionRow, { kind: "activity" }>;
 type MessagesRow = Extract<ChatProjectionRow, { kind: "messages" }>;
 
 function messagesRow(row: MessagesRow, key: (base: string) => string) {
-  const markdown = row.role === "assistant" || !!row.sender && row.sender.kind !== "routine" && row.sender.kind !== "trigger";
+  // The operator's own prompt is Markdown too: it is written in the same composer that previews it. A routine's or a
+  // trigger's prompt is text the machine composes, so it stays plain.
+  const markdown = row.role === "assistant" || (row.sender?.kind !== "routine" && row.sender?.kind !== "trigger");
   const messages = row.messages.map((message) => ({ ...message, key: key(`message:${message.id}`), shown: row.sender ? attributedMessage(message.text)?.body ?? message.text : message.text, markdown }));
   const last = messages.at(-1);
   const footer = last && !last.pending && last.shown ? { text: last.shown, copyLabel: row.sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt" } : null;

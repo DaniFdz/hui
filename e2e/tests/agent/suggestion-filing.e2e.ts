@@ -14,6 +14,9 @@ const SUGGESTION = {
 const suggest = (suggestion: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "suggest_task", input: suggestion })).toString("base64url")}`;
 
+/** How a rendered prompt reads: Markdown code as the words it styles. */
+const styled = (text: string) => text.replaceAll("`", "");
+
 test("Add to backlog tells the operator it landed, removes the card, and the board's Backlog holds it as a local task", { tags: ["AGENT-051"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByRole("article", { name: SUGGESTION.title });
   const board = screen.getByLabel("Kanban board");
@@ -40,7 +43,8 @@ test("Add to backlog tells the operator it landed, removes the card, and the boa
 
 test("Start in a new worktree creates a checkout on a branch with the configured prefix, opens the card as its first turn and removes it", { tags: ["AGENT-048"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByRole("article", { name: SUGGESTION.title });
-  const transcript = screen.getByTestId("transcript");
+  // A session swap leaves the pane it came from on screen for a moment: the open conversation is the visible one.
+  const transcript = screen.getByTestId("transcript", { visible: true });
   const repo = await hui.repository();
   // The branch name comes from HUI's utility model, as a worktree started from the board gets its own.
   const settings = await hui.api<{ branchPrefix: string; models: Record<string, unknown> }>("GET", "/__hui/settings");
@@ -57,8 +61,16 @@ test("Start in a new worktree creates a checkout on a branch with the configured
   // The new conversation opens on the card's prompt, in a checkout of its own.
   await expectChatTitle(screen, SUGGESTION.title);
   await expect.poll(() => hui.url()).not.toContain(`/sessions/${session.id}`);
-  await expect(transcript.getByText("# Replace the native terminal switcher select ## Problem", { exact: false })).toBeVisible();
-  await expect(transcript.getByText("## Proposed fix Render the switcher with `renderPicker` from `src/views/settings-picker.ts`.", { exact: false })).toBeVisible();
+  // The new session's first turn is the card's prompt, rendered as its Markdown. Text matching reads one element, so
+  // the problem's two paragraphs are checked one at a time.
+  await expect(transcript.getByRole("heading", { name: SUGGESTION.title })).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Problem" })).toBeVisible();
+  for (const paragraph of styled(SUGGESTION.problem).split("\n\n")) await expect(transcript.getByText(paragraph)).toBeVisible();
+  await expect(transcript.getByRole("heading", { name: "Proposed fix" })).toBeVisible();
+  await expect(transcript.getByText(styled(SUGGESTION.fix))).toBeVisible();
+  await expect(transcript).not.toContainText(`# ${SUGGESTION.title}`);
+  await expect(transcript).not.toContainText("## Problem");
+  await expect(transcript).not.toContainText("## Proposed fix");
   const created = (await hui.api<{ groups: { sessions: { id: string; title: string; cwd: string }[] }[] }>("GET", "/__hui/sessions"))
     .groups.flatMap(({ sessions }) => sessions).find((row) => row.title === SUGGESTION.title);
   expect(created?.cwd).not.toBe(repo.path);
