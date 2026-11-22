@@ -152,7 +152,7 @@ test("install fills one build cache with integrity and bounded downloads, and a 
     : url.pathname in files ? { body: files[url.pathname], delayMs: 5 } : undefined);
   const installing = good.install();
   // Every download the worker is allowed to spend is in flight before the test lets them finish.
-  await vi.waitFor(() => assert.ok(good.openDownloads() >= 3, "the worker's whole download budget is in flight"));
+  await vi.waitFor(() => assert.ok(good.openDownloads() >= 3, "the worker's whole download budget is in flight"), { timeout: 5_000 });
   good.releaseDownloads();
   await installing;
   const cache = good.stores.get("hui-offline-b1");

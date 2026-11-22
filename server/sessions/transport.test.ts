@@ -6,10 +6,6 @@ import { test, vi } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { attachSessionTransport, SESSION_STREAM_GONE, sessionStreamTicket } from "./transport.ts";
 
-/** The one wait a test takes only to assert that something never happens: the comment above each call names what must
- * stay quiet. Awaiting state is otherwise what a test does. */
-const quietWindow = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 test("session views stream over one-use, same-origin WebSocket tickets", { timeout: 10_000 }, async (t) => {
   let emit: (event: string, data: unknown) => void = () => {};
   let unsubscribed = 0;
@@ -91,8 +87,10 @@ test("an open session socket gets an application heartbeat every 15 seconds", { 
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   t.onTestFinished(() => { vi.useRealTimers(); });
   const server = createServer((_request, response) => { response.writeHead(404).end(); });
-  const detach = attachSessionTransport(server, async (_id, send) => {
-    send("snapshot", { transcript: [], status: "idle" });
+  let send: (event: string, data: unknown) => void = () => {};
+  const detach = attachSessionTransport(server, async (_id, source) => {
+    send = source;
+    source("snapshot", { transcript: [], status: "idle" });
     return () => {};
   }, new Set(["127.0.0.1"]));
   server.listen(0, "127.0.0.1");
@@ -114,14 +112,18 @@ test("an open session socket gets an application heartbeat every 15 seconds", { 
   };
 
   await until(() => frames.length === 1);
-  assert.deepEqual(frames, [{ event: "snapshot", data: { transcript: [], status: "idle" } }]);
+  const snapshot = { event: "snapshot", data: { transcript: [], status: "idle" } };
+  assert.deepEqual(frames, [snapshot]);
   vi.advanceTimersByTime(14_999);
-  // Quiet: the 15 s interval is not due yet, so no heartbeat may reach the socket.
-  await quietWindow(50);
-  assert.equal(frames.length, 1, "no heartbeat before the interval is due");
+  // The frame this test sends next is the socket's second: a heartbeat that arrived before the interval is due would
+  // take that place and fail the assertion below, so waiting for the marker to arrive proves the heartbeat stayed quiet.
+  const marker = { event: "transcript", data: { transcript: [{ kind: "status", text: "the marker frame" }], status: "running" } };
+  send(marker.event, marker.data);
+  await until(() => frames.length >= 2);
+  assert.deepEqual(frames, [snapshot, marker], "no heartbeat before the interval is due");
   vi.advanceTimersByTime(1);
-  await until(() => frames.length === 2);
-  assert.deepEqual(frames[1], { event: "heartbeat", data: {} });
+  await until(() => frames.length === 3);
+  assert.deepEqual(frames[2], { event: "heartbeat", data: {} });
 });
 
 test("a large session frame is deflated on the wire and arrives intact", { timeout: 10_000 }, async (t) => {

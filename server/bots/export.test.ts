@@ -13,6 +13,7 @@ import type { BotOwnSkill } from "./skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";
 import { readZip } from "./templates/zip.ts";
 import { hostsIn, NEEDS_MERGE_PROMPT, reviewChunks } from "./templates/review.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 const SOUL = [
   "# Who I am",
@@ -494,19 +495,17 @@ test("a name the picks remove whole travels as a plain one; a newer review repla
   let release = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
   let calls = 0;
-  let reached = () => {};
-  const holding = new Promise<void>((resolve) => { reached = resolve; });
   // The first review waits on its first request; the second runs through; then the first ends.
   const racing = new BotExportService({
     ...harnessDeps(), completion: async () => {
       calls += 1;
-      if (calls === 1) { reached(); await held; }
+      if (calls === 1) await held;
       return JSON.stringify({ changes: [] });
     },
   });
   const first = racing.review("ada");
-  // The second review may only start once the first is holding its first request, which the review itself signals.
-  await holding;
+  // The second review may only start once the first's reviewer calls are in flight, where every one of them waits.
+  await waitFor("the first review's reviewer calls to start", () => calls >= 1);
   const second = await racing.review("ada");
   release();
   const late = await first;

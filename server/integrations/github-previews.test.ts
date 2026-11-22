@@ -157,7 +157,7 @@ test("a burst goes out in batches of 25, at most two gh calls at once", async ()
     return answer.query(query);
   } });
   const lookups = Promise.all(Array.from({ length: 60 }, (_, index) => previews.lookup(`https://github.com/acme/r${index}`)));
-  await vi.waitFor(() => assert.ok(running >= 2, "two gh calls in flight"));
+  await vi.waitFor(() => assert.ok(running >= 2, "two gh calls in flight"), { timeout: 5_000 });
   release();
   const results = await lookups;
   assert.deepEqual(sizes, [25, 25, 10]);

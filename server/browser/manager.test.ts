@@ -143,8 +143,8 @@ async function eventually<T>(read: () => Promise<T>, accept: (value: T) => boole
   }
 }
 
-/** The one wait a test takes only to assert that something never happens: the comment above each call names what must
- * stay quiet. Awaiting state is otherwise what a test does. */
+/** A test's only wall-clock waits: each call asserts that something never happens, and the comment above it names what
+ * must stay quiet. Awaiting state is otherwise what a test does. */
 const quietWindow = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const detected = await resolveBrowserExecutable("");
