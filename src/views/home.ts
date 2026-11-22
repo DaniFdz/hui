@@ -2536,6 +2536,34 @@ function renderSessionStatus(status: string) {
   return html`<span role="status" aria-label=${`Session status: ${status}`}>${status}</span>`;
 }
 
+/** The bot that started this session, when the roster still holds it: a small face and "Started by <name>", leading to
+ * that bot's chat. A session with no creator, or one whose bot is gone, draws no chip at all. */
+function renderCreatorChip(props: HomeProps, session: SessionView) {
+  const createdBy = session.createdBy;
+  const open = props.onOpenBot;
+  const bot = createdBy && open ? props.bots?.find((candidate) => candidate.id === createdBy.id) : undefined;
+  if (!bot || !open) return nothing;
+  return html`<a
+    class="chat-pane__creator"
+    data-testid="chat-pane-creator"
+    href=${navigationPath({ kind: "bot", id: bot.id })}
+    aria-label=${`Started by ${bot.name}`}
+    @click=${(event: MouseEvent) => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      open(bot.id);
+    }}
+  ><span class="chat-pane__creator-face" aria-hidden="true">${renderBotAvatar(bot, "sm")}</span><span class="chat-pane__creator-label"><span class="chat-pane__creator-prefix">Started by </span><span class="chat-pane__creator-name">${bot.name}</span></span></a>`;
+}
+
+/** The open chat's title, or a phone's panel chooser where that stands, with the creator chip on the same line: the
+ * title keeps its ellipsis and the chip keeps a fixed slot. */
+function renderTitleLine(props: HomeProps, session: SessionView) {
+  const title = props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>`;
+  const creator = renderCreatorChip(props, session);
+  return creator === nothing ? title : html`<div class="chat-pane__title-line">${title}${creator}</div>`;
+}
+
 function renderHeader(props: HomeProps, session: SessionView) {
   return html`
     <header class="transcript__head chat-pane__header" tabindex="-1" data-testid="chat-header" draggable=${props.paneMovable ? "true" : "false"}>
@@ -2543,7 +2571,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
         ${renderPaneMoveHandle(props.paneMovable)}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
-          ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>`}
+          ${renderTitleLine(props, session)}
           <span class="transcript__meta" title=${session.cwd}>
             ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : sessionStatusLabel(session))}
           </span>

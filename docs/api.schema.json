@@ -11598,6 +11598,25 @@
             }
           }
         },
+        "createdBy": {
+          "type": "object",
+          "required": [
+            "id",
+            "handle",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
         "stage": {
           "$ref": "#/$defs/SessionStage"
         },

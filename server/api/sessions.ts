@@ -132,6 +132,8 @@ export const SessionView = Type.Object({
   parentId: Type.Optional(Type.String()),
   subagent: Type.Optional(SessionSubagent),
   bot: Type.Optional(Type.Object({ id: Type.String(), handle: Type.String(), name: Type.String() })),
+  /** The bot that started this session with `create_session`; absent for a bot's own chat and older records. */
+  createdBy: Type.Optional(Type.Object({ id: Type.String(), handle: Type.String(), name: Type.String() })),
   stage: SessionStage,
   stageOrigin: SessionStageOrigin,
   goal: Type.Optional(SessionGoal),

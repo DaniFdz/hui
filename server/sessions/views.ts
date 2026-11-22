@@ -176,6 +176,7 @@ export function createSessionViews(deps: SessionViewDeps) {
     const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => deps.pullRequestStatuses().view(ref));
     const jiraIssues = deps.jiraIssues(record, transcript);
     const bot = record.bot ? deps.bots().identity(record.bot) : undefined;
+    const createdBy = record.createdByBot ? deps.bots().identity(record.createdByBot) : undefined;
     return {
       id: record.id,
       progress: record.progress,
@@ -204,6 +205,9 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.parentId ? { parentId: record.parentId } : {}),
       ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
+      // A bot's own forever chat never reports a creator: `createdByBot` on such a record would say the bot started
+      // itself, so the bot field itself, not the roster, decides.
+      ...(createdBy && !bot ? { createdBy } : {}),
       ...effectiveSessionStage(record, pullRequests),
       ...(record.goal ? { goal: record.goal } : {}),
       createdAt: record.createdAt,
