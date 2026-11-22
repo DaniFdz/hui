@@ -15,8 +15,13 @@ const { liveSessions } = await import("./live-sessions.ts");
 afterEach(() => vi.restoreAllMocks());
 
 const creator = { id: "bot-1", handle: "ada", name: "Ada" };
+const otherBot = { id: "bot-2", handle: "grace", name: "Grace" };
+const roster = [creator, otherBot];
 const views = createSessionViews({
-  bots: () => ({ identity: (botId: string) => botId === creator.id ? creator : undefined }),
+  bots: () => ({
+    identity: (botId: string) => roster.find((bot) => bot.id === botId),
+    byHandle: (handle: string) => roster.find((bot) => bot.handle === handle),
+  }),
   botRegistry: { list: async () => [] },
   pullRequestStatuses: () => ({ view: (ref) => ref }),
   jiraIssues: () => [],
@@ -155,4 +160,60 @@ test("a session view names the bot that started it, and only while that bot exis
   assert.equal("createdBy" in own, false, "a bot's own chat carries its bot, never a creator");
   const startedBySameBot = views.toView(record("started", { createdByBot: creator.id }), "idle");
   assert.deepEqual(startedBySameBot.createdBy, creator, "the same creator id without a bot field is still reported");
+});
+
+test("a lead with no createdByBot is credited from its first prompt's bot tag", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "[from @ada] take over this pull request" },
+    { kind: "message", role: "assistant", text: "on it" },
+  ]);
+  const legacy = views.toView(record("legacy-lead", { lead: true }), "idle");
+  assert.deepEqual(legacy.createdBy, creator, "a lead that predates createdByBot is still credited, read from its transcript");
+});
+
+test("createdByBot wins over a tagged first message for a different bot", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "[from @grace] take over this pull request" },
+  ]);
+  const view = views.toView(record("authoritative", { lead: true, createdByBot: creator.id }), "idle");
+  assert.deepEqual(view.createdBy, creator, "the stored createdByBot is authoritative; the tag in the transcript never overrides it");
+});
+
+test("a bot's own chat never gets a derived creator, even with a tagged first message", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "[from @grace] hello" },
+  ]);
+  const view = views.toView(record("own-chat-legacy", { lead: true, bot: creator.id }), "idle");
+  assert.deepEqual(view.bot, creator);
+  assert.equal("createdBy" in view, false, "the bot field, not the transcript tag, decides a bot's own chat");
+});
+
+test("an ordinary (non-lead) session is never credited from a tagged first message", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "[from @ada] take over this pull request" },
+  ]);
+  const view = views.toView(record("not-a-lead"), "idle");
+  assert.equal("createdBy" in view, false, "derivation only applies to a create_session lead");
+});
+
+test("a lead tagged with a handle outside the roster gets no derived creator", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "[from @nobody] take over this pull request" },
+  ]);
+  const view = views.toView(record("unknown-handle", { lead: true }), "idle");
+  assert.equal("createdBy" in view, false, "an unknown handle leaves an ordinary session, like a deleted createdByBot");
+});
+
+test("a lead whose first message carries no bot tag gets no derived creator", () => {
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "Take over this pull request please." },
+  ]);
+  const plain = views.toView(record("plain-text", { lead: true }), "idle");
+  assert.equal("createdBy" in plain, false, "plain operator text carries no tag");
+
+  vi.spyOn(liveSessions, "transcript").mockReturnValue([
+    { kind: "message", role: "user", text: "  [from @ada] a tag padded with leading whitespace does not match" },
+  ]);
+  const malformed = views.toView(record("malformed-tag", { lead: true }), "idle");
+  assert.equal("createdBy" in malformed, false, "a malformed, whitespace-prefixed tag is not a match");
 });

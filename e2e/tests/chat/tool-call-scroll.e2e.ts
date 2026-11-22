@@ -1,4 +1,4 @@
-/** An opened tool call taller than its cap scrolls inside its own card, at a desktop's and a phone's width (CHAT-091). */
+/** An opened tool call taller than its cap scrolls inside its own card, at a desktop's and a phone's width (CHAT-094). */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -14,7 +14,7 @@ const command = [
   'printf "TAIL-MARKER: the last line of the output\\n"',
 ].join("\n");
 
-test("a tool call taller than its cap scrolls inside its card, at a desktop's and a phone's width", { tags: ["CHAT-091"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a tool call taller than its cap scrolls inside its card, at a desktop's and a phone's width", { tags: ["CHAT-094"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
   const session = await hui.createSession({ title: "A long tool call" });

@@ -156,13 +156,16 @@ test("the queue offers sending its steers now, only while one is queued", async 
 
 test("the composer routes Enter shortcuts through explicit steer and queue modes", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  assert.match(source, /composerEnterMode\(\{/u);
+  const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
+  // The editor decides what Enter means; the view hands it the running turn's mode and the form's send.
+  assert.match(editor, /composerEnterMode\(\{/u);
+  assert.match(editor, /coarsePointer: coarsePointer\(\)/u);
   assert.match(source, /submitPromptFromForm\(props, form, mode\)/u);
-  assert.match(source, /@keydown=\$\{onPromptKeydown\(props\)\}/u);
-  assert.match(source, /coarsePointer: hasCoarsePointer\(\)/u);
+  assert.match(source, /onSubmit: \(mode\) => \{/u);
+  assert.match(source, /onBeforeKeyDown: \(event\) => \{/u);
+  assert.match(source, /props\.streaming \? "steer" : "prompt"/u);
   assert.match(source, /touch and hold to enqueue/u);
   assert.match(source, />Enqueue</u);
-  assert.match(source, /props\.streaming \? "steer" : "prompt"/u);
   assert.doesNotMatch(source, /Queue mode|Steer next|onFollowUpMode/u);
 });
 
@@ -214,15 +217,16 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd \} from "\.\.\/lib\/composer\/textarea\.ts"/);
+  assert.match(source, /import \{ mountEditorAtEnd \} from "\.\.\/lib\/composer\/textarea\.ts"/);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
-  assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
+  assert.match(source, /onPaste: \(event\) => onComposerPaste\(props, event\)/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
   assert.match(source, /data-attachment-drop-active/);
   assert.match(source, /@click=\$\{focusComposerFromSurface\}/);
-  assert.match(source, /id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto"/);
-  assert.match(source, /aria-keyshortcuts="Enter Control\+Enter Meta\+Enter"/);
-  assert.match(styles, /textarea\[data-scroll-fade-top\]/);
+  assert.match(source, /options\.id = "launch-prompt"/);
+  assert.match(source, /options\.keyShortcuts = "Enter Control\+Enter Meta\+Enter"/);
+  assert.match(source, /onBlur: \(event\) => \{/);
+  assert.match(styles, /\.agent-chat__composer-combobox > \.ProseMirror\[data-scroll-fade-top\]/);
   assert.match(styles, /\.chat\[data-attachment-drop-active\]/);
   assert.doesNotMatch(source, /Full Access/);
   assert.doesNotMatch(source, /aria-label="Dictate"/);
@@ -232,15 +236,17 @@ test("typing edits the composer without re-rendering the transcript behind it", 
   const home = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
 
   // Typing itself renders only when the composer starts or stops holding text (composer-controller.test.ts).
-  // Reply quotes onto the live textarea value, not a draft rendered earlier.
-  assert.match(home, /props\.onDraftInput\(textarea\.value\)/u);
-  assert.match(home, /props\.onDraftChange\(replyDraft\(editor\?\.value \?\? props\.draft, text\)\)/u);
+  // The wire the editor wrote is what the draft becomes, and a reply quotes that live wire, not a draft rendered earlier.
+  assert.match(home, /props\.onDraftInput\(markdown\)/u);
+  assert.match(home, /props\.onDraftChange\(replyDraft\(editor\?\.control\.markdown\(\) \?\? props\.draft, text\)\)/u);
 });
 
 test("chat and New Session expose cursor-aware local path completion", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /renderLocalPathMenu\(\{ \.\.\.props\.localPathMenu/u);
-  assert.match(source, /localPathQuery\(textarea\.value, textarea\.selectionStart, textarea\.selectionEnd\)/u);
+  assert.match(source, /localPathQuery\(text, start, end\)/u);
+  assert.match(source, /slashCommandQuery\(text, start, end\)/u);
+  assert.match(source, /const \{ start, end \} = control\.selection\(\);/u);
   assert.match(source, /props\.onLocalPathKeydown\(event\)/u);
   // Loading and completing the paths is composer-controller.test.ts's.
 });
@@ -276,13 +282,179 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(styles, /\.chat-text\s*\{[^}]*font-size: var\(--chat-text-size\);[^}]*line-height: 1\.5;/s);
 });
 
-test("user messages preserve explicit line breaks", () => {
+test("user messages preserve explicit line breaks", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /item\.role === "user" \? renderUserText\(props, item, embeds\)/);
+  // The operator's own prompt is the Markdown the composer previewed; a routine's or a trigger's prompt stays plain.
+  assert.match(source, /item\.role === "user" \? renderUserText\(props, item, embeds, item\.text, true\)/);
+  assert.match(source, /attributed\.sender\.kind !== "routine" && attributed\.sender\.kind !== "trigger"/);
   assert.match(source, /class="chat-text chat-text--plain"/);
   assert.match(styles, /\.chat-text--plain\s*\{\s*white-space:\s*pre-wrap;\s*\}/);
+
+  // An operator prompt is rendered Markdown (`renderAgentMarkdown`: markdown-it with `breaks: true`), so a line break
+  // is the parser's own `<br>` between the two lines rather than a pre-wrap box the Markdown never passed through.
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "first line\nsecond line" }] });
+  assert.match(html, /first line<br>\s*second line/u);
+  assert.doesNotMatch(html, /chat-text--plain/u, "the operator's own words take the Markdown path");
+  // A routine's line break still comes from its plain, pre-wrapped box.
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Digest] first line\nsecond line" }] });
+  assert.match(routine, /class="chat-text chat-text--plain"[^>]*>first line\s+second line/u);
+  assert.doesNotMatch(routine, /<br>/u);
+});
+
+test("the operator's own prompt renders the Markdown the composer previewed", async () => {
+  const text = "Ship **this** and *that* with `npm test`:\n- one\n  1. nested\n\n```ts\nconst a = 1;\n```";
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text }] });
+  assert.match(html, /<strong>this<\/strong>/u);
+  assert.match(html, /<em>that<\/em>/u);
+  assert.match(html, /<code>npm test<\/code>/u);
+  assert.match(html, /<pre><code class="language-ts">/u);
+  assert.match(html, /<ul>/u);
+  assert.match(html, /<ol>/u);
+  assert.doesNotMatch(html, /chat-text--plain/u);
+  // The operator's own fence is code in the transcript too: the reference sheet strips a user bubble's `pre` back to
+  // the body face, so this HUI rule restores the code face for the operator's message and no one else's.
+  const styles = readStyles("../styles/openclaw-chat.css");
+  assert.match(styles, /\.chat-group\.user:not\(\.chat-group--peer\) \.chat-text :is\(\.code-block-wrapper pre, pre code\)\s*\{[^}]*font-family: var\(--mono, ui-monospace, monospace\);[^}]*font-size: 12px;[^}]*line-height: 1\.55;/su);
+  // A routine's prompt is machine text: its own asterisks stay asterisks.
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Inbox] **Summarize**" }] });
+  assert.match(routine, /class="chat-text chat-text--plain"/u);
+  assert.match(routine, /\*\*Summarize\*\*/u);
+  assert.doesNotMatch(routine, /<strong>Summarize<\/strong>/u);
+});
+
+test("a message's text box carries the test id a clip can be measured by, and keeps its classes", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const userText = source.slice(source.indexOf("function renderUserText("), source.indexOf("function renderMetrics("));
+
+  // The browser test that measures a clipped prompt takes the `.chat-text` box, which is the element the fold clips;
+  // WebKit otherwise resolves the Markdown's full-height `<p>` inside it and the box it measures never fits.
+  assert.match(userText, /class="chat-text chat-text--plain chat-text--rich-link" data-testid="message-text"><hui-slack-link/u, "a Slack message keeps its card inside the measured box");
+  assert.match(userText, /class="chat-text" data-testid="message-text">\$\{renderAgentMarkdown\(content, embeds\)\}<\/div>/u);
+  assert.match(userText, /class="chat-text chat-text--plain" data-testid="message-text">\$\{content\}<\/div>/u);
+  assert.match(userText, /class="chat-text \$\{markdown \? "" : "chat-text--plain"\} chat-text--collapsible \$\{expanded \? "" : "chat-text--collapsed"\}" data-testid="message-text"/u, "the collapsible prompt keeps the box the fold clips");
+  assert.match(source, /html`<div class="chat-text" data-testid="message-text">\$\{renderAgentMarkdown\(item\.text, embeds\)\}<\/div>`/u, "an answer's text box too");
+
+  // Rendered: the id sits on the container of each branch, not on a paragraph inside one.
+  const short = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "Ship it" }] });
+  assert.match(short, /<div class="chat-text" data-testid="message-text"><p>Ship it<\/p>/u);
+  const long = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "E2E_CALL:".padEnd(900, "a") }] });
+  assert.match(long, /<div class="chat-text\s+chat-text--collapsible chat-text--collapsed" data-testid="message-text">/u);
+  assert.match(long, /class="chat-prompt-toggle"[^>]*aria-expanded=false/u, "the toggle stays beside the clipped box");
+  const routine = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: "[routine: Digest] first line" }] });
+  assert.match(routine, /<div class="chat-text chat-text--plain" data-testid="message-text">first line<\/div>/u);
+});
+
+test("both composers mount one rich editor whose hidden field carries the wire", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
+
+  // One host per composer; the editor builds the contenteditable and the hidden field inside it, so the composer renders
+  // no editable control of its own, and no Markdown toggle sits in its lead.
+  assert.equal(source.match(/class="agent-chat__composer-combobox" data-composer-editor/gu)?.length, 2);
+  assert.equal(source.match(/<div class="agent-chat__composer-input-row">\s*<div class="agent-chat__composer-combobox" data-composer-editor/gu)?.length, 2,
+    "each composer row holds the host and nothing else");
+  assert.equal(source.match(/mountComposerEditor\(element, composerEditorOptions\(props, element, "/gu)?.length, 2);
+  assert.doesNotMatch(source, /composer-mode|data-composer-mode-toggle/u, "no Markdown toggle in either composer's lead");
+  assert.doesNotMatch(source, /name="(?:text|prompt)"/u, "the wire is a hidden field only the editor builds");
+  assert.doesNotMatch(source, /data-composer-markdown|agent-chat__composer-mirror/u);
+
+  // The wire is a hidden field named for the form's own field, carrying the Markdown the editor serialized.
+  assert.match(editor, /this\.#hidden = document\.createElement\("input"\);/u);
+  assert.match(editor, /this\.#hidden\.type = "hidden";/u);
+  assert.match(editor, /this\.#hidden\.name = options\.name;/u);
+  assert.match(editor, /this\.#hidden\.dataset\.testid = "composer-markdown";/u);
+  assert.match(source, /name: chat \? "text" : "prompt",/u);
+  assert.match(editor, /this\.#hidden\.value = this\.#literal \? literalWire\(state\.doc\) : serializeMarkdown\(state\.doc\);/u, "only a rich edit rewrites the wire");
+
+  // The accessible names the e2e finds by label, and the launch id on whichever surface is editing.
+  assert.match(source, /label: chat \? "Message" : "What should this session work on\?",/u);
+  assert.match(editor, /"aria-label": label,/u);
+  assert.match(source, /options\.id = "launch-prompt";/u);
+
+  // One surface and no second input: the editor builds no source textarea and no Markdown button, and it holds no
+  // source-mode state or query any more.
+  assert.doesNotMatch(editor, /createElement\("textarea"\)|button\.textContent = "Markdown"|aria-pressed|data-composer-mode-toggle/u);
+  assert.doesNotMatch(editor, /sourceMode\(\): boolean|#toggleSource|#syncToggle|#sourceMode|#source\b/u);
+  assert.match(editor, /role: "combobox",/u);
+});
+
+test("composer keys run the menus first, then the editor's Enter policy, then the send", () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
+  const options = source.slice(source.indexOf("function composerEditorOptions"), source.indexOf("function hasDraggedFiles"));
+  const order = ["props.onLocalPathKeydown(event)", "props.onCommandKeydown(event)"].map((marker) => options.indexOf(marker));
+  assert.ok(order.every((index, at) => index > 0 && (at === 0 || index > order[at - 1]!)), String(order));
+
+  // The editor asks the menus first, and only then reads the key itself.
+  const keydown = editor.slice(editor.indexOf("#keyDown(view: EditorView"), editor.indexOf("#edit(view: EditorView"));
+  const menu = keydown.indexOf("this.#options.onBeforeKeyDown(event);");
+  const prevented = keydown.indexOf("if (event.defaultPrevented) return true;");
+  const policy = keydown.indexOf("enterPolicy(view.state)");
+  assert.ok(menu > 0 && prevented > menu && policy > prevented, `${menu}, ${prevented}, ${policy}`);
+  // Shift+Enter is one hard break, Enter on a list item splits or ends it, and a fence takes a newline.
+  assert.match(editor, /const hardBreak: Command = chainCommands\(codeBlockNewline, newline\);/u);
+  assert.match(editor, /if \(event\.shiftKey\) return this\.#edit\(view, hardBreak\);/u);
+  assert.match(editor, /if \(mode !== "newline" && enterPolicy\(view.state\) === "send"\) \{/u);
+  // Tab says nothing to the glue outside a list: the keys module's bindings leave the focus alone.
+  assert.match(editor, /richKeymap\(\{ onSend: \(\) => this\.#send\(this\.#enterMode\(\)\), formatting: \(\) => !this\.#literal \}\)/u);
+  assert.match(editor, /keymap\(baseKeymap\)/u);
+  // Text that arrives with newlines becomes hard breaks, never Markdown.
+  assert.match(editor, /if \(!text\.includes\("\\n"\)\) return false;/u);
+  assert.match(editor, /content\.push\(schemaNode\(richSchema, "hard_break"\)\.create\(\)\);/u);
+  // A paste the composer did not take goes through the literal and HTML slices, never the parser's rules.
+  assert.match(editor, /if \(this\.#options\.onPaste\(event\)\) return true;/u);
+  assert.match(editor, /plainTextSlice\(richSchema, plain\)/u);
+  assert.match(editor, /htmlSlice\(richSchema, html\)/u);
+});
+
+test("a draft the schema cannot hold loads as literal text, and editing it stays plain", () => {
+  const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
+
+  // The mode decision is `sourceMode` over the wire, never over the rendered document. A literal draft loads as the
+  // literal document of its own source, never as `parseMarkdown`'s parse, which can carry marks the wire would drop.
+  assert.match(editor, /if \(source !== "" && sourceMode\(source\)\) this\.#load\(literalDocument\(source\), true\);/u);
+  assert.match(editor, /else this\.#load\(draftDocument\(source\), false\);/u);
+  // Its wire stays the source until an edit; after one it is the text the document shows, never the serializer's rewrite.
+  assert.match(editor, /this\.#hidden\.value = this\.#literal \? literalWire\(state\.doc\) : serializeMarkdown\(state\.doc\);/u);
+  // Typed text enters a literal draft as plain text, with no stored mark; the input rules and the chords are off.
+  assert.match(editor, /if \(this\.#literal\) \{\s*view\.dispatch\(view\.state\.tr\.replaceWith\(from, to, literalInline\(text\)\)/u);
+  assert.match(editor, /richInputRules\(richSchema, \(\) => !this\.#literal\)/u);
+  assert.match(editor, /formatting: \(\) => !this\.#literal/u);
+  // Pasted text is the clipboard's plain text, and a dropped one is too; a move inside the draft is ProseMirror's own.
+  assert.match(editor, /if \(this\.#literal\) \{\s*\/\/ A literal draft takes the clipboard's plain text[^\n]*\n\s*const text = data\.getData\("text\/plain"\);/u);
+  assert.match(editor, /if \(!this\.#literal \|\| moved \|\| !event\.dataTransfer/u);
+  // No source editor, no toggle and no source-mode query; a loaded draft starts with empty history and its caret at the end.
+  assert.doesNotMatch(editor, /sourceMode\(\): boolean|#openSource|#toggleSource|#enterRich|onSourceModeChange/u);
+  assert.match(editor, /selection: TextSelection\.atEnd\(doc\)/u);
+});
+
+test("the rich composer's styles take the composer's own tokens", () => {
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const rich = readFileSync(new URL("../styles/composer-rich.css", import.meta.url), "utf8");
+
+  // The same box as the reference textarea, from the same tokens: cap against the viewport, grow upward, scroll inside.
+  assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror \{[^}]*max-height: min\(\s*25dvh,/su);
+  assert.match(rich, /padding-block: var\(--chat-composer-editor-inset-block\);/u);
+  assert.match(rich, /font-size: max\(16px, var\(--chat-composer-editor-size\)\);/u);
+  assert.match(rich, /line-height: var\(--chat-composer-editor-line\);/u);
+  assert.match(rich, /overflow-y: auto;/u);
+  // A visible focus ring on the surface, as the reference textarea has.
+  assert.match(rich, /\.agent-chat__input:has\(\.agent-chat__composer-combobox > \.ProseMirror:focus\)/u);
+  // The placeholder hangs off the empty document; the sheet styles no source box and no Markdown toggle.
+  assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror\[data-empty\]::before \{\s*content: attr\(data-placeholder\);/u);
+  assert.doesNotMatch(rich, /composer-mode|> textarea/u);
+  // The blocks the dialect holds are drawn as the transcript draws them.
+  for (const block of ["pre", "code", "blockquote", "strong", "em", "s", "a"]) {
+    assert.ok(rich.includes(`.agent-chat__composer-combobox > .ProseMirror ${block}`), block);
+  }
+  assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror :is\(ul, ol\) \{\s*padding-inline-start:/u);
+  // Forced colours are answered, and the sheet has no source box or toggle left to paint.
+  assert.match(rich, /@media \(forced-colors: active\)/u);
+  assert.doesNotMatch(styles, /hui-draft-|composer-mirror|data-composer-markdown/u);
+  // The operator-only fence rule the transcript needs moved into this sheet unchanged.
+  assert.match(styles, /\.chat-group\.user:not\(\.chat-group--peer\) \.chat-text :is\(\.code-block-wrapper pre, pre code\)/u);
 });
 
 test("long user prompts collapse and user rows offer Copy prompt", async () => {
@@ -445,6 +617,22 @@ test("Run status counts live child sessions while closed and draws capped sessio
   assert.match(open, /class="chat-run-status__note">\+2 more</u);
   assert.doesNotMatch(open, />Operator child [78]</u);
   assert.doesNotMatch(await renderWorkerSession("idle", { runStatusPanelOpen: true, subagents }), /aria-label="Sessions"/u);
+
+  // A bot's own chat lists what it started through create_session too: Run status draws it under the same
+  // Sessions section, merged into the same cap-8 list and counted in the pill, with no idea where the row came from.
+  const { mergeChildAndStartedSessions, startedSessionsByBot } = await import("../lib/session/sidebar-sessions.ts");
+  const started = startedSessionsByBot([{ label: "", sessions: [{
+    id: "bot-started", title: "Bot started session", createdBy: { id: "bot-x", handle: "bot-x", name: "Bot X" },
+    status: "running", tool: "durable", cwd: "/repo", displayCwd: "", group: "", stage: "investigation", stageOrigin: "default", createdAt: "", updatedAt: "2099-01-01T00:00:00Z",
+  }] }]).get("bot-x") ?? [];
+  const merged = mergeChildAndStartedSessions(childSessions, started);
+  const openWithStarted = await renderWorkerSession("idle", { childSessions: merged, subagents, watchers, runStatusPanelOpen: true });
+  assert.match(openWithStarted, /class="chat-run-status__count"> · 1 helper · 2 sessions · 1 watcher</u);
+  assert.match(openWithStarted, /2 sessions running/u);
+  assert.match(openWithStarted, /aria-label=Open session Bot started session/u);
+  assert.ok(openWithStarted.indexOf(">Bot started session<") < openWithStarted.indexOf(">Operator child 9<"),
+    "the newest running session sorts first, whether it came from a parent's children or a bot's started list");
+  assert.match(openWithStarted, /class="chat-run-status__note">\+3 more</u, "the merged session counts toward the same cap");
 });
 
 test("Plan recompute exposes pending, connection and failure without discarding steps", async () => {
@@ -946,8 +1134,9 @@ test("a worker session HUI is reconnecting to reads calm: one status under the c
   assert.doesNotMatch(html, /transcript__note|draft preserved/u, "no second copy in the chat or under the composer");
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
-  assert.match(html, /\.value=keep this draft/u);
-  assert.match(html, /placeholder=Send a message…/u);
+  // The draft and the placeholder belong to the editor the host mounts; what the view still draws is the host itself,
+  // and the send button is enabled only because props.draft holds the draft.
+  assert.match(html, /class="agent-chat__composer-combobox" data-composer-editor/u);
   assert.equal(sendButton(html), "true", "sending waits for the worker");
 });
 
@@ -957,7 +1146,7 @@ test("a worker session HUI no longer retries says it is disconnected and offers 
   assert.match(html, /<span class="agent-chat__composer-status-text">Disconnected from devbox<\/span> <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
   assert.doesNotMatch(html, /transcript__note|draft preserved|may still be running there/u);
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
-  assert.match(html, /\.value=keep this draft/u);
+  assert.match(html, /class="agent-chat__composer-combobox" data-composer-editor/u);
   assert.equal(sendButton(html), "true");
 });
 
@@ -1124,7 +1313,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   const bot = row("g");
   assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
   assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
-  assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
+  assert.match(bot, /<div class="chat-text"[^>]*>.*PR #7 review needs your decision\./u);
   assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
   assert.match(bot, /aria-label=Copy message/u);
   assert.doesNotMatch(bot, /\[from @grace|>You<|chat-group-rewind/u);
@@ -1138,7 +1327,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     transcript: [{ kind: "message", id: "t", role: "user", text: "[Subagent Task]\nCheck the alert history." }],
   });
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
-  assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
+  assert.match(row("r"), /<div class="chat-text chat-text--plain"[^>]*>Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
   assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
   assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
@@ -1168,7 +1357,8 @@ test("link previews and cards render on the latest user message and the latest r
   const previews = /<hui-github-embeds .*<hui-datadog-embeds /u;
   const cards = /<hui-(?:github-embeds|datadog-embeds|slack-link|tweet-embed)/u;
 
-  assert.ok(message("u1").includes(`<div class="chat-text chat-text--plain">${slack}</div>`), "an older Slack link stays text");
+  // The operator's own prompt is Markdown, so a bare link reads as one; the card is still the latest message's.
+  assert.match(message("u1"), /<p><a href="https:\/\/acme\.slack\.com\/archives\/C01234567\/p1723456789012345"[^>]*class="markdown-bare-url"/u, "an older Slack link stays a link");
   assert.match(message("a1"), /<p><a href="https:\/\/x\.com\/openai\/status\/123456789"/u, "an older X post stays a link");
   for (const old of ["u1", "a1", "u2"]) assert.doesNotMatch(message(old), cards);
   assert.match(message("u3"), previews, "the last message of its group, and the latest one sent");
@@ -1396,7 +1586,7 @@ test("a turn that invoked a skill names it, instead of showing PI's wrapper for 
   assert.match(html, /class="chat-skill-invoked"[^>]*data-hui-tooltip=\/opt\/hui\/skills\/cost-investigation\/SKILL\.md/u);
   assert.match(html, /<span class="chat-skill-invoked__label">Skill<\/span> <code>cost-investigation<\/code>/u);
   assert.match(html, /Name the cheaper mechanism\./u, "the method stays readable in the turn");
-  assert.match(html, /# Why was this expensive\?/u);
+  assert.match(html, /<h1>Why was this expensive\?<\/h1>/u, "the turn's own Markdown renders");
   assert.ok(!html.includes("&lt;skill name=") && !html.includes("<skill name="), "the wrapper PI writes for the model is not shown");
   assert.ok(!html.includes("References are relative to"));
 });

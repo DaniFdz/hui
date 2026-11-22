@@ -25,7 +25,8 @@ test("a bot's message shows its face, its color and its name on the left, render
   const bubble = transcript.getByText("Grace reports back");
   const tint = (await hui.look(bubble)).background;
 
-  // Copy and Reply take what the bot wrote; only the operator's own prompt offers Rewind.
+  // Copy and Reply take what the bot wrote; only the operator's own prompt offers Rewind. The reply quotes the bot's own
+  // bytes, so the marks live in the Markdown field and the editor draws them as the transcript does.
   await hui.messageActions(bubble);
   await screen.getByRole("button", "Copy message").tap();
   await expect.poll(() => hui.copied()).toBe(body);
@@ -34,7 +35,7 @@ test("a bot's message shows its face, its color and its name on the left, render
   // The prompt and its reply, then Grace's message and its reply: hers is the third.
   await expect(replies).toHaveCount(4);
   await replies.nth(2).tap();
-  await expect(screen.getByLabel("Message")).toHaveValue(/\*\*Grace\*\* reports back/u);
+  await expect(screen.getByTestId("composer-markdown")).toHaveValue(/^> \*\*Grace\*\* reports back\n*$/u);
   await screen.getByLabel("Message").fill("");
   await expect(transcript.getByRole("button", "Rewind to here")).toHaveCount(1);
 

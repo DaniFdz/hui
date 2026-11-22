@@ -48,6 +48,9 @@ test("Message width narrows or widens the conversation and the composer in every
 
 test("Send shortcut set to Command or Ctrl + Enter makes Enter break the line, and set to Enter makes Enter send", { tags: ["SET-014"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
+  // The composer is a rich editor: its visible value is rendered text, so the exact Markdown is read from the hidden
+  // field the form sends. A hard break is one newline there, however the editor's innerText renders it.
+  const wire = screen.getByTestId("composer-markdown");
   const transcript = screen.getByTestId("transcript");
   const replies = transcript.getByText("Fixture response.");
   const shortcut = async (from: string, to: string) => {
@@ -64,14 +67,17 @@ test("Send shortcut set to Command or Ctrl + Enter makes Enter break the line, a
   await message.fill("Line one");
   await message.press("Enter");
   await message.pressSequentially("line two");
-  await expect(message).toHaveValue("Line one\nline two");
+  await expect(wire).toHaveValue("Line one\nline two");
   await message.press("ControlOrMeta+Enter");
   await expect(transcript.getByText(/^Line one\s+line two$/u)).toBeVisible();
   await expect(replies).toHaveCount(1);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await message.fill("Sent with the button");
   await message.press("Enter");
-  await expect(message).toHaveValue("Sent with the button\n");
+  // The break is visible in the editor's own text; at the end of a draft it has no Markdown spelling, so the canonical
+  // wire keeps only the words. An interior break, asserted above, is carried as one newline.
+  await expect(message).toHaveValue("Sent with the button\n\n");
+  await expect(wire).toHaveValue("Sent with the button");
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("Sent with the button")).toBeVisible();
   await expect(replies).toHaveCount(2);
@@ -80,6 +86,6 @@ test("Send shortcut set to Command or Ctrl + Enter makes Enter break the line, a
   await message.fill("Sent with Enter");
   await message.press("Enter");
   await expect(transcript.getByText("Sent with Enter")).toBeVisible();
-  await expect(message).toHaveValue("");
+  await expect(wire).toHaveValue("");
   await expect(replies).toHaveCount(3);
 });

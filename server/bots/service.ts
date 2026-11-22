@@ -338,6 +338,13 @@ export class BotService {
     return bot ? { id: bot.id, handle: bot.handle, name: bot.name } : undefined;
   }
 
+  /** The same shape as `identity`, found by handle instead of id: what a bot tag in a transcript (`[from @handle] `)
+   * resolves to. From the last registry read. */
+  byHandle(handle: string): { id: string; handle: string; name: string } | undefined {
+    const bot = this.#registry.cached.find((candidate) => candidate.handle === handle);
+    return bot ? { id: bot.id, handle: bot.handle, name: bot.name } : undefined;
+  }
+
   /** The bot whose chat this session is. The registry decides: a record whose bot is gone is an ordinary session. */
   async botForSession(sessionId: string): Promise<BotRecord | undefined> {
     return (await this.#registry.list()).find((bot) => bot.sessionId === sessionId);

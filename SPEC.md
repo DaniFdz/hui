@@ -1874,6 +1874,43 @@ following OpenClaw's durable-draft model. Text and attachments survive navigatio
 between chats; a successful send retires only that session's draft, while a
 rejected send restores its exact payload ahead of any newer draft.
 
+The composer is a rich editor in both places it appears (a chat and New Session),
+never a textarea with Markdown in it: in a rich draft no marker is visible, because
+typing one converts live (a literal draft, below, is the one exception).
+`**bold**`, `*italic*`, `~~strikethrough~~`, `` `code` ``, `# heading`, `> quote`,
+`- item`, `1. item` and a triple-backtick fence each become their node or mark the
+moment the run completes, while `2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*`
+and an unmatched `**` stay exactly as typed. The
+form submits the draft's canonical Markdown through a hidden field — the exact
+source an unedited draft was loaded with, the serializer's own spelling after a
+rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break) —
+and the transcript renders that same Markdown. Prompts HUI writes for routines and
+triggers stay plain text.
+
+A draft holding something the editor cannot represent — raw HTML, math, a table,
+an alert or details block, an image, a rule, a task list, a link reference, a
+`session:`/file chip — loads as literal text: one paragraph that shows the draft's
+exact bytes, markers and pipes included, and sends exactly those bytes, so the
+transcript renders it as any sent message. The composer has no Markdown toggle and
+no source editor. A literal draft is never formatted as it is typed: typed text and
+line breaks are plain text, pasted and dropped text is inserted as plain text, and
+the formatting chords do nothing, so every character shown is one the wire carries.
+An edit leaves the wire as the text shown. A literal draft stays literal until HUI
+loads a draft the editor can represent in its place, as a send's clear does, so
+editing one never turns it into formatting.
+
+Enter sends in prose; inside a non-empty list item it splits the item, on an empty
+list item it ends the list, and inside a fence it adds a line. Shift+Enter always
+inserts one line break, Send and Cmd/Ctrl+Enter always send, and on a coarse
+pointer (or with the modifier-Enter preference) plain Enter stays a line break.
+Tab and Shift+Tab change a list item's depth (three spaces per level) or indent
+a fence, and leave the editor outside both. Cmd/Ctrl+B, I and E toggle bold,
+italic and inline code, and Cmd/Ctrl+Shift+E fences the selection. Pasted plain
+text is literal: one paragraph per blank-line group and one line break per newline,
+so pasted Markdown syntax is escaped rather than executed, while pasted rich HTML
+maps to the same nodes and marks; a pasted code block stays a code block, and a
+pasted image or a very long paste becomes an attachment instead of a draft.
+
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
 New Session offers the skills of the session it will start, never those of the
 chat that was open before it.
@@ -2278,6 +2315,18 @@ Deleting a session removes the complete subtree from HUI, closes its live runtim
 and terminals only after persistence succeeds, and leaves all PI transcripts and
 worktrees untouched. A failed write rolls back every deletion guard. The delete
 dialog states that subagents, including nested ones, are included.
+
+### A bot's chat lists the sessions it started (2026-11-22)
+
+A session view carries `createdBy` (the bot that started it with `create_session`, see
+[Shapes](docs/api.md#shapes)) whenever one such bot exists and the session is not that bot's own forever chat.
+Opening that bot's chat and its Run status popover shows those sessions under the same **Sessions** section a
+parent shows its spawned children in, merged with whatever children it has of its own (a bot's chat has none
+today, but the merge holds regardless): the same cap-8 rows, "+N more" note, status ordering and "N sessions
+running" pill text, because the section draws whatever list it is given without asking where a row came from. A
+session a `lead` record with no `createdByBot` predates the field; it is still credited by reading its first
+prompt's `[from @handle] ` bot tag from the transcript PI already keeps, resolved against the bot roster at read
+time rather than backfilled into the registry (see [Shapes](docs/api.md#shapes)).
 
 ## Background watchers
 
