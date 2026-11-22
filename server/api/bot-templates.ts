@@ -1,4 +1,4 @@
-/** Public bot import and export payloads (HUI-18) and the JSON routes that exchange them; the export's zip is not one. */
+/** Public bot import and export payloads and the JSON routes that exchange them; the export's zip is not one. */
 import { Type, type Static } from "typebox";
 import { AutomationSchedule } from "./automation.ts";
 import { BotFaceEars, BotFaceShape, BotView, BotVoice } from "./bots.ts";

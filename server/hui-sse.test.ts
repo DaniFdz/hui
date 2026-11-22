@@ -21,6 +21,7 @@ const {
   reattachAfterStoreFailure,
   recoverInterruptedSessions,
   reopenDurableSessions,
+  resumeSessionsWithFailedRuns,
 } = await import("./backend.ts");
 const { sessionMutationErrorStatus } = await import("./routes/sessions.ts");
 const { readAttachments, storeAttachmentFile } = await import("./sessions/attachments.ts");
@@ -38,7 +39,7 @@ const {
   updateSession,
 } = createSessionLifecycle({
   views: createSessionViews({
-    bots: () => ({ identity: () => undefined }),
+    bots: () => ({ identity: () => undefined, byHandle: () => undefined }),
     botRegistry: { list: async () => [] },
     pullRequestStatuses: () => ({ view: (ref) => ref }),
     jiraIssues: () => [],
@@ -69,6 +70,19 @@ test("gateway startup eagerly opens only interrupted sessions", () => {
 
   assert.equal(count, 1);
   assert.deepEqual(opened, ["interrupted"]);
+});
+
+test("gateway startup only retries sessions whose own runs failed recently", async () => {
+  const now = new Date();
+  const base: SessionRecord = { id: "idle", title: "Idle", group: "", cwd: tmpdir(), tool: "durable", createdAt: now.toISOString(), updatedAt: now.toISOString() };
+  const retried = await resumeSessionsWithFailedRuns([
+    base,
+    { ...base, id: "failed-now", runFailedAt: now.toISOString() },
+    { ...base, id: "failed-yesterday", runFailedAt: new Date(now.getTime() - 36 * 60 * 60_000).toISOString() },
+    { ...base, id: "failed-and-archived", archived: true, runFailedAt: now.toISOString() },
+    { ...base, id: "failed-on-a-worker", worker: "w1", runFailedAt: now.toISOString() },
+  ]);
+  assert.equal(retried, 1);
 });
 
 test("interrupted Durable work waits for its owning sessions to open", async () => {
@@ -257,6 +271,18 @@ test("new sessions reject unsupported tools instead of silently running PI", asy
     () => createSession({ cwd: tmpdir(), tool: "gemini" }),
     /Unsupported session tool: gemini/,
   );
+});
+
+test("a session asked for the local machine runs here, with no worker recorded", async () => {
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const sessions = { accept: () => undefined, ensure: () => true };
+  const created = await createSession({ cwd: tmpdir(), title: "On this machine", worker: "local" }, sessions, registry);
+  assert.equal(created.worker, undefined);
+  assert.equal(stored[0]?.worker, undefined);
 });
 
 test("the events route returns 404 for a stale record after DELETE", () => {
@@ -506,6 +532,7 @@ test("a fork registers its conversation copy as a session of its own, without th
   const source: SessionRecord = {
     ...record(), id: "fork-source", title: "Plan the API", group: "backend", tool: "durable", piSessionFile: "durable:1",
     model: "x/chosen", thinking: "high", pinned: true, unread: true, icon: "🚀", stage: "testing", stageSource: "operator",
+    bot: "bot-1", parentId: "parent-1", createdByBot: "bot-1",
     jiraIssues: [{ key: "HUI-1", url: "https://example.atlassian.net/browse/HUI-1" }],
   };
 
@@ -515,7 +542,7 @@ test("a fork registers its conversation copy as a session of its own, without th
     { title: forked.title, group: forked.group, cwd: forked.cwd, tool: forked.tool, model: forked.model, thinking: forked.thinking, piSessionFile: forked.piSessionFile },
     { title: "Plan the API (fork)", group: "backend", cwd: source.cwd, tool: "durable", model: "x/chosen", thinking: "high", piSessionFile: "durable:2" },
   );
-  for (const mark of ["pinned", "unread", "icon", "stage", "stageSource", "jiraIssues", "bot", "parentId"] as const) {
+  for (const mark of ["pinned", "unread", "icon", "stage", "stageSource", "jiraIssues", "bot", "parentId", "createdByBot"] as const) {
     assert.equal(forked[mark], undefined, mark);
   }
   assert.deepEqual(stored.map((session) => session.id), [forked.id], "registered before its runtime starts");

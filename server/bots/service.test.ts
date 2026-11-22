@@ -19,7 +19,7 @@ import type { SecretQuestion } from "../agent-tools/secret-requests.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
-const { LiveSessions } = await import("../sessions/live-sessions.ts");
+const { LiveSessions, SessionBusyError } = await import("../sessions/live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./service.ts");
 const { BotMemoryUnavailableError } = await import("./memory.ts");
@@ -1146,6 +1146,47 @@ test("messages prompt an idle bot, queue behind a busy one, and a wait reports t
   chat.answer("finally");
 });
 
+test("a message told to refuse a busy chat rejects and queues nothing", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  await h.service.send(bot.id, { text: "busy work" });
+  await assert.rejects(
+    h.service.send(bot.id, { text: "heartbeat report", whenBusy: "refuse" }),
+    (error: unknown) => error instanceof SessionBusyError,
+    "a refusal, not a follow-up",
+  );
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], [], "nothing waits behind the running turn");
+
+  chat.answer("busy work done");
+  await waitFor(() => h.sessions.status(bot.sessionId) === "idle" ? true : undefined, "the chat to settle");
+  assert.deepEqual(chat.prompts, ["busy work"], "the refused message never becomes a turn");
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], []);
+});
+
+test("an idle chat takes a message told to refuse a busy one", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  assert.deepEqual(await h.service.send(bot.id, { text: "first report", whenBusy: "refuse" }), { status: "sent" });
+  assert.deepEqual(chat.prompts, ["first report"]);
+});
+
+test("only an explicit refusal rejects a busy chat: the default stays a follow-up", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+
+  await h.service.send(bot.id, { text: "busy work" });
+  assert.deepEqual(await h.service.send(bot.id, { text: "queued message" }), { status: "queued" });
+  await queueHolds(h, bot.sessionId, 1);
+  const prompted = chat.nextPrompt();
+  chat.answer("busy work done");
+  assert.equal(await prompted, "queued message");
+});
+
 test("a routine is marked as one, queues behind a busy bot and completes with the turn that answers it", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
@@ -1754,6 +1795,12 @@ test("a call's record goes to the bot's conversation as one write, its context c
   assert.equal(context.bot.id, bot.id);
   assert.equal(context.soul, "Be brief.", "the call gets its SOUL.md");
   assert.equal(context.view, "<chat>\n0+1|user: hi\n</chat>");
+  // A handoff given minutes before the call is newer than the memory's summaries: the call reads it verbatim.
+  const chat = await h.chat(bot.sessionId);
+  chat.history.push({ kind: "message", role: "user", text: "[from agent: Kickoff · reply-to agent:s-9] The meeting moved to 15:00." });
+  chat.answer("Noted: 15:00.");
+  assert.equal((await h.service.callContext(bot.handle)).recent,
+    "user: [from agent: Kickoff · reply-to agent:s-9] The meeting moved to 15:00.\nAda: Noted: 15:00.");
   const plain = await harness(t, { memoryReadable: false });
   const other = await plain.service.create({ soul: SOUL, name: "Bob" });
   assert.equal((await plain.service.callContext(other.id)).view, undefined, "a call goes on without a memory it cannot read");
@@ -2079,6 +2126,17 @@ test("a worker's host gets the bots section only for a bot that runs on it", asy
   assert.match(section!, /- @home \(Home\)/u, "the roster includes the bots here");
   await assert.rejects(h.service.workerSection("w-1", home.id), BotNotFoundError);
   await assert.rejects(h.service.workerSection("w-2", rover.id), BotNotFoundError);
+});
+
+test("a worker's bot.project proves a bot runs there without building the bots section", async (t) => {
+  const h = await harness(t);
+  const home = await h.service.create({ name: "Home" });
+  const rover = await h.service.create({ name: "Rover", worker: "w-1" });
+  // The gateway answers `bot.project` with this predicate: a bot of another worker, or of this machine, is refused.
+  assert.deepEqual(
+    [await h.service.runsOn("w-1", rover.id), await h.service.runsOn("w-1", home.id), await h.service.runsOn("w-2", rover.id), await h.service.runsOn("w-1", "missing")],
+    [true, false, false, false],
+  );
 });
 
 test("a bot's cost counts its chat and every subagent under it, never another session", async (t) => {

@@ -1,25 +1,35 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
-import type { QueueSnapshot, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import type { Attachment, QueueSnapshot, RuntimeCommand, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import { MAX_UPLOAD_FILE_BYTES } from "../api/files.ts";
+import { MAX_ATTACHMENT_BYTES, MAX_FILES_PANE_BYTES } from "../lib/attachments.ts";
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
+import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
 import { ComposerController } from "./composer-controller.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
 const fake = vi.hoisted(() => ({
   mutations: [] as { id: string; mutation: unknown; resolve: () => void; reject: (error: Error) => void }[],
   goals: [] as { id: string; action: string; objective?: string; resolve: () => void; reject: (error: Error) => void }[],
+  progressRequests: [] as { id: string; resolve: () => void; reject: (error: unknown) => void }[],
   drafts: new Map<string, ComposerDraft>(),
+  draftWrites: [] as { key: string; text: string }[],
   pathRequests: [] as { cwd: string; input: string }[],
+  commandRequests: [] as { id: string; resolve: (commands: RuntimeCommand[]) => void; reject: (error: Error) => void }[],
   prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
   rewinds: [] as unknown[][],
   aborts: [] as string[],
   steerNows: [] as { id: string; resolve: () => void; reject: (error: Error) => void }[],
+  sideQuestions: [] as { id: string; question: string; resolve: (result: { question: string; answer: string; model: string }) => void; reject: (error: Error) => void }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
+  recomputeSessionProgress: (id: string) => new Promise<void>((resolve, reject) => fake.progressRequests.push({ id, resolve, reject })),
+  loadCommands: (id: string) => new Promise<RuntimeCommand[]>((resolve, reject) => fake.commandRequests.push({ id, resolve, reject })),
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
   sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
+  askSideQuestion: (id: string, question: string) => new Promise((resolve, reject) => fake.sideQuestions.push({ id, question, resolve, reject })),
   rewindSession: async (...args: unknown[]) => { fake.rewinds.push(args); },
   abortSession: async (id: string) => { fake.aborts.push(id); },
   setSessionGoal: (id: string, action: string, objective?: string) => new Promise((resolve, reject) => {
@@ -38,24 +48,28 @@ vi.mock("../api/local-paths.ts", () => ({
 vi.mock("../lib/composer/drafts.ts", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/composer/drafts.ts")>(),
   readComposerDraft: async (key: string) => fake.drafts.get(key) ?? { text: "", attachments: [] },
-  writeComposerDraft: async (key: string, draft: ComposerDraft) => { fake.drafts.set(key, draft); return "persisted"; },
+  writeComposerDraft: async (key: string, draft: ComposerDraft) => { fake.drafts.set(key, draft); fake.draftWrites.push({ key, text: draft.text }); return "persisted"; },
   listComposerDraftSessionIds: async () => [],
 }));
 
 beforeEach(() => {
   fake.mutations = [];
   fake.goals = [];
+  fake.progressRequests = [];
   fake.drafts = new Map();
+  fake.draftWrites = [];
   fake.pathRequests = [];
+  fake.commandRequests = [];
   fake.prompts = [];
   fake.rewinds = [];
   fake.aborts = [];
   fake.steerNows = [];
+  fake.sideQuestions = [];
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection } = {}) {
+function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection; launching?: boolean } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
   let updates = 0;
@@ -79,10 +93,134 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
     mentionable: () => [],
     textarea: () => options.textarea ?? null,
     handleUpdateCommand: () => false,
-    launching: () => false,
+    launching: () => options.launching ?? false,
   });
   return { controller, conversation, notes, reported, updates: () => updates };
 }
+
+test("progress recompute is single-flight for idle and running sessions and waits for confirmed completion", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller, notes, updates } = composer(selected);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  controller.props().onRecomputeProgress();
+  controller.props().onRecomputeProgress();
+  assert.equal(fake.progressRequests.length, 1);
+  assert.equal(fake.progressRequests[0]?.id, "s1");
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  assert.equal(controller.sending, false, "refresh does not send a turn or block the composer");
+  const beforeCompletion = updates();
+  fake.progressRequests[0]?.resolve();
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  assert.ok(updates() > beforeCompletion);
+  selected.current = { ...selected.current, status: "running" };
+  controller.props().onRecomputeProgress();
+  assert.equal(fake.progressRequests.length, 2, "an active turn allows recompute too");
+  fake.progressRequests[1]?.resolve();
+  await settle();
+  assert.deepEqual(notes, []);
+  assert.deepEqual(fake.prompts, []);
+});
+
+test("progress recompute requires a selected live, opened idle or running session", () => {
+  const selected: { current: SessionView | undefined } = { current: undefined };
+  const { controller, conversation } = composer(selected);
+  controller.props().onRecomputeProgress();
+  selected.current = { id: "s1", status: "idle" } as SessionView;
+  for (const connection of ["reconnecting", "stopped", "saved", "outdated"] as const) {
+    conversation.connection = connection;
+    controller.props().onRecomputeProgress();
+  }
+  conversation.connection = "live";
+  conversation.opening = true;
+  controller.props().onRecomputeProgress();
+  conversation.opening = false;
+  for (const status of ["waiting", "starting", "error", "reconnecting", "disconnected"] as const) {
+    selected.current = { ...selected.current, status };
+    controller.props().onRecomputeProgress();
+  }
+  assert.deepEqual(fake.progressRequests, []);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+});
+
+test("progress recompute shows a failure inline, clears it on retry and on session reset", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[0]?.reject(new Error("The utility model is unavailable."));
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: "The utility model is unavailable." });
+  controller.props().onRecomputeProgress();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  fake.progressRequests[1]?.reject("unexpected refusal");
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: "Could not recompute progress." });
+  controller.resetSession();
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  assert.deepEqual(notes, [], "the failure belongs to the progress panel");
+});
+
+test("switching drafts clears progress state and stale completions cannot settle a newer request", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller } = composer(selected);
+  controller.switchDraft(sessionDraftKey("s1"));
+  controller.props().onRecomputeProgress();
+  selected.current = { id: "s2", status: "running" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s2"));
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+  selected.current = { id: "s1", status: "idle" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s1"));
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[0]?.reject(new Error("Old failure"));
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  controller.resetSession();
+  controller.props().onRecomputeProgress();
+  fake.progressRequests[1]?.resolve();
+  await settle();
+  assert.deepEqual(controller.props().progressRefresh, { pending: true, error: undefined });
+  fake.progressRequests[2]?.reject(new Error("New failure"));
+  await settle();
+  assert.equal(controller.props().progressRefresh.error, "New failure");
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY);
+  assert.deepEqual(controller.props().progressRefresh, { pending: false, error: undefined });
+});
+
+test("/btw asks the utility model and leaves the answer in the side chat, not the transcript", async () => {
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView });
+  controller.sending = false;
+  controller.send("/btw which file are we editing?");
+  assert.deepEqual(sideChatFor("s1"), {
+    question: "which file are we editing?", answer: "", model: "", loading: true, error: "",
+  });
+  assert.deepEqual(fake.prompts, [], "the question never becomes a prompt");
+  assert.equal(controller.sending, false, "the composer is free again while the answer comes");
+  assert.equal(controller.draft, "");
+
+  fake.sideQuestions[0]?.resolve({ question: "which file are we editing?", answer: "`src/views/home.ts`", model: "utility-fixture" });
+  await settle();
+  assert.equal(sideChatFor("s1")?.answer, "`src/views/home.ts`");
+  assert.equal(sideChatFor("s1")?.loading, false);
+  assert.equal(sideChatFor("s1")?.model, "utility-fixture");
+
+  controller.send("/btw and the branch?");
+  fake.sideQuestions[1]?.reject(new Error("The utility model is unavailable."));
+  await settle();
+  assert.equal(sideChatFor("s1")?.error, "The utility model is unavailable.");
+  assert.deepEqual(notes, []);
+
+  clearSideChat("s1");
+});
+
+test("a bare /btw or one with attachments is refused before it asks anything", () => {
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView });
+  controller.send("/btw");
+  controller.send("/btw what is in the screenshot?", [{ name: "shot.png", kind: "image", mimeType: "image/png", dataBase64: "" }]);
+  assert.deepEqual(fake.sideQuestions, []);
+  assert.deepEqual(notes, [
+    "error:Add a question after /btw. Example: /btw which file are we editing?",
+    "error:/btw does not support attachments in this build.",
+  ]);
+});
 
 test("a draft follows its session's key, reports its presence and marks the session's row", async () => {
   const { controller, reported } = composer({ current: { id: "s1" } as SessionView });
@@ -103,6 +241,39 @@ test("a draft follows its session's key, reports its presence and marks the sess
   controller.props().onDraftChange("");
   assert.deepEqual(reported, ["s1:true", "s1:true", "s1:false"]);
   assert.deepEqual([...controller.draftSessionIds], []);
+});
+
+test("a share seeds the New Session draft ahead of what was already typed, and stores it once", async () => {
+  fake.drafts.set(NEW_SESSION_DRAFT_KEY, { text: "typed", attachments: [] });
+  const { controller } = composer({ current: undefined });
+  const seed = "Look this post in X https://x.com/danifdz/status/1987654321098765432";
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, seed);
+  await settle();
+  assert.equal(controller.draft, `${seed}\n\ntyped`, "the share sits above the operator's own draft");
+  assert.deepEqual(controller.attachments, [], "a share carries no attachments");
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: `${seed}\n\ntyped`, attachments: [] });
+  assert.deepEqual(fake.draftWrites, [{ key: NEW_SESSION_DRAFT_KEY, text: `${seed}\n\ntyped` }], "one write stores both sides");
+  assert.deepEqual(fake.prompts, [], "a share only fills the composer; the operator still presses Start session");
+});
+
+test("a share with no stored draft is the whole New Session draft", async () => {
+  const { controller } = composer({ current: undefined });
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, "Remember to water the plants");
+  await settle();
+  assert.equal(controller.draft, "Remember to water the plants");
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: "Remember to water the plants", attachments: [] });
+  assert.deepEqual(fake.prompts, []);
+});
+
+test("a share never reaches the launch draft an embedded pane may not own", async () => {
+  fake.drafts.set(NEW_SESSION_DRAFT_KEY, { text: "launch text", attachments: [] });
+  const { controller } = composer({ current: { id: "s1" } as SessionView }, { embeddedPane: true });
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, "Look this post in X https://x.com/a/status/1");
+  await settle();
+  assert.equal(controller.draft, "");
+  assert.deepEqual(fake.draftWrites, []);
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: "launch text", attachments: [] });
+  assert.deepEqual(fake.prompts, []);
 });
 
 test("an embedded pane never reads or writes the New Session draft", async () => {
@@ -128,6 +299,45 @@ test("typing renders only when the composer starts or stops holding text; a draf
   assert.equal(controller.draftRevision, 0);
   controller.setDraft("from HUI");
   assert.equal(controller.draftRevision, 1);
+});
+
+test("retrying a failed command catalog restores a blurred query and focuses the editor before replacing Retry", async () => {
+  const focus = vi.fn(() => {
+    assert.equal(controller.commandsLoading, false, "focus returns before loading replaces Retry");
+    assert.equal(fake.commandRequests.length, 1, "focus returns before the retry request starts");
+  });
+  const textarea = { focus, selectionStart: 1, selectionEnd: 1 } as unknown as HTMLTextAreaElement;
+  const { controller } = composer({ current: { id: "s1", status: "idle" } as SessionView }, { textarea });
+  // WebKit can blur the editor without focusing the tapped Retry button.
+  vi.stubGlobal("document", { activeElement: null });
+  try {
+    controller.setDraft("/");
+    controller.props().onCommandQuery({ text: "", start: 0 });
+    fake.commandRequests[0]?.reject(new Error("Could not load commands."));
+    await settle();
+    assert.equal(controller.commandsError, "Could not load commands.");
+    assert.equal(focus.mock.calls.length, 0, "an initial catalogue request does not move focus");
+
+    controller.props().onCommandQuery(null);
+    controller.props().commandMenu.onRetry();
+    assert.equal(focus.mock.calls.length, 1, "focus returns before loading removes the Retry button");
+    assert.deepEqual(controller.slashQuery, { text: "", start: 0 });
+    assert.equal(controller.props().commandMenu.open, true);
+    assert.equal(controller.commandsLoading, true);
+    assert.equal(fake.commandRequests.length, 2);
+
+    fake.commandRequests[1]?.resolve([{ name: "check-status", description: "Check status", source: "extension" }]);
+    await settle();
+    assert.equal(controller.commandsLoading, false);
+    assert.equal(controller.commandsError, "");
+    assert.equal(controller.props().commandMenu.open, true);
+    assert.ok(controller.props().commandMenu.commands.some(({ name }) => name === "check-status"));
+    assert.equal(controller.draft, "/");
+    assert.equal(focus.mock.calls.length, 1, "the reply never steals focus back after the operator moves away");
+    assert.deepEqual(fake.prompts, []);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test("an @ path query loads suggestions for the session's folder and a pick completes the draft", async () => {
@@ -272,21 +482,16 @@ test("a saved, reconnecting or outdated conversation rewinds, queues and stops n
   }
 });
 
-test("the goal pill expands in place and keeps a refused objective where it was typed", async () => {
+test("the goal editor keeps a refused objective where it was typed", async () => {
   const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
   const { controller, notes } = composer({ current: { id: "s1", status: "idle", goal } as SessionView });
   const props = controller.props();
-  assert.deepEqual({ ...props.goalPanel }, { expanded: false, editing: false, error: "" });
-  props.onGoalToggle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: false, error: "" });
-  controller.props().onGoalToggle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...props.goalPanel }, { editing: false, error: "" });
 
-  controller.props().onGoalToggle();
   controller.props().onGoalEdit();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: true, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: true, error: "" });
   controller.props().onGoalCancelEdit();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: false, error: "" }, "cancelling leaves the objective readable");
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" }, "cancelling closes the editor");
 
   controller.props().onGoalEdit();
   controller.props().onGoalSave("keep the release branch green");
@@ -295,13 +500,13 @@ test("the goal pill expands in place and keeps a refused objective where it was 
   fake.goals[0]?.reject(new Error("Finish or stop the active turn before starting a goal."));
   await settle();
   assert.equal(controller.sending, false);
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: true, error: "Finish or stop the active turn before starting a goal." });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: true, error: "Finish or stop the active turn before starting a goal." });
   assert.deepEqual(notes, ["info:"], "the refusal stays in the editor instead of a floating note");
 
   controller.props().onGoalSave("keep the release branch green");
   fake.goals[1]?.resolve();
   await settle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" });
   assert.deepEqual(notes.at(-1), "info:Goal set. The agent keeps working until it is achieved or you pause it.");
 
   controller.props().onGoalEdit();
@@ -310,12 +515,179 @@ test("the goal pill expands in place and keeps a refused objective where it was 
   assert.equal(controller.goalPanel.error, "A goal needs an objective.");
 });
 
-test("switching sessions closes the goal pill's detail", () => {
+test("switching sessions closes the goal editor", () => {
   const selected = { current: { id: "s1", status: "idle", goal: { objective: "ship it", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 } } as SessionView };
   const { controller } = composer(selected);
   controller.switchDraft(sessionDraftKey("s1"));
-  controller.props().onGoalToggle();
-  assert.equal(controller.goalPanel.expanded, true);
+  controller.props().onGoalEdit();
+  assert.equal(controller.goalPanel.editing, true);
   controller.switchDraft(sessionDraftKey("s2"));
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" });
+});
+
+/** A file the picker refuses by size. `arrayBuffer` reports if the refusal ever reaches it. */
+const oversizeFile = (name: string, size: number, onRead?: () => void): File => ({
+  name,
+  size,
+  type: "application/octet-stream",
+  arrayBuffer: async () => {
+    onRead?.();
+    return new ArrayBuffer(0);
+  },
+} as unknown as File);
+
+/** `count` MiB of base64, so the composer's own size checks see exactly that many bytes. */
+const megabytes = (count: number, name: string): Attachment => ({
+  kind: "file",
+  name,
+  mimeType: "application/octet-stream",
+  dataBase64: "A".repeat((count * 1024 * 1024 * 4) / 3),
+});
+
+test("the Files-pane cap a size refusal names is the client's real upload cap", () => {
+  // `src/lib/` may not read a value from `src/api/` (R6 in docs/map.md), so `MAX_FILES_PANE_BYTES` mirrors
+  // `MAX_UPLOAD_FILE_BYTES`; the mirror is held to the real cap wherever the two can meet.
+  assert.equal(MAX_FILES_PANE_BYTES, MAX_UPLOAD_FILE_BYTES);
+});
+
+test("an oversize pick stays out of the composer, is never read and says where the file fits", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  let read = false;
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1, () => { read = true; })]);
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.attachments.length, 0, "the refused file never enters the composer");
+  assert.equal(read, false, "the refusal comes before the file is read into memory");
+  assert.deepEqual(fake.draftWrites, [], "nothing is stored");
+  assert.deepEqual(fake.prompts, [], "nothing is posted");
+});
+
+test("a remote conversation is told the limit alone, since its Files pane would refuse it", async () => {
+  // The harness reads the session the composer shows, so a worker on it is the whole "remote" this test needs.
+  const selected = { current: { id: "s1", status: "idle", worker: { id: "w1", name: "build box" } } as SessionView };
+  const { controller, notes } = composer(selected);
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB."], "the limit alone: that conversation has no Files pane");
+  assert.equal(controller.attachments.length, 0, "the refused file never enters the composer");
+
+  // The same conversation's send refuses a restored set with the limit alone too.
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.attachments = restored;
+  controller.send("send these", restored);
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes.at(-1), "error:Attachments must be 16 MB or less in total.");
+  assert.ok(!notes.some((note) => note.includes("Files pane")), "no refusal points at a pane that is not there");
+
+  // A new session is on this gateway's disk, so its composer keeps the way out.
+  const fresh = composer({ current: undefined });
+  fresh.controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  await settle();
+  assert.deepEqual(fresh.notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+});
+
+test("a pick while a send or a session start is in flight says so instead of vanishing", async () => {
+  const sending = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  sending.controller.sending = true;
+  sending.controller.props().onAddAttachments([new File(["hi"], "notes.txt", { type: "text/plain" })]);
+  await settle();
+  assert.deepEqual(sending.notes, ["error:Wait for this message to be sent before adding attachments."]);
+  assert.equal(sending.controller.attachments.length, 0);
+
+  const launching = composer({ current: { id: "s1", status: "starting" } as SessionView }, { launching: true });
+  launching.controller.props().onAddAttachments([new File(["hi"], "notes.txt", { type: "text/plain" })]);
+  await settle();
+  assert.deepEqual(launching.notes, ["error:Wait for the session to start before adding attachments."]);
+  assert.equal(launching.controller.attachments.length, 0);
+  assert.deepEqual(fake.draftWrites, [], "neither pick is stored");
+});
+
+test("a send holding restored oversize attachments posts nothing and reports the refusal once", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.setDraft("send these");
+  // A draft stored before the limits, or a launch prompt: the picker never saw this set, so the send is what refuses it.
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.attachments = restored;
+  controller.send("send these", restored);
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes, ["error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.sending, false, "the composer stays free");
+  assert.equal(controller.draft, "send these", "the draft is not taken from the operator");
+  assert.deepEqual(controller.attachments, restored, "the files stay, merged in once and never duplicated");
+});
+
+test("a launch prompt the size check refuses comes back to the composer with its files", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const restored = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.pendingLaunchPrompt = "first";
+  controller.pendingLaunchAttachments = restored;
+  controller.flushLaunchPrompt();
+  await settle();
+  assert.deepEqual(fake.prompts, [], "no request is built");
+  assert.deepEqual(notes, ["error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.draft, "first", "the launch prompt is not lost");
+  assert.deepEqual(controller.attachments.map(({ name }) => name), ["a.bin", "b.bin"]);
+  assert.equal(fake.drafts.get(sessionDraftKey("s1"))?.text, "first", "the restored draft is stored");
+});
+
+test("a pick that fails after the composer moved to another draft still reports it", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.props().onAddAttachments([oversizeFile("clip.mov", MAX_ATTACHMENT_BYTES + 1)]);
+  // The operator picked this file: a switch that lands while it is read does not make the failure invisible.
+  controller.switchDraft(sessionDraftKey("s2"));
+  await settle();
+  assert.deepEqual(notes, ["error:clip.mov is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each."]);
+  assert.equal(controller.attachments.length, 0);
+});
+
+const REFUSED_TOTAL = "error:Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each.";
+
+/** Queues a launch prompt the size check refuses, with the files that are too large for one message. */
+function refusedLaunch(controller: ComposerController): readonly Attachment[] {
+  const files = [megabytes(9, "a.bin"), megabytes(9, "b.bin")];
+  controller.pendingLaunchPrompt = "first";
+  controller.pendingLaunchAttachments = files;
+  controller.flushLaunchPrompt();
+  return files;
+}
+
+test("typing while a refused launch prompt is recovered keeps the typed text", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  refusedLaunch(controller);
+  // The operator goes on typing in the gap between the refusal and the recovered draft landing: what they type is
+  // newer than the recovery, so it is what the composer keeps.
+  controller.props().onDraftInput("first and then this");
+  await settle();
+  assert.deepEqual(notes, [REFUSED_TOTAL], "the refusal is reported once");
+  assert.equal(controller.draft, "first and then this", "the recovery never overwrites what was typed after it");
+  assert.deepEqual(controller.attachments.map(({ name }) => name), ["a.bin", "b.bin"], "the refused files come back once");
+  assert.equal(fake.drafts.get(sessionDraftKey("s1"))?.text, "first and then this", "the newest draft is the stored one");
+});
+
+test("switching sessions while a refused launch prompt is recovered keeps it out of the new one", async () => {
+  const selected = { current: { id: "s1", status: "idle" } as SessionView };
+  const { controller, notes } = composer(selected);
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  const files = refusedLaunch(controller);
+  // The operator opens another conversation in the gap between the refusal and the recovered draft landing.
+  selected.current = { id: "s2", status: "idle" } as SessionView;
+  controller.switchDraft(sessionDraftKey("s2"));
+  await settle();
+  assert.deepEqual(notes, [REFUSED_TOTAL], "the refusal is reported once");
+  assert.equal(controller.draft, "", "the second conversation's composer is left alone");
+  assert.deepEqual(controller.attachments, [], "the refused files never land in the second conversation");
+  assert.deepEqual(fake.drafts.get(sessionDraftKey("s1")), { text: "first", attachments: files }, "the refused prompt waits on its own session's draft");
 });

@@ -9,11 +9,15 @@ import { homedir, hostname, userInfo } from "node:os";
 
 import { browserMirror, workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotNotFoundError, BotRegistry } from "./bots/bots.ts";
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
+import { createStaffRoutes } from "./routes/staff.ts";
+import { createHeartbeat } from "./heartbeat.ts";
+import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
+import { HOOK_REPORT_OP } from "./worker/protocol.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
 import { BotTemplateService } from "./bots/template-import.ts";
@@ -23,18 +27,23 @@ import { localBotSkills } from "./bots/skills.ts";
 import { durableBotConversations } from "./bots/conversations.ts";
 import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
-import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
+import { buildCallHandoff, buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall, utilityCandidates } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
-import { type BotReply, type BotView } from "./bots-format.ts";
+import { readStaffPack } from "./staff/pack.ts";
+import { ensureStaff, recordChief, type StaffDeps } from "./staff/service.ts";
+import { LEAD_PROMPT } from "./sessions/lead.ts";
+import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
-import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { AUTOMATION_FILE, BROWSER_PENDING_IMPORT_FILE, BROWSER_PROFILE_DIR, BROWSER_SECRETS_FILE, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode/vscode.ts";
 import { VscodeInstaller } from "./vscode/install.ts";
 import { verifyVscodeServer } from "./vscode/providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
+import { BrowserStateFile } from "./browser/mirror.ts";
+import { SiteSecrets } from "./browser/secrets.ts";
 import { MacPower } from "./power.ts";
 import { createHostMetrics, sampleInBackground } from "./host-metrics.ts";
 import type { BrowserStatus } from "./api/browser.ts";
@@ -45,6 +54,7 @@ import { WorktreeService } from "./git/worktree-inventory.ts";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { AutomationService, automationStoreFailure, executeAutomationTask } from "./automation.ts";
+import { createAutomationClockBinding } from "./automation-clock.ts";
 import { BotRoutines } from "./bots/routines.ts";
 import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
@@ -72,7 +82,12 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
-import { deliverDesktopNotification, notifyUser } from "./agent-tools/notifications.ts";
+import { deliverDesktopNotification, notificationChatLink, notifyUser } from "./agent-tools/notifications.ts";
+import { createNotificationDelivery, notificationPushMessage, partialPushRecord } from "./notifications/delivery.ts";
+import { ntfyConfigured, ntfyMessage, publishNtfy } from "./notifications/ntfy.ts";
+import { publishPushBatch, type PushMessage } from "./notifications/push.ts";
+import { addPushSubscription, listPushSubscriptions, prunePushSubscriptions, removePushSubscription, vapidKeys, type StoredPushSubscription } from "./notifications/push-store.ts";
+import type { PushStatusResponse, PushTestResponse } from "./api/notifications.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
@@ -83,6 +98,8 @@ import { TaskSuggestionInputError, TaskSuggestionStore } from "./agent-tools/tas
 import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
+import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
+import { isChiefTitle, chiefGroupLabel } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -101,9 +118,16 @@ import { createAppRoutes } from "./routes/app.ts";
 import { openChatInApp } from "./desktop-app.ts";
 import { createHostMetricsRoutes } from "./routes/host-metrics.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
+import { createLocalProviderRoutes } from "./routes/local-providers.ts";
+import { createModelMetricRoutes } from "./routes/model-metrics.ts";
+import { localProviders } from "./pi/local-providers.ts";
+import { modelMetrics } from "./model-metrics.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
+import { createNotificationRoutes } from "./routes/notifications.ts";
+import { createExtensionRoutes } from "./routes/extensions.ts";
+import { createExtensionsService } from "./extensions/service.ts";
 import { createTerminalRoutes } from "./routes/terminals.ts";
 import { createBrowserRoutes } from "./routes/browser.ts";
 import { createVscodeRoutes } from "./routes/vscode.ts";
@@ -117,11 +141,14 @@ import { ensureConfigDir } from "./themes.ts";
 import { AttachmentInputError, readAttachments } from "./sessions/attachments.ts";
 import {
   readRegistry,
+  readSessionGroups,
   SessionNotFoundError,
   updateRegistry,
+  type SessionGroupConfig,
   type SessionRecord,
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
+import { groupNamed, groupSessionDefaults, type RequestedWorker } from "./sessions/group-session-defaults.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
 import { SessionProgress } from "./sessions/session-progress.ts";
@@ -135,22 +162,41 @@ export const terminalRoutes = createTerminalRoutes({ readRegistry, workers });
 export const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const themeRoutes = createThemeRoutes();
+export const extensions = createExtensionsService();
+durableHost().configureGatewayExtensions(extensions);
+export const extensionRoutes = createExtensionRoutes({ extensions });
 export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
 const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
-// and stop showing a reconnect once HUI no longer tries.
-function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
-  void readRegistry().then((records) => {
-    for (const record of records) if (record.worker === workerId && liveSessions.isLive(record.id)) act(record);
-  }).catch(() => undefined);
+// and stop showing a reconnect once HUI no longer tries. They start together,
+// so one session's slow reattach does not hold up the others; the returned
+// promise settles only once every one of them has.
+function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void | Promise<void>): Promise<void> {
+  return readRegistry().then(async (records) => {
+    const due = records.filter((record) => record.worker === workerId && liveSessions.isLive(record.id));
+    await Promise.all(due.map((record) => act(record)));
+  });
 }
-workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
-workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
 
-/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
+/** The sweep reattaching a worker's sessions, from the moment it connects: a report its host relays as soon as the
+ * connection is up waits for this, so it reaches a bot's chat once the chat is back instead of failing on a session
+ * that still says it is reconnecting. Held only while the sweep runs. */
+const reattaching = new Map<string, Promise<void>>();
+workers.onConnected((workerId) => {
+  const sweep = forWorkerSessions(workerId, async (record) => {
+    liveSessions.ensure(record, true);
+    await liveSessions.booted(record.id);
+  }).catch(() => undefined).finally(() => { if (reattaching.get(workerId) === sweep) reattaching.delete(workerId); });
+  reattaching.set(workerId, sweep);
+});
+workers.onStopped((workerId) => {
+  void forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)).catch(() => undefined);
+});
+
+/** Bots: their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
 export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
@@ -222,6 +268,7 @@ export const bots = new BotService({
     },
   }),
   files: localBotFiles(),
+  skills: localBotSkills(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -237,6 +284,40 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+/** The staff pack on disk, this gateway's bots, their own skills and SOUL.md, and Settings' routes: what the installer
+ * needs to seed the Chief of Staff, keep every group chief current, and record a chief the route just created. */
+async function staffDeps(): Promise<StaffDeps> {
+  return {
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    bots: async () => (await botRegistry.list()).map((bot) => ({
+      id: bot.id,
+      name: bot.name,
+      ...(bot.title ? { title: bot.title } : {}),
+      ...(bot.group ? { group: bot.group } : {}),
+      ...(bot.worker ? { worker: bot.worker } : {}),
+    })),
+    skills: localBotSkills(),
+    soul: localBotFiles(),
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  };
+}
+export const staffRoutes = createStaffRoutes({
+  groups: readSessionGroups,
+  bots: () => botRegistry.list(),
+  getBot: (id) => bots.get(id),
+  createBot: (body) => bots.create(body),
+  restoreBot: (id) => bots.restore(id),
+  // A chief keeps its skills where it keeps its home: on its group's worker, or here.
+  skills: (bot) => botSkillFiles(bot.worker?.id),
+  readSettings: readHuiSettings,
+  writeSettings: writeHuiSettings,
+  recordChief: async (botId) => recordChief(await staffDeps(), botId),
+});
 export const botRoutes = createBotRoutes({
   service: bots,
   readAttachments: async (sessionId, raw) => {
@@ -250,6 +331,12 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
+/** The staff pack: seeds the Chief of Staff once, then keeps the pack's skills and routes current in it and in every
+ * group chief (staff/, server/staff/service.ts). Deleting the seeded bot opts out; the record keeps HUI from seeding
+ * it again. */
+export const staff = {
+  ensure: async () => ensureStaff(await staffDeps()),
+};
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
 const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;
@@ -298,6 +385,17 @@ export const botTemplateRoutes = createBotTemplateRoutes({
     },
   }),
 });
+/**
+ * The session group a chat's bot works for, by its bot id: its stored New session defaults name the project directory
+ * and the machine the sessions and children the bot's chat starts belong to (`group-session-defaults.ts`). Only a Chief
+ * of Staff's own group lends them (`chiefGroupLabel`): a group is an ordinary field, and an ordinary bot filed under one
+ * keeps its own directory, machine and prompt. A bot of no group, or a label no group of the registry carries, answers
+ * none.
+ */
+async function groupForBot(botId: string): Promise<SessionGroupConfig | undefined> {
+  const label = chiefGroupLabel((await botRegistry.list()).find(({ id }) => id === botId));
+  return label ? (await readSessionGroups()).find((group) => group.label === label) : undefined;
+}
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md, USER.md and MEMORY.md in its `soul`, `operator` and `memory` sections, from its home folder in HUI's
@@ -312,15 +410,33 @@ durableHost().configureDurableBots(createDurableBots(durableHost(), {
   },
   // A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
   recorded: (botId, access) => bots.accessRecorded(botId, access),
+  // A group chief works in its own folder, so its group's project lends its prompt the project's context file; a
+  // worker's host asks for that directory too (`bot.project`).
+  projectDir: async (botId) => (await groupForBot(botId))?.cwd,
+  // A chief's chat carries its delegation rule on every request (`hui_chief`), and an ordinary bot's carries none.
+  isChief: (botId) => bots.isChief(botId),
 }));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
-  return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
+  // The title with it: a chief's chat hosted there carries `hui_chief` only if this gateway says the bot is a chief.
+  return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null, chief: botId === undefined ? false : await bots.isChief(botId) };
+});
+// A bot's chat on a worker asks which directory its group's project is, so its prompt carries that project's context
+// file as a local chat's does; the same rule as `bot.section` answers only for a bot that runs on that worker, and a bot
+// of no group names none.
+workers.serve("bot.project", async (workerId, params) => {
+  // A bot only, never a session's section: the same rule as `bot.section` refuses one that runs elsewhere, or none,
+  // without building the section this answer does not carry.
+  const botId = typeof params["botId"] === "string" ? params["botId"] : "";
+  if (!await bots.runsOn(workerId, botId)) throw new BotNotFoundError("That bot does not run on this worker.");
+  return { cwd: (await groupForBot(botId))?.cwd ?? null };
 });
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 export const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 export const subagents = new SubagentService(liveSessions);
+// A chief's children belong to the project and machine its group states, not to the chief's own bot folder.
+subagents.botGroup = groupForBot;
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -328,12 +444,86 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
+const WATCH_LIMIT = 50;
+
+/** HUI's gateway heartbeat: it reports a watched session that needs judgment; the chief decides, not the gateway. */
+export const heartbeat = createHeartbeat({
+  records: readRegistry,
+  status: (id) => liveSessions.status(id),
+  isLive: (id) => liveSessions.isLive(id),
+  watchers: (id) => watchers.list(id),
+  subagents: (id) => liveSessions.subagents(id),
+  lastAssistant: (id) => {
+    const entries = liveSessions.transcript(id);
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry?.kind === "message" && entry.role === "assistant") return entry.text;
+    }
+    return undefined;
+  },
+  // A chief's chat may be asleep or busy: the bots' delivery opens it, and a busy one refuses the report instead of
+  // queueing it, so the heartbeat keeps it pending and sends it when that chat's turn ends.
+  notify: async (id, text) => {
+    const chief = await bots.botForSession(id);
+    if (chief) await bots.send(chief.id, { text, whenBusy: "refuse" });
+    else await liveSessions.prompt(id, text);
+  },
+  bots: () => botRegistry.list(),
+  watch: async (watcherId, id, on) => {
+    await updateRegistry((records) => records.map((record) => record.id !== watcherId ? record : {
+      ...record, watches: on ? [...new Set([...(record.watches ?? []), id])] : (record.watches ?? []).filter((each) => each !== id),
+    }));
+  },
+  watchLimit: WATCH_LIMIT,
+});
+export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
+/** Autonomous mode: a session a Chief of Staff started that stops is reported to its chief at once
+ * (`heartbeat.supervise`), except a run that failed, which retries or shows its error. A session the operator started
+ * reports in its own chat. Taken back with Supervised, it leaves the watch that gave it. */
+liveSessions.watchRunEnds(({ id, failed }) => {
+  if (failed || !liveSessions.isAutonomous(id)) return;
+  void heartbeat.supervise(id).then((watching) => {
+    if (!watching) recordDiagnosticEvent({ area: "session", level: "warning", action: "autonomous_chief_full", summary: `The chief already watches ${WATCH_LIMIT} sessions, so this autonomous session reports to no one`, sessionId: id });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "autonomous_report_failed", summary: "HUI could not report an autonomous session to its chief",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
+/** A watcher's chat finishing a turn flushes what its heartbeat report was refused for; nothing pending reads nothing.
+ * It never starts a scan by itself. */
+liveSessions.watchRunEnds(({ id }) => {
+  void heartbeat.watcherIdle(id).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "heartbeat_flush_failed", summary: "HUI could not deliver a heartbeat report a busy chat refused",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
+liveSessions.watchAutonomy((id, on) => {
+  if (!on) void heartbeat.release(id).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "autonomous_release_failed", summary: "HUI could not take an autonomous session off its chief's watch",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */
+/** Site secrets live beside the profile, never in settings.json: they stay on the machine whose browser types them. */
+export const siteSecrets = new SiteSecrets({ file: BROWSER_SECRETS_FILE });
+
+/** Cookies imported while the browser was stopped wait here, in their own 0600 file beside the profile, until the
+ * browser has taken them. */
+const browserPendingImport = new BrowserStateFile(BROWSER_PENDING_IMPORT_FILE);
+
 export const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readHuiSettings()).browser,
+  secrets: siteSecrets,
+  pending: browserPendingImport,
+  // The operator taking a tab stops the agent's turn, but not the tab they just took: their Continue
+  // (or closing the tab) ends the lease, and the idle clock restarts from there.
+  stopRun: async (owner) => {
+    if (liveSessions.status(owner) !== "running") return;
+    await liveSessions.abort(owner, { keepBrowserTabs: true });
+  },
   mirror: {
     read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
     write: (state) => {
@@ -362,11 +552,106 @@ export const vscode = new VscodeService({
     ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
   }),
 });
-export const browserRoutes = createBrowserRoutes({ managedBrowser, browserStatus, readRegistry });
+export const browserRoutes = createBrowserRoutes({ managedBrowser, secrets: siteSecrets, browserStatus, readRegistry });
 export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 export const powerRoutes = createPowerRoutes({ macPower });
+/** The one test notification Settings → Notifications can ask for: it proves the phone's topic instead of a session. */
+async function sendTestNotification(): Promise<void> {
+  const ntfy = (await readHuiSettings()).notifications.ntfy;
+  if (!ntfyConfigured(ntfy)) throw new Error("Set an ntfy topic in Settings → Notifications → Phone (ntfy), then send the test again.");
+  await publishNtfy(ntfy, {
+    title: "HUI",
+    message: `This is a test notification from ${(await readHuiSettings()).name || "your HUI gateway"}.`,
+    priority: 3,
+    tags: ["bell"],
+  }, {
+    ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
+  });
+}
+
+/** What a browser subscribes with: the gateway's public VAPID key and each device by a digest of its endpoint. */
+async function pushStatus(): Promise<PushStatusResponse> {
+  const { publicKey } = await vapidKeys();
+  return {
+    publicKey,
+    devices: (await listPushSubscriptions()).map(({ id, createdAt, device }) => ({ id, createdAt, ...(device ? { device } : {}) })),
+  };
+}
+
+/** Forgets one device, and says whether it was subscribed at all. */
+async function unsubscribe(endpoint: string): Promise<boolean> {
+  if (!(await listPushSubscriptions()).some((subscription) => subscription.endpoint === endpoint)) return false;
+  await removePushSubscription(endpoint);
+  return true;
+}
+
+/**
+ * One message to every subscribed device: sealed per subscription, so each push service carries a body only that
+ * device can read, and published together, so a service that never answers costs the call one deadline instead of one
+ * per device. A subscription the service says is gone (404/410) is pruned, and no error names an endpoint or a key.
+ */
+async function pushToDevices(
+  subscriptions: readonly StoredPushSubscription[],
+  message: PushMessage,
+  settings: Settings["notifications"]["push"],
+): Promise<{ sent: number; gone: number; failure?: unknown }> {
+  const { sent, gone, failure } = await publishPushBatch(
+    subscriptions,
+    message,
+    await vapidKeys(),
+    settings.subject ? { subject: settings.subject } : {},
+  );
+  await prunePushSubscriptions(gone);
+  return { sent, gone: gone.length, ...(failure === undefined ? {} : { failure }) };
+}
+
+/** What a device is told when its push service forgot the subscription: the operator has to subscribe it again. */
+const PUSH_SUBSCRIPTION_GONE = "The push service no longer knows this device's subscription: subscribe it again in Settings → Notifications → This device.";
+
+/**
+ * Records the devices a push service refused while the rest took the notification. The notification arrived, so this
+ * never fails a delivery: a diagnostic that could not be recorded is dropped rather than reported as a push error.
+ */
+function recordPartialPush(sessionId: string, sent: number, devices: number, failure: unknown): void {
+  try {
+    recordDiagnosticEvent({ area: "session", level: "warning", ...partialPushRecord(sent, devices, failure), sessionId });
+  } catch {
+    // Best effort: the devices that took the notification still got it.
+  }
+}
+
+/** The one test push Settings → Notifications can ask for: it proves a subscribed device hears this gateway, and the
+ * count it answers is how many push services accepted, so the page can say the truth. */
+async function sendTestPush(): Promise<PushTestResponse> {
+  const settings = (await readHuiSettings()).notifications;
+  if (!settings.push.enabled) throw new Error("Turn on Web Push in Settings → Notifications → This device, then send the test again.");
+  const subscriptions = await listPushSubscriptions();
+  if (!subscriptions.length) throw new Error("Subscribe this device in Settings → Notifications → This device, then send the test again.");
+  const { sent, failure } = await pushToDevices(subscriptions, {
+    title: "HUI",
+    body: `This is a test notification from ${(await readHuiSettings()).name || "your HUI gateway"}.`,
+    path: "/settings/notifications",
+    tag: "hui-test",
+    priority: "normal",
+  }, settings.push);
+  if (failure !== undefined) {
+    recordDiagnosticEvent({
+      area: "gateway", level: "warning", action: "push_test_failed",
+      summary: `A push service refused ${subscriptions.length - sent} of ${subscriptions.length} test pushes`,
+      detail: failure instanceof Error ? failure.message : String(failure),
+    });
+  }
+  return { sent, devices: subscriptions.length };
+}
+export const notificationRoutes = createNotificationRoutes({
+  sendTest: sendTestNotification,
+  pushStatus,
+  subscribe: async (subscription) => (await addPushSubscription(subscription)).id,
+  unsubscribe,
+  sendTestPush,
+});
 export const appRoutes = createAppRoutes({ openChatInApp });
 const hostMetrics = createHostMetrics();
 sampleInBackground(hostMetrics);
@@ -375,7 +660,8 @@ liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 /** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
 liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));
 /** The Task progress card is HUI's: the utility model writes it after each settled turn and every five minutes of a
- * running one. Nothing waits on it, and a failed call leaves the previous card in place. */
+ * running one. Automatic refreshes never hold up a turn; a manual recompute awaits its saved card. A failed call
+ * leaves the previous card in place. */
 const sessionProgress = new SessionProgress({
   settings: readHuiSettings,
   session: async (id) => {
@@ -408,16 +694,208 @@ async function notificationChat(sessionId: string): Promise<NotificationTarget |
   return { id: record.id, title: (bot?.name ?? record.title).slice(0, 120) || "HUI", subagent: record.parentId !== undefined, ...(bot ? { bot: bot.id } : {}) };
 }
 
-if (process.platform === "darwin") {
-  watchSessionNotifications({
-    sessions: liveSessions,
-    settings: async () => (await readHuiSettings()).notifications,
-    chat: notificationChat,
-    deliver: deliverDesktopNotification,
-  });
-}
+/** HUI's own notifications reach the installed desktop app on macOS, a phone through the ntfy relay its operator's app
+ * subscribes to, and any device that subscribed through Web Push. A gateway with none of them is not an error for HUI's
+ * own events: `canDeliver` keeps those runs out of diagnostics. `notify_user` asks for a notification explicitly, so its
+ * caller gets the reason when none arrives. */
+const notificationDelivery = createNotificationDelivery({
+  desktop: { available: () => process.platform === "darwin", deliver: deliverDesktopNotification },
+  ntfy: {
+    settings: async () => (await readHuiSettings()).notifications.ntfy,
+    publish: async (settings, chat, notification, url) => {
+      await publishNtfy(settings, ntfyMessage(notification, url ?? await notificationChatLink(chat, settings.link)), {
+        // A protected server's token lives in the gateway's environment, never in settings a client can read.
+        ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
+      });
+    },
+  },
+  push: {
+    settings: async () => ({ settings: (await readHuiSettings()).notifications.push, subscriptions: (await listPushSubscriptions()).length }),
+    publish: async (settings, chat, notification) => {
+      const subscriptions = await listPushSubscriptions();
+      const { sent, gone, failure } = await pushToDevices(subscriptions, notificationPushMessage(chat, notification), settings);
+      // One device hearing it is the channel carrying it; a service that refused the others is recorded, because a
+      // partial push that reads as a success hides the device that never got the notification.
+      if (sent > 0) {
+        if (failure !== undefined) recordPartialPush(chat.id, sent, subscriptions.length, failure);
+        return;
+      }
+      if (failure !== undefined) throw failure instanceof Error ? failure : new Error(String(failure));
+      throw new Error(gone > 0 ? PUSH_SUBSCRIPTION_GONE : "No subscribed device accepted the notification.");
+    },
+  },
+  skipped: (error, channel, chat) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "notification_skipped",
+    summary: `HUI skipped a ${channel === "desktop" ? "desktop" : channel === "ntfy" ? "phone" : "push"} notification`,
+    detail: error instanceof Error ? error.message : String(error),
+    sessionId: chat.id,
+  }),
+});
+watchSessionNotifications({
+  sessions: liveSessions,
+  settings: async () => (await readHuiSettings()).notifications,
+  chat: notificationChat,
+  deliver: async (chat, notification) => {
+    if (await notificationDelivery.canDeliver()) await notificationDelivery.deliver(chat, notification);
+  },
+});
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
+
+/** `create_session`: an ordinary top-level session, not a child. Its target group's New session defaults decide its
+ * directory, machine, Git mode and base ref; the caller's model and thinking are defaults. */
+async function createSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
+  const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  const owner = caller.bot ? (await bots.list({ archived: "all" })).find(({ id }) => id === caller.bot) : undefined;
+  if (!owner || !isChiefTitle(owner.title)) throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
+  const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
+  if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
+  if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");
+  const text = (key: string): string | undefined => {
+    const value = params[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  const label = text("group") ?? owner.group ?? caller.group ?? "";
+  // A stored group lends its New session defaults. A label the registry does not carry yet stays a label: a call that
+  // names its own directory may open the session there, and one that names none is refused rather than placed in the
+  // chief's own folder.
+  const stored = label ? groupNamed(label, await readSessionGroups()) : undefined;
+  const requestedCwd = text("cwd");
+  if (label && !stored && !requestedCwd) {
+    throw new Error(`No session group named ${label}. Pass cwd, or create the group first.`);
+  }
+  const requestedBaseRef = text("baseRef");
+  const requestedWorker = text("worker");
+  const workerRequest: RequestedWorker | undefined = requestedWorker === "local"
+    ? { kind: "local" }
+    : requestedWorker
+      ? { kind: "worker", worker: (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker }
+      : undefined;
+  const defaults = groupSessionDefaults({
+    // A stored group that names no directory refuses rather than place the session in the chief's own bot folder.
+    ...(stored ? { group: stored } : {}),
+    caller: { cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) },
+    requested: {
+      ...(requestedCwd ? { cwd: requestedCwd } : {}),
+      ...(workerRequest ? { worker: workerRequest } : {}),
+      ...(params["worktree"] === true ? { worktree: true } : {}),
+      ...(requestedBaseRef ? { baseRef: requestedBaseRef } : {}),
+    },
+  });
+  const model = text("model") ?? caller.model;
+  const thinking = text("thinking") ?? caller.thinking;
+  const record = await createSession({
+    cwd: defaults.cwd,
+    group: label,
+    initialPrompt: prompt.slice(0, 4_000),
+    ...(text("title") ? { title: text("title") } : {}),
+    ...(defaults.worker ? { worker: defaults.worker } : {}),
+    ...(defaults.worktree ? { worktree: true } : {}),
+    ...(defaults.worktree && text("branchName") ? { branchName: text("branchName") } : {}),
+    ...(defaults.baseRef ? { baseRef: defaults.baseRef } : {}),
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    // Autonomous from its first request, so the phase protocol and the mode reach the lead's first prompt.
+    autonomous: true,
+  } as Record<string, unknown>);
+  // The session is the PR lead, and the caller watches it for the heartbeat.
+  await updateRegistry((records) => records.map((current) => {
+    if (current.id === record.id) return { ...current, lead: true as const, createdByBot: owner.id };
+    if (current.id === callerSessionId && params["watch"] !== false) {
+      return { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) };
+    }
+    return current;
+  }));
+  // The session is registered and starts its runtime; the brief is its first prompt, not its title, and it carries the
+  // bot's tag so the new chat shows who asked.
+  await waitForSessionReady(record.id, 120_000);
+  // A worker host has no HUI registry, so carry the phase protocol in the prompt there; a local prompt adds it as a section.
+  const initial = defaults.worker ? `${prompt}\n\n${LEAD_PROMPT}` : prompt;
+  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${initial}`);
+  return {
+    id: record.id,
+    title: record.title,
+    group: record.group,
+    cwd: record.cwd,
+    ...(record.worker ? { worker: record.worker } : {}),
+    ...(defaults.worktree ? { worktree: true } : {}),
+  };
+}
+
+/** `watch_session`: list the sessions this one watches, add one in its group, or stop watching it. A watched session is
+ * visible to sessions_list, sessions_history and sessions_send, which is what the Heartbeat routine uses to continue it. */
+async function watchSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
+  const action = params["action"];
+  if (action !== "list" && action !== "add" && action !== "remove") throw new Error("watch_session action must be list, add or remove.");
+  const records = await readRegistry();
+  const caller = records.find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  const summarize = () => (caller.watches ?? []).flatMap((id) => {
+    const target = records.find((record) => record.id === id);
+    if (!target) return [];
+    return [{
+      id: target.id,
+      title: target.title,
+      group: target.group,
+      cwd: target.cwd,
+      status: liveSessions.status(target.id),
+      archived: target.archived === true,
+      ...(target.goal ? { goal: target.goal.status } : {}),
+      ...(target.worker ? { worker: target.worker } : {}),
+      watchers: watchers.list(target.id).map((watcher) => ({ id: watcher.id, purpose: watcher.purpose, state: watcher.state, ...(watcher.keepRunning ? { keepRunning: true } : {}) })),
+    }];
+  });
+  if (action === "list") return { sessions: summarize() };
+  const session = params["session"];
+  if (typeof session !== "string" || !session.trim()) throw new Error("watch_session needs the session id.");
+  const target = records.find(({ id }) => id === session.trim());
+  if (!target) throw new Error(`Unknown session: ${session.trim()}`);
+  if (action === "remove") {
+    await updateRegistry((all) => all.map((record) => record.id === callerSessionId ? { ...record, watches: (record.watches ?? []).filter((id) => id !== target.id) } : record));
+    return { sessions: summarize() };
+  }
+  if (target.id === caller.id) throw new Error("A session cannot watch itself.");
+  if (target.archived) throw new Error("An archived session cannot be watched.");
+  if (target.bot) throw new Error("A bot's chat is not watchable; use message_bot.");
+  if (target.group !== caller.group) throw new Error("Only sessions in your group can be watched.");
+  const watches = [...new Set([...(caller.watches ?? []), target.id])];
+  if (watches.length > WATCH_LIMIT) throw new Error(`A session can watch at most ${WATCH_LIMIT} sessions.`);
+  await updateRegistry((all) => all.map((record) => record.id === callerSessionId ? { ...record, watches } : record));
+  return { sessions: summarize() };
+}
+
+/** `worker_stats`: this gateway's machine and every configured worker, for choosing where a session should run. */
+async function workerStatsFromAgent(callerSessionId: string) {
+  const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  let localMetrics;
+  let localError;
+  try {
+    localMetrics = await hostMetrics();
+  } catch (error) {
+    localError = error instanceof Error ? error.message : "Could not read this machine's metrics.";
+  }
+  const views = await workers.list();
+  let metrics: Awaited<ReturnType<typeof workers.metrics>> = [];
+  let metricsError: string | undefined;
+  try {
+    metrics = await workers.metrics();
+  } catch (error) {
+    metricsError = error instanceof Error ? error.message : "Could not read the workers' metrics.";
+  }
+  const records = await readRegistry();
+  return summarizeWorkerStats({
+    current: caller.worker ?? "local",
+    local: { ...(localMetrics ? { metrics: localMetrics } : {}), ...(localError ? { error: localError } : {}), hostname: hostname() },
+    workers: views.map((view) => {
+      const measured = metrics.find(({ id }) => id === view.id);
+      return measured ?? { id: view.id, name: view.name, state: view.state, ...(metricsError ? { error: metricsError } : {}) };
+    }),
+    sessions: records.map((record) => ({ ...(record.worker ? { worker: record.worker } : {}), status: liveSessions.status(record.id), ...(record.archived ? { archived: true } : {}) })),
+  });
+}
+
 registerAgentToolHandler(async (invocation) => {
   // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
@@ -432,6 +910,15 @@ registerAgentToolHandler(async (invocation) => {
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
     return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd, caller.worker);
   }
+  if (invocation.action === "create_session") {
+    return createSessionFromAgent(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "watch_session") {
+    return watchSessionFromAgent(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "worker_stats") {
+    return workerStatsFromAgent(invocation.callerSessionId);
+  }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
   }
@@ -442,7 +929,7 @@ registerAgentToolHandler(async (invocation) => {
     if (!(await readHuiSettings()).notifications.tool) throw new Error("The notification tool is off. The operator can turn it on in Settings → Tools.");
     const chat = await notificationChat(invocation.callerSessionId);
     if (!chat) throw new Error("Conversation no longer exists.");
-    return notifyUser(chat, invocation.params, invocation.signal);
+    return notifyUser(chat, invocation.params, invocation.signal, notificationDelivery.deliver);
   }
   if (invocation.action === "secret_request") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -479,8 +966,10 @@ registerAgentToolHandler(async (invocation) => {
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 export const providerRoutes = createProviderRoutes({ providerService });
+export const localProviderRoutes = createLocalProviderRoutes({ service: localProviders });
+export const modelMetricRoutes = createModelMetricRoutes({ store: modelMetrics });
 
-/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
+/** GPT-Live calls with bots over the ChatGPT login: the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
 const callBroker = new CallBroker({
   accounts: providerCallAccounts(providerService.accounts),
@@ -498,8 +987,19 @@ const callBroker = new CallBroker({
 export const callRoutes = createCallRoutes({
   broker: callBroker,
   bots,
+  // The note a call starts with, on the same utility model its quick answers use: written from the soul, the memory, the
+  // newest chat messages and the saved knowledge, so a handoff given minutes earlier reaches the call.
+  handoff: async (input) => {
+    const settings = await callSettings();
+    return await buildCallHandoff({ ...input, operator: settings.operator }, {
+      completion: callCompletion,
+      models: utilityCandidates(input.bot, settings.utility),
+      report: reportCall,
+    });
+  },
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
+    recent: async (botId) => (await bots.callContext(botId)).recent,
     soul: async (botId) => (await bots.soul(botId)) ?? undefined,
     facts: async (botId) => bots.facts(botId),
     settings: callSettings,
@@ -537,16 +1037,40 @@ async function browserStatus(): Promise<BrowserStatus> {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): what listeners the operator runs report, with the pull requests it links to read through the
- * same `gh`. */
+/** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
+ * same `gh`. A bot whose chat runs on a worker takes its listeners' reports on that machine's own endpoint, which relays
+ * them here (`hooks.report`). */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  hookWorker: (bot) => {
+    const id = bot.worker;
+    if (!id) return undefined;
+    const name = workers.nameOf(id) ?? id;
+    if (!workers.connected(id)) return { id, name, error: `HUI is not connected to ${name}: connect it to take its listener URL.` };
+    // The port alone answers it: a host that could not bind its endpoint offers none either, and it is a current release.
+    const port = workers.hookPort(id);
+    if (port === undefined) return { id, name, error: `${name} does not serve its listener endpoint: it runs an older HUI release, or its endpoint could not open.` };
+    return { id, name, base: `http://127.0.0.1:${port}` };
+  },
+});
+/** A worker's own listener endpoint relays its reports to the gateway that owns the trigger: only a connected worker's
+ * host can make this request, and its loopback bind is the caller rule on that machine. A host relays as soon as its
+ * socket is up, before the gateway has registered the connection, so the report waits for it, and for the sweep that
+ * reattaches that worker's sessions (`reattaching`): only then does it reach the worker's own chats, instead of
+ * failing on a chat that still says it is reconnecting. A reattachment slower than the host's own relay cap leaves the
+ * report in the host's queue, which offers it again by itself (`hook-endpoint.ts`), so a listener is never told a
+ * report fired while the chat it wakes was still coming back. */
+workers.serve(HOOK_REPORT_OP, async (workerId, params) => {
+  await workers.ready(workerId);
+  await reattaching.get(workerId);
+  return triggers.relay(params);
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
+extensions.setGatewayContext({ github: { contributions: (year) => githubContributions.read(year) } });
 export const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions });
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
@@ -651,9 +1175,15 @@ export const sessionActionRoutes = createSessionActionRoutes({
   subagents,
   secretRequests,
   questionnaires,
+  refreshProgress: (record) => sessionProgress.refresh(record.id, async () => {
+    if (!liveSessions.ensure(record)) throw new Error(`unknown session: ${record.id}`);
+    await liveSessions.booted(record.id);
+    return liveSessions.transcript(record.id);
+  }),
 });
 
-export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots }));
+export const automationClockBinding = createAutomationClockBinding();
+export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots }), automationClockBinding.clock);
 export const automationRoutes = createAutomationRoutes({ automation });
 /** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
 const botRoutines = new BotRoutines({

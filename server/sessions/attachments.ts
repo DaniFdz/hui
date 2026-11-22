@@ -10,9 +10,11 @@ import { join, sep } from "node:path";
 import { ATTACHMENTS_DIR } from "../paths.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
 
-const MAX_ATTACHMENT_COUNT = 8;
-const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
-const MAX_ATTACHMENTS_TOTAL_BYTES = 16 * 1024 * 1024;
+/** The prompt's attachment caps, which the browser holds to the same numbers (`src/lib/attachments.ts`) through the
+ * shared fixture `attachments.fixture.json`. */
+export const MAX_ATTACHMENT_COUNT = 8;
+export const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
+export const MAX_ATTACHMENTS_TOTAL_BYTES = 16 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 /** Browser names remain display metadata; the stored path uses this narrower
  * ASCII form independently. */

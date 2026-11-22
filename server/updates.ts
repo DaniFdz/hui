@@ -6,11 +6,14 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { packageVersion, type Installation } from "../cli/installation.ts";
 import { checkRelease } from "../cli/releases.ts";
 import { LOG_FILE } from "../cli/state.ts";
 import { readUpdateJob } from "../cli/update-job.ts";
+import { effectiveGatewayName } from "./control-surfaces.ts";
+import { readHuiSettings } from "./hui-settings.ts";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import { UPDATE_CHECK_INTERVAL_MS, type UpdateCheck, type UpdateSnapshot } from "../cli/releases.ts";
 
@@ -18,14 +21,18 @@ export class UpdateConflict extends Error {}
 
 export function createUpdates(installation?: Installation, dependencies: {
   checkRelease?: typeof checkRelease; now?: () => number;
+  /** The name this gateway reports, as `GET /__hui/health` computes it. */
+  name?: () => Promise<string>;
 } = {}) {
   const resolveRelease = dependencies.checkRelease ?? checkRelease;
   const now = dependencies.now ?? Date.now;
+  const name = dependencies.name ?? (async () => effectiveGatewayName((await readHuiSettings()).name, hostname()));
   let check: UpdateCheck | null = null;
   let checkedAt = -Infinity;
   let checking: Promise<UpdateCheck> | undefined;
   let starting = false;
   const status = async (): Promise<UpdateSnapshot> => ({
+    name: await name(),
     currentVersion: installation ? await packageVersion(installation.packageRoot) : null,
     check, job: installation ? await readUpdateJob(installation.installationRoot) : null,
   });

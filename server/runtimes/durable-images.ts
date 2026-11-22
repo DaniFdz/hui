@@ -4,14 +4,16 @@
  * A history keeps images as their tools and attachments made them, such as a
  * full-page screenshot 8192 pixels tall, and it keeps every screenshot the
  * conversation ever made. Providers refuse a request holding an image too large,
- * and some refuse one holding too many, so every later turn of that conversation
+ * one holding too many, and one whose images fill the body they take (Amazon
+ * Bedrock answers "Input is too long."), so every later turn of that conversation
  * would fail with it. Each request shrinks and trims what it sends; the stored
  * history stays as it was.
  *
  * How many images a provider takes is its own choice, and for some of them the
  * rejection is the only place that number appears. The cap of a model is the one
  * a rejection taught, kept in the config directory so a restart does not cost a
- * conversation another error.
+ * conversation another error. A rejection about the size of the request, rather
+ * than the count of its images, teaches it too: the images are what filled it.
  */
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -31,6 +33,10 @@ const UNSTATED_IMAGE_CAP = 30;
 
 /** A rejection about the images of a request, rather than about anything else in it. */
 const IMAGE_REJECTION = /too many images|image input|images per request/i;
+
+/** A rejection about the size of a request rather than its images: a body past the provider's
+ * limit, as Amazon Bedrock's bare "Input is too long.", or media it will not take. */
+const SIZE_REJECTION = /input is too long(?! for requested model)|request_too_large|too much media/i;
 
 /** The limit a rejection states, as in "Too many images: 100 (max 64)". */
 const STATED_LIMIT = /\b(?:max(?:imum)?|at most)\b[^0-9]{0,16}(\d+)/i;
@@ -85,13 +91,19 @@ export class ImageCaps {
   }
 
   async learn(key: string, sent: number, errorMessage: string): Promise<void> {
-    if (!IMAGE_REJECTION.test(errorMessage)) return;
+    const size = SIZE_REJECTION.test(errorMessage);
+    if (!size && !IMAGE_REJECTION.test(errorMessage)) return;
     const caps = await this.#read();
     const known = caps.get(key);
     // Within a cap this model already taught: the count is not what the provider refused.
     if (known !== undefined && sent < known) return;
     const stated = Number(STATED_LIMIT.exec(errorMessage)?.[1]);
-    const cap = Number.isNaN(stated) ? (known === undefined ? Math.min(sent - 1, UNSTATED_IMAGE_CAP) : known - 1) : stated;
+    let cap: number;
+    if (!Number.isNaN(stated)) cap = stated;
+    // A size refusal says nothing about how many images fit: cut in half rather than step down
+    // one, which would take a refused turn per image before the request fits.
+    else if (size) cap = Math.floor(sent / 2);
+    else cap = known === undefined ? Math.min(sent - 1, UNSTATED_IMAGE_CAP) : known - 1;
     if (cap < 1 || cap === known) return;
     caps.set(key, cap);
     await writeFile(this.#path, `${JSON.stringify(Object.fromEntries(caps), null, 2)}\n`).catch(() => undefined);

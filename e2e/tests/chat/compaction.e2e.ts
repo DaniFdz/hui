@@ -1,4 +1,8 @@
-/** /compact and Compact now summarize a Durable session beside the conversation, which stays Idle (CHAT-036, CHAT-039). */
+/**
+ * /compact and Compact now summarize a Durable session beside the conversation, which stays Idle (CHAT-036, CHAT-039),
+ * and CHAT-039 reads the meter's Session total as the ledger of model calls does: none recorded yet on a fresh session,
+ * the calls a streaming run already committed, and the whole conversation once it settles.
+ */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -18,6 +22,7 @@ async function startSession(screen: Screen, hui: Hui, title: string, turns: stri
   await hui.open(`/sessions/${session.id}`);
   await expect(chat(screen).transcript.getByText("Fixture response.")).toHaveCount(turns.length);
   await expect(chat(screen).idle).toBeVisible();
+  return session;
 }
 
 async function send(screen: Screen, text: string) {
@@ -50,16 +55,31 @@ test("/compact with focus text adds a Context compacted divider after the last t
   await expect(transcript.getByText("FIXTURE_SUMMARY")).toBeVisible();
 });
 
-test("The context ring opens Context usage with occupancy, the latest run's tokens, cost and Compact now, disabled while busy and absent in a bot's chat; with nothing new to summarize a Compaction failed divider stays until the next turn", { tags: ["CHAT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("The context ring opens Context usage with occupancy over the estimate of what it carries, the latest run's tokens, cost and Compact now, disabled while busy and absent in a bot's chat; with nothing new to summarize a Compaction failed divider stays until the next turn", { tags: ["CHAT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { transcript, idle } = chat(screen);
   const ring = screen.getByLabel(/^Context window: \d+% used$/u);
   const usage = screen.getByLabel("Context usage");
   const compactNow = usage.getByRole("button", "Compact now");
   const failed = screen.getByLabel("Compaction failed");
-  await startSession(screen, hui, "Check context usage", ["A short turn"]);
+
+  // A session that has made no model call says so instead of reading as a zero total: its ledger is empty, and the
+  // latest run's figures are not the total. Its ring has no occupancy to show yet, so it names its window alone.
+  const fresh = await hui.createSession({ title: "Nothing spent yet" });
+  await hui.open(`/sessions/${fresh.id}`);
+  const emptyRing = screen.getByLabel(/^Context window: .*usage unavailable$/u);
+  await expect(emptyRing).toBeVisible();
+  await emptyRing.tap();
+  await expect(usage).toBeVisible();
+  await expect(usage).toContainText(/Session total All model calls No calls recorded yet Checked (?:just now|\d+[sm] ago)/iu);
+  await expect(usage).not.toContainText(/\b0 tokens/u);
+  await expect(usage).not.toContainText("Latest run tokens");
+  await emptyRing.tap();
+  await expect(usage).toBeHidden();
+
+  const session = await startSession(screen, hui, "Check context usage", ["A short turn"]);
 
   await ring.tap();
-  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*Latest run tokens\s*Input\s*\S+\s*Output\s*\S+\s*Est\. cost\s*\$\d+\.\d\d\s*Compact now/isu);
+  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*System prompt\s+\S+\s+\d+%.*Tool definitions\s+\d[\d,]* tools\s+\S+\s+\d+%.*Conversation\s+\d+ messages\s+\S+\s+\d+%.*Category breakdown is estimated.*Session total\s*All model calls\s*\S+ tokens · \$\d+\.\d\d\s*Checked\s*.+?\s*Compact now/isu);
   await expect(compactNow).toBeEnabled();
   await compactNow.tap();
   await expect(chat(screen).compacted).toBeVisible();
@@ -79,10 +99,40 @@ test("The context ring opens Context usage with occupancy, the latest run's toke
   await hui.provider.release();
   await expect(idle).toBeVisible();
 
+  // A live total is proved against the one before it, so the read of what the panel shows is told apart from the read
+  // of what this run committed: the same figure cannot stand for both.
+  const spent = async () => (await usage.textContent())?.match(/All model calls\s*(\S+ tokens · \$[\d.]+)/iu)?.[1];
+  await ring.tap();
+  await expect(usage).toBeVisible();
+  const before = await spent();
+  expect(before).toBeDefined();
+  expect(before).not.toBe("No calls recorded yet");
+  await ring.tap();
+  await expect(usage).toBeHidden();
+
+  // The ledger's total shows what this run already committed while its tool is still running, not only once it settles.
+  const held = await hui.holdTool(session, "fixture_echo", { text: "held for the meter" });
+  await expect(screen.getByRole("button", "Stop")).toBeVisible();
+  await ring.tap();
+  await expect(usage).toBeVisible();
+  await expect(usage).toContainText(/Session total All model calls \S+ tokens · \$0\.00 Checked (?:just now|\d+[sm] ago)/iu);
+  await expect(usage).not.toContainText("No calls recorded yet");
+  await expect(usage).not.toContainText("unpriced");
+  await expect(compactNow).toBeDisabled();
+  // The held call's own ledger commit moved the total: reading the previous turn's figure again is not proof of that.
+  const live = await spent();
+  expect(live).toBeDefined();
+  expect(live).not.toBe(before);
+  await held.release();
+  await expect(idle).toBeVisible();
+  await expect(usage).toContainText(/All model calls \S+ tokens · \$0\.00/iu);
+  await expect(usage).not.toContainText("No calls recorded yet");
+
   const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Meter Bot", soul: "A test bot." });
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByText("Say hi to Meter Bot")).toBeVisible();
   await screen.getByLabel(/^Context (window: |usage unavailable)/u).tap();
   await expect(usage.getByText("Context window")).toBeVisible();
   await expect(compactNow).toBeHidden();
+  await expect(usage).toHaveText(/Bot cost\s*(Chat, subagents and memory|Includes .*|Kept on|Reading|Could not read)\s*(Not reported|\$\d+\.\d\d|cost…|Unavailable)/iu);
 });

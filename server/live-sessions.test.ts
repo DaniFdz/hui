@@ -19,6 +19,7 @@ import type {
   TranscriptEntry,
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "./hui-settings.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT } from "./sessions/digest.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
@@ -897,6 +898,66 @@ test("continue after a failed answer restates the request the run was handling",
   manager.disposeAll();
 });
 
+test("a session whose run failed before this gateway started retries when it opens", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started), undefined, undefined, [0]);
+  manager.ensure({ ...recordFor("restart-retry"), runFailedAt: new Date().toISOString() });
+  await waitForBoot(manager, "restart-retry");
+  const runtime = started[0]!;
+  runtime.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "message", role: "assistant", text: "" },
+  ];
+  runtime.emit({ type: "history" });
+  await waitFor("the failed run to retry itself", () => runtime.prompts.length === 1);
+  assert.equal(
+    runtime.prompts[0],
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  const retried = (await readRegistry()).find((session) => session.id === "restart-retry");
+  assert.equal(retried?.runFailedAt, undefined, "the retry clears the recorded failure");
+  runtime.history = [...runtime.history, { kind: "message", role: "assistant", text: "done" }];
+  runtime.emit({ type: "settled" });
+  manager.disposeAll();
+});
+
+test("a run that ends on a dropped connection retries itself, and one that ends on a refusal waits for the operator", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started), undefined, undefined, [0]);
+  manager.ensure(recordFor("auto-resume"));
+  await waitForBoot(manager, "auto-resume");
+  const runtime = started[0]!;
+  await manager.prompt("auto-resume", "Use pup");
+  runtime.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "error", message: "fetch failed" },
+  ];
+  runtime.emit({ type: "settled" });
+  await waitFor("the dropped run to retry itself", () => runtime.prompts.length === 2);
+  assert.equal(
+    runtime.prompts[1],
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  runtime.history = [...runtime.history, { kind: "message", role: "assistant", text: "done" }];
+  runtime.emit({ type: "settled" });
+  manager.disposeAll();
+
+  const refused: FakeSession[] = [];
+  const other = new LiveSessions(factory(refused), undefined, undefined, [0]);
+  other.ensure(recordFor("no-auto-resume"));
+  await waitForBoot(other, "no-auto-resume");
+  const stuck = refused[0]!;
+  await other.prompt("no-auto-resume", "Use pup");
+  stuck.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "error", message: "API key auth failed for provider keyed: exit 1" },
+  ];
+  stuck.emit({ type: "settled" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(stuck.prompts, ["Use pup"], "a refused request is not retried");
+  other.disposeAll();
+});
+
 test("continue refuses a session with neither a lost run nor a failed answer", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
@@ -998,7 +1059,7 @@ test("a primary failure before output retries once on the configured fallback", 
   const runtime = factory(started);
   const manager = new LiveSessions(runtime, undefined, async () => ({
     ...DEFAULT_SETTINGS,
-    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny", thinking: "", routes: [] },
+    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny", thinking: "", retryAttempts: 3, routes: [] },
   }));
   manager.ensure(recordFor("fallback"));
   await waitForBoot(manager, "fallback");
@@ -1768,6 +1829,28 @@ test("abort stops the turn but keeps the session usable", async () => {
   assert.equal(started.length, 1);
 });
 
+test("the stop behind a browser takeover keeps the tabs the operator took", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const aborted: string[] = [];
+  manager.setAbortListener((id) => aborted.push(id));
+  manager.ensure(recordFor("taken"));
+  await waitForBoot(manager, "taken");
+
+  await manager.prompt("taken", "sign in for me");
+  started[0]?.emit({ type: "turn_start" });
+  await manager.abort("taken", { keepBrowserTabs: true });
+  assert.equal(started[0]?.aborts, 1);
+  assert.deepEqual(aborted, [], "the tab the operator is working in is not closed under them");
+
+  // An ordinary Stop still releases the tabs it held.
+  await manager.prompt("taken", "long job");
+  started[0]?.emit({ type: "turn_start" });
+  await manager.abort("taken");
+  assert.equal(started[0]?.aborts, 2);
+  assert.deepEqual(aborted, ["taken"]);
+});
+
 test("rewind refreshes the authoritative transcript and broadcasts a snapshot", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
@@ -2089,6 +2172,7 @@ test("prompt-free continuation enters running state and rewind stops it", async 
 
   await manager.continueRun(record.id);
   assert.equal(started[0]?.continuations, 1);
+  assert.deepEqual(started[0]?.prompts, [], "a runtime that continues prompt-free gets no prompt");
   assert.equal(manager.status(record.id), "running");
   await assert.rejects(() => manager.continueRun(record.id), SessionBusyError);
   await manager.rewind(record.id, "user-1");
@@ -2289,6 +2373,84 @@ test("fast mode is saved with the session and turned back on when it boots again
   await restarted.setFast("fast", false);
   assert.equal((await stored("fast"))?.fast, undefined);
   restarted.disposeAll();
+});
+
+test("Autonomous mode is saved with the session, turned back on when it boots again, and never offered in a bot's chat", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  const changes: Array<[string, boolean]> = [];
+  manager.watchAutonomy((id, on) => changes.push([id, on]));
+  manager.ensure(recordFor("autonomous"));
+  await waitForBoot(manager, "autonomous");
+  const messages: SessionStreamMessage[] = [];
+  manager.subscribe("autonomous", (message) => messages.push(message));
+  assert.equal(manager.snapshot("autonomous").autonomous, false);
+
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.equal(manager.isAutonomous("autonomous"), true);
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.deepEqual(changes, [["autonomous", true]], "only a change is told");
+  assert.equal((await stored("autonomous"))?.autonomous, true);
+  assert.ok(messages.some((message) => message.kind === "autonomous" && message.autonomous));
+  manager.disposeAll();
+
+  const restarted = new LiveSessions(runtime);
+  restarted.ensure((await stored("autonomous"))!);
+  await waitForBoot(restarted, "autonomous");
+  assert.equal(started[1]?.autonomous, true);
+  assert.equal(restarted.snapshot("autonomous").autonomous, true);
+  await restarted.setAutonomous("autonomous", false);
+  assert.equal((await stored("autonomous"))?.autonomous, undefined);
+
+  restarted.ensure({ ...recordFor("chief-chat"), bot: "chief" });
+  await waitForBoot(restarted, "chief-chat");
+  assert.equal(restarted.snapshot("chief-chat").autonomous, undefined);
+  await assert.rejects(restarted.setAutonomous("chief-chat", true), /A bot's chat or a subagent has no Autonomous mode/u);
+  const now = new Date().toISOString();
+  restarted.ensure({ ...recordFor("worker-child"), parentId: "autonomous", subagent: { taskId: "task", task: "Check it", status: "running", startedAt: now, updatedAt: now } });
+  await waitForBoot(restarted, "worker-child");
+  assert.equal(restarted.snapshot("worker-child").autonomous, undefined);
+  await assert.rejects(restarted.setAutonomous("worker-child", true), /A bot's chat or a subagent has no Autonomous mode/u);
+  restarted.disposeAll();
+});
+
+test("an Autonomous session's goal waits for its chief instead of continuing by itself", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  let claims = 0;
+  manager.setGoalContinuation(async () => (claims += 1) === 1 ? "Continue the goal." : undefined);
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  const id = `autonomous-goal-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  const session = started[0]!;
+
+  await manager.prompt(id, "first");
+  session.emit({ type: "settled" });
+  await waitFor("the goal to continue by itself", () => session.prompts.at(-1) === "Continue the goal.");
+  session.emit({ type: "settled" });
+  await waitFor("that run to end", () => ends.length === 1);
+
+  await manager.setAutonomous(id, true);
+  await manager.prompt(id, "second");
+  session.emit({ type: "settled" });
+  await waitFor("the autonomous run to end", () => ends.length === 2, { state: () => ends });
+  assert.deepEqual(session.prompts, ["first", "Continue the goal.", "second"]);
+  assert.equal(claims, 2, "the autonomous run never asked for a continuation");
+  manager.disposeAll();
 });
 
 test("queue, thinking and questions share the reconnect snapshot and delegate commands", async () => {
@@ -2719,6 +2881,28 @@ test("a pending question is claimed before awaiting PI so double-submit cannot a
   );
   await first;
   assert.equal(started[0]?.questionResponses.length, 1);
+});
+
+test("a runtime without prompt-free continuation resumes with the continuation prompt", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("continue-durable");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  // Durable keeps conversation state but has no prompt-free resume primitive.
+  Object.assign(started[0]!, { continueRun: undefined });
+
+  await manager.continueRun(record.id);
+
+  assert.deepEqual(started[0]?.prompts, [CONTINUE_AFTER_ERROR_PROMPT], "the run goes on through HUI's continuation prompt");
+  assert.equal(started[0]?.continuations, 0);
+  assert.equal(manager.status(record.id), "running", "the prompt path starts the turn instead of throwing");
+  const transcript = manager.transcript(record.id);
+  assert.deepEqual(transcript.at(-1), { kind: "message", role: "user", text: CONTINUE_AFTER_ERROR_PROMPT }, "the prompt is a visible user turn");
+  await assert.rejects(() => manager.continueRun(record.id), SessionBusyError, "the resumed run is the session's only one");
+  started[0]!.emit({ type: "settled" });
+  assert.equal(manager.status(record.id), "idle", "the resumed turn settles back to idle");
+  manager.disposeAll();
 });
 
 test("continue after a normally completed turn sends a continuation prompt", async () => {

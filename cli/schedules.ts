@@ -1,5 +1,5 @@
 /**
- * `hui schedule` (or `schedules`): every scheduled task from a terminal (HUI-18; SPEC.md, "Schedules are a CLI, and
+ * `hui schedule` (or `schedules`): every scheduled task from a terminal (SPEC.md, "Schedules are a CLI, and
  * bots schedule their own routines"). A schedule is an Automation task: a prompt HUI sends a session, or a bot's chat
  * (where it is one of the bot's routines), on a schedule. Everything goes through the running gateway's Automation
  * routes, as the Automations page does; the session list names each target. `hui bot routine …` runs on the same

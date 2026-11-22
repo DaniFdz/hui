@@ -1,5 +1,5 @@
 /**
- * Bots on this worker (HUI-18): what a gateway asks the host for a bot whose
+ * Bots on this worker: what a gateway asks the host for a bot whose
  * chat runs here. Its conversation and OptChat memory live in the host's own
  * Durable store, so these reuse the gateway's adapters (`bots/conversations.ts`
  * and `bots/memory.ts`) against the host's DurableHost: a bot's conversation is
@@ -9,7 +9,10 @@
  * one under its configuration: its home folder lives there (`bots/home.ts`, the
  * gateway's own implementation and guard, on this directory), and a bot without
  * a directory of its own works there. The bot itself (its record, routines,
- * roster) stays with the gateway; nothing here knows other bots.
+ * roster) stays with the gateway; nothing here knows other bots. Nor does it
+ * keep session groups: the project a group's chief works for is the gateway's,
+ * and a chat asks it (`bot.project`) for the directory whose context file its
+ * prompt carries.
  *
  * What the operator turned off in a bot's chat lives in its `hui.bot` document
  * here, and this host enforces it from that document alone (its tool offer, its
@@ -71,6 +74,12 @@ export type HostBotsOptions = {
   defaultThinking?: () => Promise<string | undefined>;
   /** A chat's `bots` section, as a connected gateway gives it. */
   section: DurableBotsDeps["section"];
+  /** The project directory of the bot's group, as a connected gateway gives it (`bot.project`): the project whose
+   * context file its chat's prompt carries beside its own folder's. */
+  projectDir?: DurableBotsDeps["projectDir"];
+  /** Whether the bot is a chief of staff, as the connected gateway that owns the roster answers (`bot.section`): only a
+   * chief's chat here carries its `hui_chief` section. */
+  isChief?: DurableBotsDeps["isChief"];
   /** Settings' profile name, for a bot's first conversation. */
   operator: () => Promise<string | undefined>;
   /** The operator allowed a bot's request here: what its lists are now. */
@@ -173,6 +182,8 @@ export function hostBots(options: HostBotsOptions) {
   options.durable.configureDurableBots(createDurableBots(options.durable, {
     section: options.section, recorded: options.recorded,
     home: { home, operator: options.operator, name: (id) => names.get(id) },
+    ...(options.projectDir ? { projectDir: options.projectDir } : {}),
+    ...(options.isChief ? { isChief: options.isChief } : {}),
   }));
 
   /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */

@@ -1,4 +1,4 @@
-# Browser journey: HUI-04 chat and composer
+# Browser journey: chat and composer
 
 This journey uses the real installed PI RPC process with a deterministic local
 Anthropic-compatible provider. It requires no external credential or network
@@ -58,7 +58,7 @@ The shared tests in `e2e/tests/chat/` cover the attachment limits (CHAT-014), a 
 mid-turn (CHAT-015), the run error card (CHAT-020), Sending… (CHAT-066), a send the
 gateway rejects (CHAT-012) and Copy response (CHAT-030), so their steps are gone from here.
 
-1. Create `HUI-04 Browser E2E` with **Project directory** set to the isolated
+1. Create `Browser E2E chat and composer` with **Project directory** set to the isolated
    workspace. Wait for `Idle` and model `HUI E2E Fixture`.
 2. Send `E2E_RICH`. Assert **Running**, visible thinking, a running then
    completed `read` tool card with `fixture contents`, the final `Tool complete`

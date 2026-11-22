@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { conversationFocusIndex, conversationMarkers, conversationPosition } from "./position-rail-model.ts";
+import { conversationFocusIndex, conversationMarkers, conversationPosition, scrolledPastPrompt } from "./position-rail-model.ts";
 import { projectChatTranscript } from "../../lib/chat-projection.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 
@@ -16,6 +16,7 @@ test("indexes every prompt and assistant message but not the folded activity bet
   const markers = conversationMarkers(projectChatTranscript(transcript));
   assert.deepEqual(markers.map((m) => m.id), ["u1", "u2", "intermediate", "final"]);
   assert.deepEqual(markers.map((m) => m.label), ["User message", "User message", "Assistant message", "Assistant message"]);
+  assert.deepEqual(markers.map((m) => m.role), ["user", "user", "assistant", "assistant"]);
 });
 
 test("a message HUI delivered from someone else is labeled by its sender and previewed without its header", () => {
@@ -49,6 +50,17 @@ test("position follows visible geometry, handles activity gaps and selects the f
   assert.deepEqual(conversationPosition(positions, 800, 200, 1600), { activeId: "a", visibleIds: new Set() });
   assert.deepEqual(conversationPosition(positions, 1399, 200, 1600), { activeId: "u2", visibleIds: new Set(["u2"]) });
   assert.deepEqual(conversationPosition([], 0, 200, 200), { activeId: undefined, visibleIds: new Set() });
+});
+
+test("the sticky bar names the prompt the reader scrolled past, and keeps quiet while that prompt is still on screen", () => {
+  const positions = [{ id: "u1", top: 0, bottom: 60 }, { id: "u2", top: 100, bottom: 140 }];
+  assert.equal(scrolledPastPrompt(positions, 0), undefined);
+  assert.equal(scrolledPastPrompt(positions, 60)?.id, "u1");
+  assert.equal(scrolledPastPrompt(positions, 40), undefined);
+  assert.equal(scrolledPastPrompt(positions, 40, 26)?.id, "u1");
+  assert.equal(scrolledPastPrompt(positions, 120), undefined);
+  assert.equal(scrolledPastPrompt(positions, 200)?.id, "u2");
+  assert.equal(scrolledPastPrompt([], 500), undefined);
 });
 
 test("keyboard navigation clamps to the rail and leaves unrelated keys to native buttons", () => {

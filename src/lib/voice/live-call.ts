@@ -1,5 +1,5 @@
 /**
- * A GPT-Live call with a bot (HUI-18): full-duplex speech with ChatGPT's voice
+ * A GPT-Live call with a bot: full-duplex speech with ChatGPT's voice
  * model over WebRTC, and the bot's own turns for whatever needs its tools,
  * files or memory. The gateway sets the call up and keeps the ChatGPT
  * credential; the browser carries the audio and the call's data channel.
@@ -121,6 +121,15 @@ export function delegationAppends(delegationId: string, channel: "speakable" | "
 /** Context for the session without a delegation: the greeting cue, say. */
 export function sessionAppends(channel: "speakable" | "commentary", note: string): object[] {
   return chunkUtf8(note).map((chunk) => ({ type: "session.context.append", channel, content: [{ type: "input_text", text: chunk }] }));
+}
+
+/**
+ * What asks GPT-Live for the call's first words. It names the bot, because a voice model left to itself opens as
+ * ChatGPT; the bot's own instructions say who it is, and this cue says it again where it is certain to be read.
+ */
+export function greetingCue(botName: string): string {
+  const name = botName.trim() || "the bot";
+  return `The call just connected. You are ${name}, the bot the user is calling: never introduce yourself as ChatGPT or as an assistant. Greet the user briefly, as yourself, as ${name}.`;
 }
 
 /* ── audio activity ───────────────────────────────────────────────────── */
@@ -396,6 +405,11 @@ export type LiveConnection = {
 export type LiveCallPlatform = {
   /** Asks for the microphone (the call was started by a click), with echo cancellation. */
   openMicrophone(): Promise<LiveMicrophone>;
+  /**
+   * The ringback tone while the call is placed (the gateway writes the bot's handoff note before it answers): started and
+   * stopped by the call, and silent when the platform has no audio to make it with. Returns its stop.
+   */
+  ring?(): () => void;
   /** The peer connection with the microphone and the data channel; the gateway exchanges its offer with ChatGPT. */
   connect(microphone: LiveMicrophone, handlers: LiveConnectionHandlers): Promise<LiveConnection>;
   /** Asks the bot's helper (or hands the request to the bot's chat) and resolves with what to tell GPT-Live. */
@@ -446,6 +460,8 @@ export class LiveCall {
   #stops: (() => void)[] = [];
   /** Writes go one after another, in order. */
   #writes: Promise<void> = Promise.resolve();
+  /** The ringback tone's stop, while it plays. */
+  #ring: (() => void) | undefined;
   #turnWaiters = new Map<string, () => void>();
   /** The task the latest progress note belongs to, and when the last one went. */
   #activeDelegation: string | undefined;
@@ -483,6 +499,8 @@ export class LiveCall {
   }
 
   async start(): Promise<void> {
+    // The ringback begins in the click that placed the call: the browser only lets audio start there.
+    this.#startRing();
     let microphone: LiveMicrophone;
     try {
       microphone = await this.#platform.openMicrophone();
@@ -549,6 +567,8 @@ export class LiveCall {
       this.#openedEarly = true;
       return;
     }
+    // The call is answered: the ringback stops here, before the bot's first words.
+    this.#stopRing();
     this.#dispatch({ type: "connected", voice: this.#connection.voice });
     // The greeting cue waits for session.started: sent before it, GPT-Live may drop it while its session rolls over.
     this.#stops.push(this.#platform.setTimer(() => this.#greet(), GREETING_FALLBACK_MS));
@@ -558,7 +578,31 @@ export class LiveCall {
   #greet(): void {
     if (this.#greeted || this.#ended || !this.#connection) return;
     this.#greeted = true;
-    for (const event of sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself.")) this.#connection.send(event);
+    for (const event of sessionAppends("speakable", greetingCue(this.#options.botName))) this.#connection.send(event);
+  }
+
+  /**
+   * The ringback tone for the wait before the call is answered (the gateway writes the bot's handoff note first). It
+   * starts in the click that placed the call, so the browser lets it play, and every way a call ends stops it.
+   */
+  #startRing(): void {
+    if (this.#ring) return;
+    try {
+      this.#ring = this.#platform.ring?.();
+    } catch {
+      this.#ring = undefined;
+    }
+    if (this.#ring) this.#stops.push(() => this.#stopRing());
+  }
+
+  #stopRing(): void {
+    const stop = this.#ring;
+    this.#ring = undefined;
+    try {
+      stop?.();
+    } catch {
+      // A closed audio context cannot stop its tone; it is already silent.
+    }
   }
 
   #onMessage(data: unknown): void {

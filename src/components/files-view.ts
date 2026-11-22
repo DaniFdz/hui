@@ -44,8 +44,9 @@ import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesV
 import { FILES_COPY, filesBytes, filesCreateIn, filesCreatedLabel, filesDeleteLabel, filesDeleteRisks, filesDeleteTitle, filesNoMatch } from "../lib/files/copy.ts";
 import { onTurnEnd } from "../lib/session/turn-end.ts";
 import type { FileEditorHandle } from "../lib/files/editor.ts";
+import { FILES_EDITOR_MIN_WIDTH, FILES_NAV_WIDTH, maxPanelWidth, readPanelWidth, rememberPanelWidth, startPanelResize } from "../lib/panel-width.ts";
 
-loadViewAssets(() => import("../styles/files-view.css"));
+loadViewAssets(() => import("../styles/files-view.css"), () => import("../styles/panel-resizer.css"));
 
 const SAVE_DELAY_MS = 600;
 const FILTER_DELAY_MS = 150;
@@ -121,6 +122,7 @@ export class HuiFilesView extends HuiElement {
     uploadPercent: { state: true },
     editorReady: { state: true },
     copied: { state: true },
+    navigatorWidth: { state: true },
   };
 
   declare sessionId: string;
@@ -151,6 +153,8 @@ export class HuiFilesView extends HuiElement {
   declare uploadPercent: number;
   declare editorReady: boolean;
   declare copied: "" | "path" | "markdown";
+  /** The navigator width this browser chose, before the current pane's room narrows it. */
+  declare navigatorWidth: number;
 
   private draft: FileDraft | undefined;
   /** The registry key of `draft`, kept so releasing it never depends on later property changes. */
@@ -177,6 +181,11 @@ export class HuiFilesView extends HuiElement {
   private pendingLine: { line: number; column?: number | undefined } | undefined;
   private wasVisible = false;
   private workPane: HTMLElementTagNameMap["hui-work-pane"] | null = null;
+  private resize: ResizeObserver | undefined;
+  /** The view's width, kept out of render state: only the boundary's width and ARIA depend on it. */
+  private availableWidth = 0;
+  /** The width a drag is showing; it is not a render state until the pointer settles. */
+  private dragNavigatorWidth: number | undefined;
 
   constructor() {
     super();
@@ -205,12 +214,26 @@ export class HuiFilesView extends HuiElement {
     this.uploadPercent = 0;
     this.editorReady = false;
     this.copied = "";
+    this.navigatorWidth = readPanelWidth(FILES_NAV_WIDTH);
+    this.dragNavigatorWidth = undefined;
   }
 
   override connectedCallback() {
     super.connectedCallback();
     guardUnload();
     this.workPane = this.closest("hui-work-pane");
+    this.availableWidth = this.clientWidth;
+    if (typeof ResizeObserver !== "undefined") {
+      this.resize = new ResizeObserver(([entry]) => {
+        const width = entry?.contentRect.width ?? 0;
+        if (width > 0 && width !== this.availableWidth) {
+          this.availableWidth = width;
+          this.applyNavigatorWidth();
+          this.syncNavigatorResizer();
+        }
+      });
+      this.resize.observe(this);
+    }
     if (this.sessionId) this.subscribeTurnEnd();
     if (this.viewId) this.subscribeReveal();
   }
@@ -225,6 +248,8 @@ export class HuiFilesView extends HuiElement {
     this.closeFile();
     clearTimeout(this.filterTimer);
     this.searchAbort?.abort();
+    this.resize?.disconnect();
+    this.resize = undefined;
   }
 
   protected override updated(changed: PropertyValues) {
@@ -235,8 +260,61 @@ export class HuiFilesView extends HuiElement {
     }
     if (changed.has("visible")) this.wasVisible = this.visible;
     if (changed.has("narrow") && this.narrow && !this.selected) this.drawerOpen = true;
+    this.applyNavigatorWidth();
+    this.syncNavigatorResizer();
     const dialog = this.querySelector<HTMLDialogElement>("dialog.hui-files-dialog");
     if (dialog) ensureModal(dialog);
+  }
+
+  /** The widest the navigator may get while the editor keeps its room in this pane. */
+  private get navigatorMax(): number {
+    return maxPanelWidth(this.availableWidth, FILES_NAV_WIDTH, FILES_EDITOR_MIN_WIDTH);
+  }
+
+  /** The navigator width drawn now: the browser's choice, limited by the pane's room. */
+  private get navigatorWidthInUse(): number {
+    return this.dragNavigatorWidth ?? Math.min(this.navigatorWidth, this.navigatorMax);
+  }
+
+  private applyNavigatorWidth() {
+    this.style.setProperty("--hui-files-nav-width", `${this.navigatorWidthInUse}px`);
+  }
+
+  /** A pane resize changes the bounds without re-rendering the tree; keep the separator's values current. */
+  private syncNavigatorResizer() {
+    const handle = this.querySelector<HTMLElement>(".hui-files-nav + .hui-panel-resizer");
+    if (!handle) return;
+    handle.setAttribute("aria-valuemax", String(this.navigatorMax));
+    handle.setAttribute("aria-valuenow", String(Math.round(this.navigatorWidthInUse)));
+  }
+
+  private resizeNavigator(event: PointerEvent) {
+    startPanelResize(event, {
+      panel: this.querySelector<HTMLElement>(".hui-files-nav"),
+      bounds: FILES_NAV_WIDTH,
+      minRemaining: FILES_EDITOR_MIN_WIDTH,
+      onWidth: (width) => {
+        this.dragNavigatorWidth = width;
+        this.style.setProperty("--hui-files-nav-width", `${width}px`);
+      },
+      onEnd: (width, changed) => {
+        this.dragNavigatorWidth = undefined;
+        if (!changed) return;
+        this.navigatorWidth = Math.round(width);
+        rememberPanelWidth(FILES_NAV_WIDTH, width);
+      },
+    });
+  }
+
+  private resizeNavigatorWithKeys(event: KeyboardEvent) {
+    const direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (!direction) return;
+    const current = Math.round(this.querySelector<HTMLElement>(".hui-files-nav")?.getBoundingClientRect().width ?? this.navigatorWidthInUse);
+    const next = Math.max(FILES_NAV_WIDTH.min, Math.min(this.navigatorMax, current + (event.shiftKey ? 48 : 16) * direction));
+    if (next === current) return;
+    event.preventDefault();
+    this.navigatorWidth = next;
+    rememberPanelWidth(FILES_NAV_WIDTH, next);
   }
 
   private subscribeTurnEnd() {
@@ -898,7 +976,7 @@ export class HuiFilesView extends HuiElement {
       return html`<li class="hui-files-node">
         <div class="hui-files-row" data-drop-folder=${entry.path}>
           <button type="button" class="hui-files-row__main" style=${indent} aria-expanded=${open ? "true" : "false"}
-            data-folder=${entry.path} data-path=${entry.path} @click=${() => this.toggleFolder(entry.path)}>
+            data-folder=${entry.path} data-path=${entry.path} data-hui-tooltip=${entry.path} @click=${() => this.toggleFolder(entry.path)}>
             <span class="hui-files-row__chevron">${open ? chevronDownIcon : chevronRightIcon}</span>
             <span class="hui-files-row__icon">${icons.folder}</span>
             <span class="hui-files-row__name">${entry.name}</span>
@@ -913,7 +991,7 @@ export class HuiFilesView extends HuiElement {
       const selected = this.selected === entry.path;
       return html`<li class="hui-files-node">
         <div class="hui-files-row ${selected ? "is-selected" : ""}">
-          <button type="button" class="hui-files-row__main" style=${indent} data-path=${entry.path}
+          <button type="button" class="hui-files-row__main" style=${indent} data-path=${entry.path} data-hui-tooltip=${entry.path}
             aria-current=${selected ? "true" : "false"} @click=${() => void this.open(entry.path)}>
             <span class="hui-files-row__chevron"></span>
             <span class="hui-files-row__icon">${entry.symlink ? linkIcon : fileIcon}</span>
@@ -926,7 +1004,7 @@ export class HuiFilesView extends HuiElement {
     // A link that leaves the working directory, or a socket or device: listed, never opened.
     return html`<li class="hui-files-node">
       <div class="hui-files-row is-inert">
-        <span class="hui-files-row__main hui-files-row__main--inert" style=${indent}>
+        <span class="hui-files-row__main hui-files-row__main--inert" style=${indent} data-hui-tooltip=${entry.path}>
           <span class="hui-files-row__chevron"></span>
           <span class="hui-files-row__icon">${entry.kind === "symlink" ? linkIcon : fileIcon}</span>
           <span class="hui-files-row__name">${entry.name}</span>
@@ -959,7 +1037,7 @@ export class HuiFilesView extends HuiElement {
         const folder = parentOf(entry.path);
         const selected = this.selected === entry.path;
         return html`<li class="hui-files-node"><div class="hui-files-row ${selected ? "is-selected" : ""}">
-          <button type="button" class="hui-files-row__main hui-files-row__main--result" data-path=${entry.path}
+          <button type="button" class="hui-files-row__main hui-files-row__main--result" data-path=${entry.path} data-hui-tooltip=${entry.path}
             aria-current=${selected ? "true" : "false"} @click=${() => void this.open(entry.path)}>
             <span class="hui-files-row__icon">${fileIcon}</span>
             <span class="hui-files-row__name">${entry.name}</span>
@@ -1175,6 +1253,9 @@ export class HuiFilesView extends HuiElement {
     const showNavigator = this.narrow ? this.drawerOpen : this.navigatorOpen;
     return html`<div class="hui-files ${this.narrow ? "hui-files--narrow" : ""} ${showNavigator ? "hui-files--navigator" : ""}">
       ${showNavigator ? this.renderNavigator() : nothing}
+      ${showNavigator && !this.narrow ? html`<div class="hui-panel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize files navigator"
+        aria-valuemin=${FILES_NAV_WIDTH.min} aria-valuemax=${this.navigatorMax} aria-valuenow=${Math.round(this.navigatorWidthInUse)}
+        tabindex="0" @pointerdown=${this.resizeNavigator} @keydown=${this.resizeNavigatorWithKeys}></div>` : nothing}
       ${this.narrow && showNavigator ? html`<button type="button" class="hui-files-backdrop" aria-label="Close files navigator" @click=${() => { this.drawerOpen = false; }}></button>` : nothing}
       <section class="hui-files-main" aria-label=${this.selected ? `Editor for ${this.selected}` : "Editor"}>
         ${this.renderHeader()}

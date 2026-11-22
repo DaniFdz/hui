@@ -1,4 +1,4 @@
-# Browser journey: Swarm (collected subagents and the Parallel tasks card)
+# Browser journey: Swarm (collected subagents and the Run status Helpers section)
 
 Default launcher (`node e2e/visual-verification.mjs launch`): Durable sessions,
 real codemode and the deterministic provider. No fixture code is specific to
@@ -32,18 +32,22 @@ call("E2E_SWARM_OK", three("E2E_SUBAGENT_CHILD"));
 
 ## Journey and expected results
 
-1. Send prompt 1. The card above the composer reads **Parallel tasks · 1 of 34**,
-   32 blue dots, one hollow and one red, and "32 running · 1 queued · 1 failed or
-   stopped". **Child details** lists **Flaky check** ("The subagent exceeded 1
-   seconds."), the running checks and the queued one ("Waiting for a free slot…").
-   The sidebar shows the parent alone, with no row for any helper.
+1. Send prompt 1 and click the chat header's **Run status** trigger. Its
+   Helpers section reads **1 of 34**, shows 32 blue dots, one hollow and one red,
+   and "32 running · 1 queued · 1 failed or stopped". Each row names **Flaky
+   check** ("The subagent exceeded 1 seconds."), the running checks and the queued
+   one ("Waiting for a free slot…"). The sidebar shows the parent alone, with no
+   row for any helper.
 2. Release the replay once: 32 checks complete and the queued **Check 33** starts.
    Release again: the parent's reply is `Collected 34 results: {"timed_out":1,"completed":33}`
-   and the card reads "33 completed · 1 failed or stopped" with "Child runs
-   finished. Check the conversation for the final response." No "subagents
+   and the Helpers section reads "33 completed · 1 failed or stopped" with "Child
+   runs finished. Check the conversation for the final response." No "subagents
    finished" event appears in the transcript.
-3. Activate a child row: its transcript opens; **Open parent** returns.
-4. Send prompt 2 and press **Stop** while the three run: "0 completed · 3 failed
-   or stopped", each "Stopped with its parent."; no completion event follows.
-5. Send prompt 3: the card folds into **✓ Parallel tasks · 3 completed**.
-6. Repeat 1 and 5 at 390×844: the card and composer fit without overflow.
+3. Activate a child row: its transcript opens (the popover closes); **Open parent**
+   returns.
+4. Send prompt 2 and press **Stop** while the three run: the Helpers section reads
+   "0 completed · 3 failed or stopped", each "Stopped with its parent."; no
+   completion event follows.
+5. Send prompt 3: the Helpers section folds into **✓ Helpers · 3 completed**.
+6. Repeat 1 and 5 at 390×844: the trigger keeps its mark and count, the popover
+   fits without overflow, and the composer is untouched.

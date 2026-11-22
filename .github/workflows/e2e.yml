@@ -1,6 +1,6 @@
 name: E2E
-# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium and on iOS in the
-# "HUI iPhone" simulator.
+# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium. A `mobile/**` package
+# branch push runs it too, without a pull request of its own.
 on:
   pull_request:
     paths-ignore:
@@ -8,7 +8,7 @@ on:
       - "docs/**"
       - ".agents/**"
   push:
-    branches: [main]
+    branches: [main, "mobile/**"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,8 +22,17 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      # A shard runs its tests serially (`workers: 1` in e2e.config.ts), so the
+      # count is the feedback wait. `--shard` cuts contiguous slices holding the
+      # same number of tests but not the same duration: of the 677 web tests,
+      # eight shards of 84 took a 7.2 minute mean and 8.4 to 11.0 for the slowest,
+      # because a slice inherits whichever heavy journeys fall in it. Twelve
+      # slices of 56 shrink that spread and the slowest shard's wait. A shard
+      # measured about one core and 2.9 GB, well inside a runner's four cores and
+      # sixteen gigabytes, and the account ran 27 jobs at once, so the extra
+      # shards neither starve a runner nor queue behind one another.
       matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -33,11 +42,18 @@ jobs:
       # Match the npm major used to generate the committed lockfile.
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
+      # The headless shell `e2e-web install` downloads is pinned by
+      # playwright-core, so the lockfile hash names the build; a hit skips that
+      # download and leaves only the system libraries to `--with-deps`.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx e2e-web install chromium --with-deps
       - run: npm run e2e -- --shard ${{ matrix.shard }}
-      # The suite's traces and screenshots, and the launcher's gateway and provider logs.
-      # Traces and screenshots are only useful when a shard failed; a green run needs no artifact.
-      - if: ${{ failure() }}
+      # Retain partial traces/screenshots and fixture logs even when a shard reaches its deadline or is cancelled.
+      # A timeout can otherwise erase the earlier failure that kept the shard running.
+      - if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-web-${{ strategy.job-index }}

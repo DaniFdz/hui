@@ -7,7 +7,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { Settings } from "../api/settings.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 
-export const HUI_PROMPT_REVISION = "hui-v4";
+export const HUI_PROMPT_REVISION = "hui-v5";
 export const HUI_DEFAULT_PROMPT = `You are the coding assistant in HUI, a web interface backed by PI.
 Work with the user until the requested outcome is handled. Be direct, concise, and honest about uncertainty.
 Inspect relevant files and project instructions before changing code. Preserve unrelated work.
@@ -36,7 +36,7 @@ export function modelRoutesFrom(raw: string | undefined): readonly RouteLine[] {
 export function routeGuidelines(routes: readonly RouteLine[]): string {
   if (!routes.length) return "";
   return [
-    "Model routes for `sessions_spawn`: pass `route` to choose one, or leave it out to inherit your own model.",
+    "Model routes for `sessions_spawn`: pass `route` to choose one, or leave it out to inherit your own model. A route without a model inherits your model and thinking.",
     ...routes.map((route) => `- ${route.name}: ${route.description || "no description"}`),
   ].join("\n");
 }

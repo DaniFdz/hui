@@ -28,7 +28,7 @@ sequence; the child answers the inter-session message.
 2. The sidebar adds **Fixture researcher** beneath its parent. The transcript
    shows a **Background agents** row with the child result, matching
    OpenClaw's active/recent-task presentation. (Since Swarm, this is the
-   **Parallel tasks** card above the composer; see [swarm.browser.md](swarm.browser.md).)
+   **Helpers** section of the chat header's Run status popover; see [swarm.browser.md](swarm.browser.md).)
 3. Click the background row. HUI opens the child's persisted transcript in the
    same UI. Its header identifies it as a subagent and **Open parent** returns
    to the owning session.

@@ -1,6 +1,7 @@
 /**
  * Host side of agent widgets (`show_widget`). It owns the card, the frame's size and theme and the message channel to
  * the sandbox page; the widget's own code only ever runs inside that opaque-origin frame, never in HUI's page.
+ * Compact mode embeds the same frame without the card chrome, as a questionnaire option's HTML preview.
  */
 import { html, nothing, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
@@ -72,6 +73,7 @@ export class WidgetCard extends HuiElement {
     code: { type: String },
     pending: { type: Boolean },
     unavailable: { type: Boolean },
+    compact: { type: Boolean },
     frameState: { state: true },
     failure: { state: true },
     errors: { state: true },
@@ -86,6 +88,8 @@ export class WidgetCard extends HuiElement {
   declare pending: boolean;
   /** The call succeeded but its code is missing or invalid in this transcript. */
   declare unavailable: boolean;
+  /** Headless: no title bar or full screen, for a preview embedded in another card. */
+  declare compact: boolean;
   declare frameState: FrameState;
   declare failure: string;
   /** The first notices, already worded for the card. */
@@ -110,6 +114,7 @@ export class WidgetCard extends HuiElement {
     this.code = "";
     this.pending = false;
     this.unavailable = false;
+    this.compact = false;
     this.frameState = "loading";
     this.failure = "";
     this.errors = [];
@@ -144,6 +149,11 @@ export class WidgetCard extends HuiElement {
     return true;
   }
 
+  /** The word a compact card uses for the frame it hosts. */
+  get #noun(): "widget" | "preview" {
+    return this.compact ? "preview" : "widget";
+  }
+
   /** The root's theme attributes changed: send the widget its new tokens. */
   themeChanged(): void {
     this.#sendContext();
@@ -171,7 +181,7 @@ export class WidgetCard extends HuiElement {
         this.#proxyReady = true;
         this.#clearTimer();
         // An opaque origin posts as "null"; anything else is not isolated.
-        if (origin !== "null") this.#fail("The widget sandbox is not isolated in this browser, so the widget was not loaded.");
+        if (origin !== "null") this.#fail(`The ${this.#noun} sandbox is not isolated in this browser, so the ${this.#noun} was not loaded.`);
         else this.#deliver();
         return;
       case "loaded":
@@ -180,7 +190,7 @@ export class WidgetCard extends HuiElement {
         this.#sendContext(true);
         return;
       case "navigated":
-        if (message.renderId === this.#renderId) this.#fail("The widget tried to navigate away from its frame and was stopped.");
+        if (message.renderId === this.#renderId) this.#fail(`The ${this.#noun} tried to navigate away from its frame and was stopped.`);
         return;
       case "size":
         if (this.frameState !== "failed") this.frameHeight = clampWidgetHeight(message.height);
@@ -192,6 +202,10 @@ export class WidgetCard extends HuiElement {
         this.#openLink(message.url, message.id);
         return;
       case "display-mode":
+        if (this.compact) {
+          this.#respond(message.id, { mode: "inline" });
+          return;
+        }
         if (message.mode === "inline") this.#leaveFullScreen(true);
         else if (userClicked(this.#frame)) this.#enterFullScreen();
         this.#respond(message.id, { mode: this.expanded ? "fullscreen" : "inline" });
@@ -267,7 +281,7 @@ export class WidgetCard extends HuiElement {
   }
 
   #enterFullScreen(): void {
-    if (this.expanded || this.frameState !== "ready") return;
+    if (this.compact || this.expanded || this.frameState !== "ready") return;
     this.#returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     this.expanded = true;
     void this.updateComplete.then(() => {
@@ -304,7 +318,7 @@ export class WidgetCard extends HuiElement {
     if (this.#proxyReady || this.frameState !== "loading") return;
     this.#clearTimer();
     this.#timer = setTimeout(() => {
-      if (!this.#proxyReady) this.#fail("The widget sandbox did not start. Reload the page to try again.");
+      if (!this.#proxyReady) this.#fail(`The ${this.#noun} sandbox did not start. Reload the page to try again.`);
     }, SANDBOX_READY_MS);
   };
 
@@ -331,10 +345,10 @@ export class WidgetCard extends HuiElement {
 
   #renderBody() {
     if (this.pending) {
-      return html`<div class="hui-widget-card__placeholder" role="status"><span class="session-run-spinner" aria-hidden="true"></span>Preparing widget…</div>`;
+      return html`<div class="hui-widget-card__placeholder" role="status"><span class="session-run-spinner" aria-hidden="true"></span>Preparing ${this.#noun}…</div>`;
     }
     if (this.unavailable) {
-      return html`<p class="hui-widget-card__message">This widget's code is not available in this transcript.</p>`;
+      return html`<p class="hui-widget-card__message">This ${this.#noun}'s code is not available in this transcript.</p>`;
     }
     if (this.frameState === "failed") {
       return html`<div class="hui-widget-card__message" role="alert"><span>${this.failure}</span><button type="button" class="btn btn--sm" @click=${this.#retry}>Retry</button></div>`;
@@ -346,11 +360,11 @@ export class WidgetCard extends HuiElement {
         sandbox="allow-scripts allow-forms"
         referrerpolicy="origin"
         loading="lazy"
-        style=${`--hui-widget-height:${this.frameHeight || 160}px`}
+        style=${`--hui-widget-height:${this.frameHeight || (this.compact ? 120 : 160)}px`}
         ${ref(this.#bindFrame)}
         @load=${this.#onFrameLoad}
       ></iframe>`)}
-      ${this.frameState === "loading" ? html`<div class="hui-widget-card__loading" role="status"><span class="session-run-spinner" aria-hidden="true"></span>Loading widget…</div>` : nothing}`;
+      ${this.frameState === "loading" ? html`<div class="hui-widget-card__loading" role="status"><span class="session-run-spinner" aria-hidden="true"></span>Loading ${this.#noun}…</div>` : nothing}`;
   }
 
   override render() {
@@ -362,17 +376,18 @@ export class WidgetCard extends HuiElement {
           : this.frameState === "loading" ? "Loading…"
             : "Interactive widget · sandboxed";
     return html`<section
-      class="chat-assistant-attachment-card hui-widget-card"
+      class=${this.compact ? "hui-widget-card hui-widget-card--compact" : "chat-assistant-attachment-card hui-widget-card"}
+      ?data-compact=${this.compact}
       data-state=${this.pending ? "pending" : this.unavailable ? "unavailable" : this.frameState}
       ?data-expanded=${this.expanded}
       role=${this.expanded ? "dialog" : "group"}
       aria-modal=${this.expanded ? "true" : nothing}
-      aria-label=${`Widget: ${title}`}
+      aria-label=${this.compact ? `Preview: ${title}` : `Widget: ${title}`}
       popover=${this.expanded ? "manual" : nothing}
       @keydown=${this.#onKeydown}
     >
       ${this.expanded ? this.#guard("start") : nothing}
-      <header class="chat-assistant-attachment-card__header chat-assistant-attachment-card__header--preview hui-widget-card__header">
+      ${this.compact ? nothing : html`<header class="chat-assistant-attachment-card__header chat-assistant-attachment-card__header--preview hui-widget-card__header">
         <div class="chat-assistant-attachment-card__identity">
           <span class="hui-widget-card__icon" aria-hidden="true">${icons.box}</span>
           <span class="chat-assistant-attachment-card__details">
@@ -386,7 +401,7 @@ export class WidgetCard extends HuiElement {
             title=${this.expanded ? "Exit full screen (Esc)" : "Open full screen"}
             @click=${this.#toggle}>${this.expanded ? collapseIcon : expandIcon}</button>
         </span>` : nothing}
-      </header>
+      </header>`}
       <div class="hui-widget-card__body">${this.#renderBody()}</div>
       ${this.errors.length ? html`<p class="hui-widget-card__notice" role="status" title=${this.errors.join("\n")}>
         ${icons.alertTriangle}<span>${this.errors[0]}${this.errorCount > 1 ? ` (+${this.errorCount - 1} more)` : ""}</span>

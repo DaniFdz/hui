@@ -1,7 +1,6 @@
-/** Appearance's Chat preferences change the conversation: Message width narrows or widens it and the composer in every open session, Collapse task progress starts a progress card collapsed, and Send shortcut decides what Enter does (SET-012, SET-013, SET-014). */
+/** Appearance's Chat preferences change the conversation: Message width narrows or widens it and the composer in every open session, Send shortcut decides what Enter does (SET-012, SET-014). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import type { Settings } from "../../../src/api/schema/settings.ts";
 
 test("Message width narrows or widens the conversation and the composer in every open session", { tags: ["SET-012"], platforms: ["web"] }, async ({ screen, hui }) => {
   const first = await hui.createSession({ title: "First width" });
@@ -24,15 +23,17 @@ test("Message width narrows or widens the conversation and the composer in every
     await expect(screen.getByRole("button", `Message width: ${to}`)).toBeVisible();
   };
 
+  // A width caps the conversation and the composer at 40rem, 48rem or 64rem, so each side-by-side pane stays wider
+  // than Comfortable's 48rem for the setting, not the pane, to be what the measurement reads.
+  await hui.wideScreen(2200);
   await hui.open(`/sessions/${first.id}`);
   await hui.sessionMenu("Second width");
   await screen.getByText("Open in split pane", { visible: true }).tap();
-  await screen.getByRole("button", "Pane actions").tap();
-  await screen.getByText("Split down", { visible: true }).tap();
-  await expect(titles).toHaveCount(3);
-  await titles.filter({ hasText: "First width" }).tap();
-  await screen.getByRole("button", "Close session pane").tap();
   await expect(titles).toHaveCount(2);
+  // The split opens active, and a session route replaces the active pane's session: focusing the First width pane first
+  // makes every later /sessions/<first> open land on the pane that already shows that session instead of replacing it.
+  await titles.filter({ hasText: "First width" }).tap();
+  await expect(screen.getByTestId("session-pane").first()).toHaveAttribute("aria-current", "true");
   const comfortable = await widths();
   await choose("Comfortable", "Compact");
   const compact = await widths();
@@ -43,37 +44,6 @@ test("Message width narrows or widens the conversation and the composer in every
     expect(compact[index]).toBeLessThan(width);
     expect(wide[index]).toBeGreaterThan(width);
   });
-});
-
-test("Collapse task progress starts an agent's progress card collapsed but expandable, and off it starts expanded", { tags: ["SET-013"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const collapse = screen.getByRole("switch", "Collapse task progress");
-  const card = screen.getByTestId("task-progress");
-  const steps = card.getByLabel("Task progress");
-  const settings = await hui.api<Settings>("GET", "/__hui/settings");
-  await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
-  const progress = async (title: string) => {
-    const session = await hui.createSession({ title });
-    await hui.prompt(session, "E2E_PROGRESS");
-    await hui.open(`/sessions/${session.id}`);
-    await expect(card).toBeVisible();
-  };
-
-  await hui.open("/settings/appearance");
-  await hui.flip(collapse);
-  await expect(collapse).toBeChecked();
-  await progress("Collapsed progress");
-  await expect(card.getByText("1/2", { visible: true })).toBeVisible();
-  await expect(steps).toBeHidden();
-  await card.getByText("Verify presentation", { visible: true }).tap();
-  await expect(steps.getByText("Read fixture")).toBeVisible();
-  await expect(card.getByText("1 of 2", { visible: true })).toBeVisible();
-
-  await hui.open("/settings/appearance");
-  await hui.flip(collapse);
-  await expect(collapse).toBeChecked({ checked: false });
-  await progress("Expanded progress");
-  await expect(steps.getByText("Read fixture")).toBeVisible();
-  await expect(card.getByText("1 of 2", { visible: true })).toBeVisible();
 });
 
 test("Send shortcut set to Command or Ctrl + Enter makes Enter break the line, and set to Enter makes Enter send", { tags: ["SET-014"], platforms: ["web"] }, async ({ screen, hui }) => {

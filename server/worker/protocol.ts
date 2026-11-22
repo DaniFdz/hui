@@ -13,6 +13,12 @@ import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeUsage } from "
 export const PROTOCOL_VERSION = 1;
 /** A host that answers `host.metrics` with its own machine's resources. */
 export const HOST_METRICS_FEATURE = "host-metrics";
+/** A host that serves its own trigger hook endpoint on loopback, so a listener on that machine reaches the trigger it
+ * reports to, and that relays the reports a gateway owns (`hooks.report`). */
+export const TRIGGER_HOOKS_FEATURE = "trigger-hooks";
+/** Host → gateway: one listener's report, relayed as it came (`{ token, body }`), answered with the trigger decision
+ * (`{ status, body }`) the gateway's own route makes. */
+export const HOOK_REPORT_OP = "hooks.report";
 /** A frame larger than this is a protocol error, not something to buffer.
  * Large enough for a 100 MB file in base64 or a long, image-heavy history. */
 export const MAX_FRAME_BYTES = 256 * 1024 * 1024;
@@ -24,6 +30,9 @@ export type HostInfo = {
   release: string;
   /** What this host offers beyond sessions (`bots`); absent from an older host. */
   features?: string[];
+  /** The loopback port this host listens on for its own trigger hook endpoint, where a listener on this machine reports;
+   * absent when the endpoint could not bind (an older host never sends it). */
+  hookPort?: number;
   pid: number;
   hostname: string;
   platform: string;
@@ -57,6 +66,7 @@ export type RemoteState = {
   usage?: RuntimeUsage;
   thinking?: string;
   fast?: true;
+  autonomous?: true;
   queue?: RuntimeQueue;
   questions?: readonly RuntimeQuestion[];
 };
@@ -77,6 +87,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 export class ProtocolError extends Error {
   override name = "ProtocolError";
+}
+
+/** The reply `Peer` makes to a request no handler serves. */
+const unsupportedRequest = (op: string): string => `Unsupported remote worker request: ${op}`;
+
+/** Whether a rejected request's error is this peer's own refusal of an operation it has no handler for (an older
+ * gateway or host), as opposed to a link that failed. */
+export function isUnsupportedRequest(error: unknown, op: string): boolean {
+  return error instanceof Error && error.message === unsupportedRequest(op);
 }
 
 /** Splits a UTF-8 stream on `\n` only; U+2028/U+2029 are legal inside JSON.
@@ -229,7 +248,7 @@ export class Peer {
     const call = new AbortController();
     this.#answering.set(id, call);
     try {
-      if (!handler) throw new Error(`Unsupported remote worker request: ${String(frame["op"])}`);
+      if (!handler) throw new Error(unsupportedRequest(String(frame["op"])));
       const params = isRecord(frame["p"]) ? frame["p"] : {};
       if (!this.send({ t: "res", id, ok: true, result: await handler(params, call.signal) })) throw new Error("The reply is too large to send.");
     } catch (error) {

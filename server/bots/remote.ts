@@ -1,5 +1,5 @@
 /**
- * Bots on remote workers (HUI-18), the gateway's half. A bot whose record names
+ * Bots on remote workers, the gateway's half. A bot whose record names
  * a worker keeps its conversation and OptChat memory in that worker's Durable
  * store, where its chat runs as a remote session, and its home folder with
  * SOUL.md in the worker's HUI data directory; these ports reach them through
@@ -89,7 +89,7 @@ export function reportedOffer(value: unknown): BotOffer | undefined {
   });
   const skills = value["skills"].flatMap((skill): BotOffer["skills"] => {
     if (!isRecord(skill) || typeof skill["name"] !== "string" || !skill["name"] || typeof skill["path"] !== "string" || !skill["path"]) return [];
-    return [{ name: skill["name"], path: skill["path"], description: shortText(skill["description"], 2_000), source: shortText(skill["source"], 4_096) }];
+    return [{ name: skill["name"], path: skill["path"], description: shortText(skill["description"], 2_000), source: shortText(skill["source"], 4_096), ...(skill["own"] === true ? { own: true as const } : {}) }];
   });
   const alwaysOn = value["alwaysOn"].flatMap((tool): BotOffer["alwaysOn"] =>
     isRecord(tool) && typeof tool["name"] === "string" && tool["name"] ? [{ name: tool["name"].slice(0, 200), description: shortText(tool["description"], 2_000) }] : []);

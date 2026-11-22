@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-/** Copied into the isolated PI extension directory by the HUI-04 runbook. */
+/** Copied into the isolated PI extension directory by the question-card runbook. */
 export default function questionFixture(pi: ExtensionAPI) {
   pi.registerCommand("hui-e2e-question", {
     description: "Open a deterministic RPC input request",

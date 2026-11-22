@@ -230,6 +230,20 @@ export function replacePaneSession(layout: SessionLayout, paneId: string, sessio
   return next;
 }
 
+/** The chat pane already showing a session, its hidden tab included: every place a session can be open. */
+export function findSessionPane(layout: SessionLayout, sessionId: string): SessionPane | undefined {
+  return sessionPanes(layout).find((pane) => isChatPane(pane) && pane.sessionId === sessionId);
+}
+
+/** A session's route: keep the focused pane when it already shows the session, else focus a pane that does, and only
+ * a session no pane shows takes the focused pane's place. A route never turns the focused pane into a second view of a
+ * session another pane shows; a same-session split is something the operator asks for. */
+export function showSessionLayout(layout: SessionLayout, sessionId: string): SessionLayout {
+  if (activeSessionPane(layout).sessionId === sessionId) return layout;
+  const existing = findSessionPane(layout, sessionId);
+  return existing ? focusSessionPane(layout, existing.id) : replacePaneSession(layout, layout.activePaneId, sessionId);
+}
+
 export function resizeSessionWeights(weights: readonly number[], index: number, ratio: number): number[] {
   const next = [...weights];
   if (index < 0 || index + 1 >= next.length || !Number.isFinite(ratio)) return next;

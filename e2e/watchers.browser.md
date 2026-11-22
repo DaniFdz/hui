@@ -20,26 +20,25 @@ real. No operator transcript, credential or GitHub account was used.
 
 ## Observed
 
-- Nothing floats over the conversation. The two watchers appear at the end of
-  the transcript, just above the composer, as one background-activity summary
-  line: *2 watchers · 1 running · Wait for #21532 review signals* once the
-  quick watcher's poll turned it *Done*.
-- Opening the summary listed two one-line rows: *Wait for #21532 review
-  signals · watching #21532 · Running · 59s ago* and *Post /merge when approved
-  · posted /merge · Done · 59s ago*.
+- The conversation stays clear: the two watchers live in the chat header's
+  **Run status** popover, under **Watchers**. Its header reads *1 running* once
+  the quick watcher's poll turned it *Done*.
+- The section lists two one-line rows: *Wait for #21532 review signals ·
+  watching #21532 · Running · 59s ago* and *Post /merge when approved · posted
+  /merge · Done · 59s ago*.
 - Opening the *Done* row fetched its log tail and showed the target link
   `github.com/ddoghq/web-ui/pull/21532`, *Then: post /merge*, start and end
   times, a log box with `posted /merge`, the PID and log path (ellipsized) and
   *Restart* / *Dismiss*.
-- Opening the running row and pressing *Stop* turned it *Stopped*; the summary
-  read *None running*. *Restart* returned it to *Running* with a fresh start
-  time. *Dismiss* on the finished watcher removed it, and with one watcher left
-  the group became a single row.
-- At 390×844 the collapsed summary is one line above the composer; closed rows
-  show only the purpose and state (the latest output appears once a row is
-  opened), and the opened row keeps the ellipsized path, *Restart* and
-  *Dismiss* on one line inside the conversation width. At 1440×900 the rows sit
-  within the transcript column and also show the latest output.
+- Opening the running row and pressing *Stop* turned it *Stopped*; with no
+  watcher running the section header read *2 watchers*. *Restart* returned it to
+  *Running* with a fresh start time. *Dismiss* on the finished watcher removed
+  it, and with one watcher left the section header read *1 watcher*.
+- At 390×844 the Run status trigger keeps only its mark and count; the popover
+  lists one row per watcher, and closed rows show only the purpose and state
+  (the latest output appears once a row is opened), and the opened row keeps the
+  ellipsized path, *Restart* and *Dismiss* inside the popover width. At 1440×900
+  the rows also show the latest output.
 - Browser console: no page errors. The only entries were the fixture's known
   development warnings (Lit dev mode and lit `change-in-update` scheduling
   warnings).
@@ -52,8 +51,8 @@ Durable session. The fixture's `E2E_CALL:<base64url JSON>` made the real
 `watcher` tool calls, so the provider was the only mock; the watcher ids for
 the dismiss calls came from the `list` answer.
 
-1. Ten `start` calls whose commands print one line and exit. The summary read
-   *10 watchers · None running*.
+1. Ten `start` calls whose commands print one line and exit. The Watchers section
+   header read *10 watchers*.
 2. Two `start` calls for *Wait for reviews on #7* and *#8*: both answered
    *This conversation already has 10 watchers. Dismiss finished ones first.*
 3. `list`, then in one turn `restart` of *Finished check 10* with a new purpose

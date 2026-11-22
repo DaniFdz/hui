@@ -122,10 +122,6 @@ hui-session-multiplexer {
 .hui-embedded-session > .transcript__head.chat-pane__header { padding-left: var(--hui-pane-chrome-inset, 12px); }
 .app-shell > .content--chat:has(> hui-session-multiplexer) { gap: 0; padding: 0; }
 .chat-pane__header { container-type: inline-size; }
-.chat-pane__actions > .chat-pane__split-menu { display: none; }
-@container (max-width: 800px) {
-  .chat-pane__actions > .chat-pane__split-menu { display: inline-flex; }
-}
 /* HUI merges its mobile shell navigation into the active pane header. Keep
    that route reachable when upstream sheds desktop split-header controls. */
 .app-shell.shell--mobile-nav .chat-split-view--narrow .chat-pane__header .chat-pane__nav-toggle {
@@ -207,6 +203,33 @@ hui-session-multiplexer {
   }
 }
 .pi-install-form > .btn {
+  flex: 0 0 auto;
+}
+/* The ntfy relay's stacked rows: the field keeps a readable width and the
+   buttons that act on it wrap instead of squeezing it to a few characters. */
+.settings-ntfy .settings-row--stacked > .settings-row__control {
+  width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+}
+.settings-ntfy .settings-row--stacked > .settings-row__control > .settings-input {
+  flex: 1 1 16rem;
+  width: auto;
+}
+.settings-ntfy .settings-row--stacked > .settings-row__control > .btn {
+  flex: 0 0 auto;
+}
+/* Web Push's contact address: the field keeps a readable width beside its Save. */
+.settings-push .settings-row--stacked > .settings-row__control {
+  width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+}
+.settings-push .settings-row--stacked > .settings-row__control > .settings-input {
+  flex: 1 1 16rem;
+  width: auto;
+}
+.settings-push .settings-row--stacked > .settings-row__control > .btn {
   flex: 0 0 auto;
 }
 /* Settings list filter: rows it hides keep their own display rules otherwise. */
@@ -304,6 +327,15 @@ hui-session-multiplexer {
     width: 40px;
     height: 40px;
     color: var(--muted);
+  }
+
+  /* The shell's own 20px menu glyph, so the two headers draw one icon rather than two sizes of it. */
+  .settings-mobile-topbar__icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8px;
   }
 
   .settings-mobile-topbar strong {

@@ -1,9 +1,10 @@
 /**
- * The declarative response formats HUI's chat renders — diagrams, charts, math, callouts and link embeds — and
- * the prompt section that tells the model about them. The renderers themselves live in the browser.
+ * The declarative response formats HUI's chat renders — diagrams, charts, math, a chip for another chat, callouts
+ * and link embeds — and the prompt section that tells the model about them. The renderers themselves live in the
+ * browser.
  */
 export interface HuiPresentationCapability {
-  id: "alerts" | "math" | "mermaid" | "slack-link" | "vega-lite" | "x-post";
+  id: "alerts" | "math" | "mermaid" | "session" | "slack-link" | "vega-lite" | "x-post";
   guidance: string;
 }
 
@@ -22,6 +23,10 @@ export const HUI_PRESENTATION_CAPABILITIES: readonly HuiPresentationCapability[]
   {
     id: "math",
     guidance: "Use `$...$` for inline math and `$$...$$` on delimiter-only lines for display math. HUI renders both with KaTeX; ordinary currency without a closing delimiter stays text.",
+  },
+  {
+    id: "session",
+    guidance: "Name another HUI chat as `session:<id>` — its full session id or a unique prefix of at least 8 characters — to draw a chip that opens it. A reference no session has, or a prefix two sessions share, stays plain text; use it only for a chat the reader can open.",
   },
   {
     id: "alerts",

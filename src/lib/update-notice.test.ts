@@ -4,7 +4,7 @@ import { availableUpdate, watchUpdateAvailability } from "./update-notice.ts";
 import type { UpdateSnapshot } from "../api/schema/updates.ts";
 import { UPDATE_CHECK_INTERVAL_MS } from "./update-notice.ts";
 
-const available: UpdateSnapshot = { currentVersion: "0.1.1", job: null, check: {
+const available: UpdateSnapshot = { name: "HUI", currentVersion: "0.1.1", job: null, check: {
   currentVersion: "0.1.1", latest: { version: "0.1.2", tag: "v0.1.2", url: "https://github.com/DaniFdz/hui/releases/tag/v0.1.2" },
   status: "available", canInstall: true, message: "A new HUI release is ready to install.",
 } };

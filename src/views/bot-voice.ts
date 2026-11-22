@@ -1,5 +1,5 @@
 /**
- * Calls with bots (HUI-18), rendering only: the bot header's Call button, the
+ * Calls with bots, rendering only: the bot header's Call button, the
  * call view and its minimized bar. State and actions come from props owned by
  * `hui-app.ts` (src/lib/voice/live-call.ts and src/controllers/voice-controller.ts hold the logic).
  */
@@ -31,10 +31,14 @@ export const voiceIcons = {
 
 /* ── bot header ── */
 
-export function renderCallButton(options: { botName: string; inCall: boolean; onCall: () => void }) {
-  return html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-call-toggle ${options.inCall ? "bot-call-toggle--active" : ""}"
+/**
+ * The bot header's Call control. A phone shows it with its word beside the glyph: the header already holds five icon-only
+ * buttons there, and a call is the one action an operator has to find without hovering anything (`labelled`).
+ */
+export function renderCallButton(options: { botName: string; inCall: boolean; onCall: () => void; labelled?: boolean }) {
+  return html`<button type="button" class="btn btn--ghost ${options.labelled ? "btn--sm bot-call-toggle--labelled" : "btn--icon chat-icon-btn"} bot-call-toggle ${options.inCall ? "bot-call-toggle--active" : ""}"
     aria-label=${options.inCall ? `Return to the call with ${options.botName}` : `Call ${options.botName}`} title=${options.inCall ? "Return to the call" : "Call"}
-    @click=${options.onCall}>${voiceIcons.phone}</button>`;
+    @click=${options.onCall}>${voiceIcons.phone}${options.labelled ? html`<span class="bot-call-toggle__label">${options.inCall ? "Return" : "Call"}</span>` : nothing}</button>`;
 }
 
 /* ── the call ── */

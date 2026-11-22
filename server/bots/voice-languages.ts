@@ -1,5 +1,5 @@
 /**
- * The language a bot speaks on calls (HUI-18), for the gateway and the CLI: the
+ * The language a bot speaks on calls, for the gateway and the CLI: the
  * codes accepted and the names the call's instructions use. The browser keeps
  * its own copy in src/lib/voice/languages.ts.
  */

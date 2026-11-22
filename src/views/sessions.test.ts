@@ -90,7 +90,8 @@ test("workspace stylesheet keeps OpenClaw provenance and canonical breakpoints",
   assert.match(css, /@import "\.\/openclaw-reference\/sessions\.css"/);
   assert.match(css, /@import "\.\/openclaw-reference\/settings\.css"/);
   assert.match(css, /Copyright \(c\) 2026 OpenClaw Foundation/);
-  assert.match(css, /grid-template-columns: 288px minmax\(0, 1fr\)/);
+  // The Settings rail reads the one sidebar width (lib/sidebar-width.ts).
+  assert.match(css, /grid-template-columns: var\(--hui-sidebar-width, 258px\) minmax\(0, 1fr\)/);
   assert.match(reference, /max-width: 760px/);
   assert.match(reference, /max-width: 1120px/);
   assert.match(css, /max-width: 932px[\s\S]*max-height: 500px/);

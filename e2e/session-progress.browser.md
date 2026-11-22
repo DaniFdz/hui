@@ -16,10 +16,10 @@ Verified on branch `dani.fernandez/session-status-fallback-updates` through
 
 - `e2e/tests/chat/task-progress.e2e.ts` passed (AGENT-053, SESS-043): the card
   appears after the first turn (`1 of 2`), a second turn rewrites it (`2 of 3`
-  and a new summary), folding shows the current step with `2/3`, a reload keeps
-  it, Collapse task progress starts it folded, and the session row's hovercard
+  and a new summary), the Plan head keeps the current step and `2 of 3`, a reload keeps
+  its steps visible, and the session row's hovercard
   shows the stored step/count and summary without opening the session.
-- Driven by hand at 1440 × 900 and 390 × 844: the card renders above the composer
+- Driven by hand at 1440 × 900 and 390 × 844: the plan renders in the Run status popover
   with its summary and steps, the session row's hovercard shows the same
   step/count and summary without opening the session, and mobile reports no
   horizontal document overflow. Desktop, hovercard and mobile captures are

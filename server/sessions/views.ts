@@ -4,11 +4,12 @@
  * creation. `createSessionViews(deps)` takes the gateway services a view reads.
  */
 import { displayPath } from "../git/working-directories.ts";
-import { liveSessions, type SessionStatusUpdate } from "./live-sessions.ts";
+import { liveSessions, type HuiQuestion, type SessionStatusUpdate } from "./live-sessions.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";
 import { runtimeMemoryByPid } from "../runtimes/resources.ts";
-import type { TranscriptEntry } from "../runtimes/types.ts";
+import type { RuntimeQuestion, TranscriptEntry } from "../runtimes/types.ts";
+import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { groupSessions, readSessionRegistry, sessionRegistryWrites, updateRegistry, type SessionRecord, type SubagentRecord } from "./sessions.ts";
 import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
@@ -99,7 +100,7 @@ function subagentView({ task: _task, summary: _summary, ...view }: SubagentRecor
 }
 
 export type SessionViewDeps = {
-  bots: () => { identity(botId: string): SessionView["bot"] };
+  bots: () => { identity(botId: string): SessionView["bot"]; byHandle(handle: string): SessionView["bot"] };
   botRegistry: { list(): Promise<unknown> };
   pullRequestStatuses: () => Pick<PullRequestStatuses, "view">;
   jiraIssues: (record: SessionRecord, transcript: readonly TranscriptEntry[]) => SessionJiraIssue[];
@@ -111,6 +112,58 @@ export function transcriptRunFailed(transcript: readonly TranscriptEntry[]): boo
   return transcript.findLast((entry) => entry.kind !== "compaction")?.kind === "error";
 }
 
+/** The list caps: a session row shows one line of each, so a long question or
+ * provider error must not grow the payload the list carries every second. A
+ * select's options are bounded by leaving the list out rather than by cutting
+ * one: see `selectOptions`. */
+const MAX_QUESTION_TITLE = 200;
+const MAX_QUESTION_OPTION = 120;
+const MAX_QUESTION_OPTIONS = 8;
+const MAX_FAILURE = 240;
+
+/** One line of text: whitespace runs collapse to a single space, then the text
+ * is cut to `maximum` characters ending in an ellipsis, at a word boundary
+ * when one fits. */
+export function boundedText(value: string, maximum: number): string {
+  const oneLine = value.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= maximum) return oneLine;
+  const room = oneLine.slice(0, maximum - 1);
+  // Back up to the last whole word only when the cut itself would split one.
+  const split = room.length > 0 && oneLine[room.length] !== " ";
+  const wordEnd = split ? room.lastIndexOf(" ") : -1;
+  return `${(wordEnd > 0 ? room.slice(0, wordEnd) : room).trimEnd()}…`;
+}
+
+type QuestionView = NonNullable<SessionView["question"]>;
+
+/** The first options of a select, exactly as the runtime offered them, or none.
+ * The row answers with the string it drew, so an option is either that string
+ * or left out: a list holding one over `MAX_QUESTION_OPTION` is omitted whole
+ * (the row falls back to *Open to answer*), never collapsed, trimmed or cut,
+ * because a renamed choice would answer with text the agent never offered. */
+function selectOptions(options: readonly string[]): string[] | undefined {
+  return options.every((option) => option.length <= MAX_QUESTION_OPTION) ? options.slice(0, MAX_QUESTION_OPTIONS) : undefined;
+}
+
+/** The one question a session row can afford: its identity and title, and the
+ * options only for a select, never a message body, prefill or questionnaire. */
+export function questionView(question: RuntimeQuestion | HuiQuestion): QuestionView {
+  const options = question.method === "select" ? selectOptions(question.options) : undefined;
+  return {
+    id: question.id,
+    method: question.method,
+    title: boundedText(question.title, MAX_QUESTION_TITLE),
+    ...(options ? { options } : {}),
+  };
+}
+
+/** Why the failed run ended: the transcript's last error, or the live run's
+ * report when its settled history has not been refreshed yet. */
+export function runFailureMessage(transcript: readonly TranscriptEntry[], loggedRunError?: string): string | undefined {
+  const message = transcript.findLast((entry) => entry.kind === "error")?.message ?? loggedRunError;
+  return message === undefined ? undefined : boundedText(message, MAX_FAILURE);
+}
+
 export function createSessionViews(deps: SessionViewDeps) {
   function toView(
     record: SessionRecord,
@@ -119,9 +172,22 @@ export function createSessionViews(deps: SessionViewDeps) {
   ): SessionView {
     const transcript = liveSessions.transcript(record.id);
     const runFailed = transcriptRunFailed(transcript);
+    const question = liveSessions.questions(record.id)[0];
+    const failure = runFailed ? runFailureMessage(transcript, liveSessions.loggedRunError(record.id)) : undefined;
     const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => deps.pullRequestStatuses().view(ref));
     const jiraIssues = deps.jiraIssues(record, transcript);
     const bot = record.bot ? deps.bots().identity(record.bot) : undefined;
+    // `createdByBot` is written by every lead a bot starts today; a lead from before it existed has none, so its
+    // creator is read from the transcript it already keeps (its first prompt's `[from @handle] ` tag) instead of a
+    // migration or a backfill write.
+    const legacyCreator = !record.createdByBot && record.lead && !record.bot && !record.subagent
+      ? (() => {
+        const origin = botTurnOrigin(transcript.find((entry): entry is Extract<TranscriptEntry, { kind: "message" }> =>
+          entry.kind === "message" && entry.role === "user")?.text);
+        return origin.kind === "bot" ? deps.bots().byHandle(origin.handle) : undefined;
+      })()
+      : undefined;
+    const createdBy = (record.createdByBot ? deps.bots().identity(record.createdByBot) : undefined) ?? legacyCreator;
     return {
       id: record.id,
       progress: record.progress,
@@ -139,6 +205,8 @@ export function createSessionViews(deps: SessionViewDeps) {
         ? { interrupted: true as const }
         : {}),
       ...(runFailed ? { runFailed: true as const } : {}),
+      ...(question ? { question: questionView(question) } : {}),
+      ...(failure !== undefined ? { failure } : {}),
       ...(record.model ? { model: record.model } : {}),
       ...(record.thinking ? { thinking: record.thinking } : {}),
       ...(record.pinned ? { pinned: true } : {}),
@@ -148,6 +216,9 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.parentId ? { parentId: record.parentId } : {}),
       ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
+      // A bot's own forever chat never reports a creator: `createdByBot` on such a record would say the bot started
+      // itself, so the bot field itself, not the roster, decides.
+      ...(createdBy && !bot ? { createdBy } : {}),
       ...effectiveSessionStage(record, pullRequests),
       ...(record.goal ? { goal: record.goal } : {}),
       createdAt: record.createdAt,

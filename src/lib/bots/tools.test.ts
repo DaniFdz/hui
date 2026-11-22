@@ -14,8 +14,8 @@ const CATALOG: BotCatalog = {
     tool("echo", "extension"), tool("weather", "extension", { source: "user · b.js" }), tool("other", "extension"), tool("message_bot", "bots"),
   ],
   skills: [
-    { name: "alpha", path: "/s/alpha/SKILL.md", description: "Writes release notes.", source: "/s", enabled: true },
-    { name: "beta", path: "/s/beta/SKILL.md", description: "Triage bugs.", source: "HUI defaults", enabled: false },
+    { name: "alpha", path: "/s/alpha/SKILL.md", description: "Writes release notes.", source: "/s", enabled: true, own: true },
+    { name: "beta", path: "/s/beta/SKILL.md", description: "Triage bugs.", source: "HUI defaults", enabled: false, own: false },
   ],
   alwaysOn: [{ name: "write_soul", description: "Rewrite its SOUL.md" }],
   disabledTools: ["bash"],

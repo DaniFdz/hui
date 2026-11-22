@@ -1,6 +1,5 @@
 /**
- * The words a session is announced with, shared by the web and the iOS core (`ios/core/entry.ts`): its status
- * label as the chat header shows it, the accessible name of its sidebar row, and what the row's status glyph shows.
+ * The words a session is announced with: its status label as the chat header shows it, the accessible name of its sidebar row, and what the row's status glyph shows.
  */
 import type { SessionStatus, SessionView } from "../../api/sessions.ts";
 import { jiraIssueAccessibleLabel } from "../jira.ts";

@@ -49,10 +49,10 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   const args = ['{"path":"fixture.txt"}', '{"path":"missing.txt"}', '{"text":"held"}', '{"command":"echo script-bash"}'].map((text) => transcript.getByText(text));
   await expect(args[0]!).toHaveCount(2);
   const tops: number[] = [];
-  for (const row of [args[0]!.first(), args[0]!.last(), ...args.slice(1)]) {
-    await hui.scrollTo(transcript, row);
-    tops.push((await row.boundingBox())!.y);
-  }
+  // One scroll first, then every row in one pass: a phone's transcript scrolls between measurements, and a y read after
+  // scrolling another row into view belongs to a different scroll position.
+  await hui.scrollTo(transcript, args[3]!);
+  for (const row of [args[0]!.first(), args[0]!.last(), ...args.slice(1)]) tops.push((await row.boundingBox())!.y);
   expect(tops).toEqual([...tops].sort((a, b) => a - b));
   await reveal(transcript.getByLabel("Output").getByText("script output"));
   await expect(transcript.getByRole("button", "Read fixture.txt")).toBeHidden();

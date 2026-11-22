@@ -26,7 +26,13 @@ export type AxNode = {
   backendDOMNodeId?: number;
 };
 
-export type SnapshotTarget = { backendNodeId: number; role: string; name: string };
+export type SnapshotTarget = {
+  backendNodeId: number;
+  role: string;
+  name: string;
+  /** The child frame the element lives in, when a snapshot inlined one. */
+  frameId?: string;
+};
 
 export class SnapshotRefs {
   #next = 0;
@@ -52,8 +58,21 @@ export class SnapshotRefs {
     return this.#targets.get(ref);
   }
 
+  /** Point an existing ref at the node that replaced the one it described, keeping its number. */
+  relink(ref: string, target: SnapshotTarget): void {
+    const previous = this.#targets.get(ref);
+    if (previous && previous.backendNodeId !== target.backendNodeId) this.#byNode.delete(previous.backendNodeId);
+    this.#byNode.set(target.backendNodeId, ref);
+    this.#targets.set(ref, target);
+  }
+
   get size(): number {
     return this.#targets.size;
+  }
+
+  /** Every ref this document holds, in the order they were numbered. */
+  entries(): Array<{ ref: string; target: SnapshotTarget }> {
+    return [...this.#targets.entries()].map(([ref, target]) => ({ ref, target }));
   }
 }
 
@@ -65,9 +84,24 @@ export type SnapshotOptions = {
   maxChars?: number;
   /** Lets same-origin link targets print as short paths. */
   pageUrl?: string;
+  /** Render only this accessibility node's subtree, for a snapshot scoped to a selector. */
+  rootId?: string;
+  /** Which inlined frame each accessibility node belongs to, so its ref carries the frame. */
+  frameIds?: ReadonlyMap<string, string>;
+  /** Stop after this many levels, marking where deeper content was left out. */
+  maxDepth?: number;
 };
 
-export type SnapshotResult = { text: string; lines: number; truncated: boolean; matched?: number };
+export type SnapshotResult = {
+  /** What the caller prints: clamped to `maxChars`, and truncated when it was longer. */
+  text: string;
+  lines: number;
+  truncated: boolean;
+  matched?: number;
+  depthLimited?: boolean;
+  /** Every rendered line, before clamping, so a later snapshot can be diffed against it. */
+  allLines: string[];
+};
 
 export const SNAPSHOT_DEFAULT_CHARS = 12_000;
 export const SNAPSHOT_MAX_CHARS = 40_000;
@@ -159,12 +193,13 @@ function build(
   parentRole: string,
   depth: number,
   seen: Set<string>,
+  frameIds: ReadonlyMap<string, string> | undefined,
 ): View[] {
   const node = nodes.get(id);
   if (!node || seen.has(id) || depth > 400) return [];
   seen.add(id);
   const role = typeof node.role?.value === "string" ? node.role.value : "";
-  const children = (): View[] => (node.childIds ?? []).flatMap((child) => build(child, nodes, refs, pageUrl, role, depth + 1, seen));
+  const children = (): View[] => (node.childIds ?? []).flatMap((child) => build(child, nodes, refs, pageUrl, role, depth + 1, seen, frameIds));
   if (node.ignored) return children();
   if (SKIPPED_ROLES.has(role)) return [];
   if (role === "StaticText") {
@@ -179,8 +214,9 @@ function build(
   const actionable = INTERACTIVE_ROLES.has(role)
     || (properties.get("focusable") === true && !NON_ACTIONABLE_FOCUSABLE.has(role))
     || (editable !== undefined && editable !== "" && role !== "RootWebArea");
+  const frameId = frameIds?.get(node.nodeId);
   const ref = actionable && typeof node.backendDOMNodeId === "number"
-    ? refs.refFor({ backendNodeId: node.backendDOMNodeId, role, name })
+    ? refs.refFor({ backendNodeId: node.backendDOMNodeId, role, name, ...(frameId ? { frameId } : {}) })
     : undefined;
   const nested = TEXT_INPUT_ROLES.has(role) ? [] : children();
   if (!ref && (FLATTENED_ROLES.has(role) || (role === "group" && !name))) return nested;
@@ -227,7 +263,7 @@ function describe(line: Line): string {
   return `- ${line.role}${name}${ref}${attrs}${content ? `: ${content}` : ""}`;
 }
 
-function print(views: readonly View[], depth: number, interactive: boolean, out: string[]): void {
+function print(views: readonly View[], depth: number, interactive: boolean, out: string[], maxDepth: number | undefined, state: { depthLimited: boolean }): void {
   for (const view of views) {
     if (view.kind === "text") {
       if (!interactive) out.push(`${"  ".repeat(depth)}- text: ${clean(view.text, 300)}`);
@@ -235,7 +271,12 @@ function print(views: readonly View[], depth: number, interactive: boolean, out:
     }
     if (!interactive) out.push(`${"  ".repeat(depth)}${describe(view)}`);
     else if (view.ref) out.push(describe(view));
-    print(view.children, interactive ? 0 : Math.min(depth + 1, 40), interactive, out);
+    if (maxDepth !== undefined && depth >= maxDepth && view.children.length > 0) {
+      state.depthLimited = true;
+      out.push(`${"  ".repeat(depth + 1)}- [deeper content omitted by depth]`);
+      continue;
+    }
+    print(view.children, interactive ? 0 : Math.min(depth + 1, 40), interactive, out, maxDepth, state);
   }
 }
 
@@ -248,11 +289,15 @@ export function clampSnapshotChars(value: unknown): number {
 /** Pure: `refs` is the only state it touches. */
 export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, options: SnapshotOptions = {}): SnapshotResult {
   const nodes = new Map(axNodes.map((node) => [node.nodeId, node]));
-  const roots = axNodes.filter((node) => !node.parentId || !nodes.has(node.parentId));
+  const scoped = options.rootId ? nodes.get(options.rootId) : undefined;
+  const roots = options.rootId
+    ? scoped ? [scoped] : []
+    : axNodes.filter((node) => !node.parentId || !nodes.has(node.parentId));
   const seen = new Set<string>();
-  const views = finalize(roots.flatMap((root) => build(root.nodeId, nodes, refs, options.pageUrl, "", 0, seen)));
+  const views = finalize(roots.flatMap((root) => build(root.nodeId, nodes, refs, options.pageUrl, "", 0, seen, options.frameIds)));
   let lines: string[] = [];
-  print(views, 0, options.interactive === true, lines);
+  const depthState = { depthLimited: false };
+  print(views, 0, options.interactive === true, lines, options.maxDepth, depthState);
   let matched: number | undefined;
   const tokens = (options.query ?? "").toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (tokens.length) {
@@ -274,5 +319,9 @@ export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, o
     text += `${line}\n`;
     count += 1;
   }
-  return { text: text.trimEnd(), lines: count, truncated, ...(matched !== undefined ? { matched } : {}) };
+  return {
+    text: text.trimEnd(), lines: count, truncated, allLines: lines,
+    ...(matched !== undefined ? { matched } : {}),
+    ...(depthState.depthLimited ? { depthLimited: true } : {}),
+  };
 }

@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../bots-format.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
+import type { RouteRequest } from "../http/route.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BotCatalog as BotCatalogSchema, BotInput, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
+import { BotCatalog as BotCatalogSchema, BotInput, BotOwnSkill, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -49,7 +50,9 @@ const { readRegistry } = await import("../sessions/sessions.ts");
 const { durableHost } = await import("../runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("../bots/memory.ts");
 const { botChat } = await import("../../cli/bots.ts");
-const { HUI_SETTINGS_FILE } = await import("../hui-settings.ts");
+const { HUI_SETTINGS_FILE, DEFAULT_SETTINGS } = await import("../hui-settings.ts");
+const { createStaffRoutes } = await import("./staff.ts");
+const { GROUP_PROJECT_MISSING } = await import("../sessions/group-session-defaults.ts");
 const { BotDoc } = await import("../bots/durable.ts");
 const { OptChatDoc } = await import("../runtimes/durable-optchat.ts");
 const { durableContext } = await import("../runtimes/durable-host.ts");
@@ -90,6 +93,18 @@ async function call(path: string, method = "GET", body?: unknown, guard = true):
 const botOf = (reply: { body: Record<string, unknown> }) => reply.body["bot"] as BotView;
 const EMPTY_MEMORY = { messages: 0, built: 0, pending: 0, viewBytes: 0, viewLines: 0, usage: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } };
 
+/** A chief request routed straight to its module, for the cases the running gateway's own service cannot make here. */
+const staffRequest = (body: unknown): RouteRequest => ({
+  method: "POST",
+  path: "/__hui/staff/chiefs",
+  query: new URLSearchParams(),
+  headers: {},
+  json: async () => body,
+  bytes: async () => Buffer.alloc(0),
+  stream: async function* () {},
+  signal: new AbortController().signal,
+});
+
 /** Resolves with a bot's memory status once `done` holds, as OptChat reports each change. */
 async function memoryWhere(sessionId: string, done: (status: BotMemoryStatus) => boolean): Promise<BotMemoryStatus> {
   const reference = (await readRegistry()).find((record) => record.id === sessionId)?.piSessionFile;
@@ -129,7 +144,7 @@ const says = (role: "user" | "assistant", text: string) => (entries: TranscriptE
 
 test("bots are created, read, edited, archived and restored through the guarded routes", { timeout: 120_000 }, async () => {
   assert.equal((await call("/__hui/bots", "GET", undefined, false)).status, 403, "the local-client guard applies");
-  assert.deepEqual((await call("/__hui/bots")).body, { bots: [] });
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.handle !== "chief-of-staff"), [], "only the seeded Chief of Staff");
   for (const [body, pattern] of [
     [{ name: "Ada", nickname: "x" }, /Unknown bot field: nickname/u],
     [{ name: "Ada", model: "hui-e2e/missing" }, /Unknown model: hui-e2e\/missing/u],
@@ -142,7 +157,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
     assert.equal(refused.status, 400, JSON.stringify(body));
     assert.match(String(refused.body["error"]), pattern);
   }
-  assert.deepEqual((await call("/__hui/bots")).body, { bots: [] }, "a refused create leaves nothing");
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff"), [], "a refused create leaves nothing (the seeded Chief of Staff aside)");
 
   // These bots get a soul at creation, so no first-conversation turn runs beside the turns these tests start.
   const created = await call("/__hui/bots", "POST", { name: "Ada", title: "Researcher", soul: "# Who I am\nYou are Ada." });
@@ -158,7 +173,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal(botOf(await call("/__hui/bots", "POST", { name: "Bob", avatar: { emoji: "🐻" }, soul: "You are Bob." })).handle, "bob");
   const listed = (await call("/__hui/bots")).body;
   expectSchema(BotsResponse, listed);
-  assert.deepEqual(listed.bots.map((bot) => bot.handle), ["ada", "bob"]);
+  assert.deepEqual(listed.bots.filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["ada", "bob"]);
   assert.equal(botOf(await call(`/__hui/bots/${ada.id}`)).handle, "ada");
   assert.equal(botOf(await call("/__hui/bots/bob")).avatar?.emoji, "🐻", "a handle addresses a bot too");
   assert.equal((await call("/__hui/bots/nobody")).status, 404);
@@ -195,12 +210,19 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots/nobody/memory")).status, 404);
   assert.equal((await call("/__hui/bots/ada/memory", "POST", {})).status, 405);
 
-  // A forever chat refuses what would reset, shorten, fork or delete it.
-  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }], ["fork", "POST", { entryId: "1" }]] as const) {
+  // A forever chat refuses what would shorten, fork or delete it. A clear and a rewind are allowed: they keep the
+  // bot's memory to the kept branch, so they reach their handlers rather than the forever-chat refusal.
+  for (const [path, method, body] of [["compact", "POST", {}], ["fork", "POST", { entryId: "1" }]] as const) {
     const refused = await call(`/__hui/sessions/${ada.sessionId}/${path}`, method, body);
     assert.equal(refused.status, 409, path);
     assert.match(String(refused.body["error"]), /@ada's forever chat/u);
   }
+  const cleared = await call(`/__hui/sessions/${ada.sessionId}/clear`, "POST", {});
+  assert.equal(cleared.status, 200, "a bot's chat clears");
+  // An unknown rewind point is an ordinary 400 for the rewind handler, not the forever-chat refusal.
+  const rewound = await call(`/__hui/sessions/${ada.sessionId}/rewind`, "POST", { entryId: "missing" });
+  assert.equal(rewound.status, 400);
+  assert.doesNotMatch(String(rewound.body["error"]), /forever chat/u);
   const deleted = await call(`/__hui/sessions/${ada.sessionId}`, "DELETE");
   assert.equal(deleted.status, 409);
   assert.match(String(deleted.body["error"]), /archive the bot instead/u);
@@ -218,8 +240,8 @@ test("bots are created, read, edited, archived and restored through the guarded 
   const archived = await call("/__hui/bots/bob", "DELETE");
   assert.equal(archived.status, 200);
   assert.equal(botOf(archived).archived, true);
-  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).map((bot) => bot.handle), ["ada"]);
-  assert.deepEqual(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).map((bot) => bot.handle), ["bob"]);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["ada"]);
+  assert.deepEqual(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["bob"]);
   assert.equal((await call("/__hui/bots/bob/messages", "POST", { text: "hello?" })).status, 409);
   assert.equal(botOf(await call("/__hui/bots/bob/restore", "POST", {})).archived, undefined);
 });
@@ -564,7 +586,7 @@ test("call routes take the x-hui guard like every other route, and say what call
   // says where to sign in.
   const unavailable = await call("/__hui/bots/mem/calls", "POST", { sdp: offer });
   assert.equal(unavailable.status, 409);
-  assert.equal(unavailable.body["error"], "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.");
+  assert.equal(unavailable.body["error"], "Sign in to ChatGPT in Settings → Models → OpenAI → ChatGPT account to call bots with GPT-Live.");
   assert.equal((await call("/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST")).status, 404, "no such call");
 });
 
@@ -851,4 +873,245 @@ test("explicit memories are guarded, revisioned and freshly included without cha
   const results = await Promise.all(saves);
   assert.ok(results.every((reply) => reply.status === 201 || reply.status === 404), JSON.stringify(results.map((reply) => reply.status)));
   await assert.rejects(stat(join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id)), { code: "ENOENT" });
+});
+
+test("a group gets one Chief of Staff with the pack's skills", async () => {
+  // A chief needs its group's project directory: that is where the sessions it starts run.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Chief E2E", cwd: workspace })).status, 200);
+  const made = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E" });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const bot = botOf(made);
+  assert.equal(bot.group, "Chief E2E");
+  assert.equal(bot.cwd, join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id), "the chief's chat works in its own folder");
+  assert.notEqual(bot.cwd, workspace, "the project directory is where its sessions run, not where it works");
+  assert.match(bot.name, /^Chief of Staff · Chief E2E$/u);
+  const again = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E" });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(botOf(again).id, bot.id, "the group's menu cannot create a second chief");
+  const skill = await call(`/__hui/bots/${bot.id}/skills/verify`);
+  assert.equal(skill.status, 200, JSON.stringify(skill.body));
+  assert.match(String(skill.body["text"]), /Read the project first/u, "the pack's verify is installed in its home");
+  assert.equal((await call("/__hui/staff/chiefs", "POST", { group: " " })).status, 400);
+});
+
+test("a chief needs a configured group, and the group is its only input", async () => {
+  const unknown = await call("/__hui/staff/chiefs", "POST", { group: "No such group" });
+  assert.equal(unknown.status, 400, JSON.stringify(unknown.body));
+  assert.match(String(unknown.body["error"]), /No session group named No such group/u);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.group === "No such group"), [], "an unknown group creates no bot");
+
+  const directory = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  assert.equal(directory.status, 400, JSON.stringify(directory.body));
+  assert.match(String(directory.body["error"]), /Unknown chief field: cwd\./u);
+});
+
+test("a group with no project directory gets no chief either", async () => {
+  // The New group dialog refuses a chief without a working directory; the route refuses it by the same sentence, so a
+  // client that does not is answered the same way.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project chief E2E" })).status, 200);
+  const refused = await call("/__hui/staff/chiefs", "POST", { group: "No project chief E2E" });
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  assert.equal(refused.body["error"], GROUP_PROJECT_MISSING);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.group === "No project chief E2E"), [], "no chief was created");
+});
+
+test("a chief is created for a group with a project, on the machine its group runs on", async () => {
+  const created: Record<string, unknown>[] = [];
+  const routes = createStaffRoutes({
+    groups: async () => [{ label: "Remote project", worker: "w1", cwd: "/srv/project" }],
+    bots: async () => [],
+    getBot: async () => { throw new Error("the chief already exists"); },
+    createBot: async (body) => { created.push(body); return { id: "chief-remote" } as BotView; },
+    restoreBot: async () => { throw new Error("the chief is archived"); },
+    skills: () => ({ files: true, write: async () => {}, read: async () => [] }),
+    readSettings: async () => DEFAULT_SETTINGS,
+    writeSettings: async (settings) => settings,
+    recordChief: async () => {},
+  });
+  const made = await routes.handle(staffRequest({ group: "Remote project" }));
+  assert.equal(made?.status, 201);
+  assert.equal(created.length, 1);
+  assert.equal(created[0]!["worker"], "w1", "the chief runs where its group runs");
+  assert.equal("cwd" in created[0]!, false, "the service makes the chief's own folder");
+  assert.equal(created[0]!["group"], "Remote project");
+});
+
+test("a session a chief starts opens with its brief tagged from the chief, never as the operator's own words", { timeout: 120_000 }, async () => {
+  // The group names the project its sessions belong to: a chief works in its own folder, never in theirs.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Brief E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Brief E2E" }));
+  const brief = "This session owns PR #167221: address the three open review threads, then request review again.";
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: brief, title: "PR shepherding" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "PR shepherding");
+  assert.ok(child, JSON.stringify(asked.body));
+  await settledWith(child.id, says("user", brief));
+  assert.deepEqual(liveSessions.transcript(child.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []),
+    [`[from @${chief.handle}] ${brief}`]);
+  const groups = (await call("/__hui/sessions")).body["groups"] as Array<{ sessions: Array<{ id: string; createdBy?: unknown }> }>;
+  const view = groups.flatMap((group) => group.sessions).find(({ id }) => id === child.id);
+  assert.deepEqual(view?.createdBy, { id: chief.id, handle: chief.handle, name: chief.name }, "the session shows the chief that started it");
+});
+
+test("a group that loses its project directory refuses a session rather than place it in its chief's folder", { timeout: 120_000 }, async () => {
+  // The chief exists because its group named a directory; clearing it later leaves a chief whose sessions have no place.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "No project E2E" }));
+  const cleared = await call(`/__hui/session-groups/${encodeURIComponent("No project E2E")}`, "PATCH", { cwd: "" });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  const before = (await readRegistry()).length;
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work somewhere.", title: "Nowhere child" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  assert.ok(String(asked.body["reply"]).includes(GROUP_PROJECT_MISSING), String(asked.body["reply"]));
+  const records = await readRegistry();
+  assert.equal(records.length, before, "no session was created");
+  assert.equal(records.some((record) => record.title === "Nowhere child"), false);
+});
+
+test("a chief naming a group that does not exist is refused by name", { timeout: 120_000 }, async () => {
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Named group E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Named group E2E" }));
+  const before = (await readRegistry()).length;
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work somewhere.", title: "Ghost child", group: "Ghost group E2E" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  assert.ok(String(asked.body["reply"]).includes("No session group named Ghost group E2E."), String(asked.body["reply"]));
+  assert.equal((await readRegistry()).length, before, "no session was created");
+});
+
+test("a chief may open a session under a label no group carries yet when the call names its directory", { timeout: 120_000 }, async () => {
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Label E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Label E2E" }));
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work under a new label.", title: "Labelled child", group: "Fresh label E2E", cwd: workspace } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const created = (await readRegistry()).find((record) => record.title === "Labelled child");
+  assert.ok(created, JSON.stringify(asked.body));
+  assert.equal(created.group, "Fresh label E2E", "a label the registry does not carry yet is the session's group");
+  assert.equal(created.cwd, workspace, "the directory the call named places it, never the chief's own folder");
+});
+
+test("a group chief's chat carries its project's context file, and what it spawns lands in that project", { timeout: 180_000 }, async () => {
+  const project = join(dir, "chief-project");
+  await mkdir(project);
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_CONTEXT_MARKER\n");
+  const group = "Chief context E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group, cwd: project })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group }));
+  // The chief works in its own folder, with context of its own beside the project's. A folder's context files are read
+  // once per loader, as in PI, so a file written after the chief's first read needs the reload any PI session would.
+  await writeFile(join(dir, "config", "hui", "bots", chief.id, "AGENTS.md"), "CHIEF_FOLDER_MARKER\n");
+  durableHost().prompt.reload(chief.cwd);
+  assert.equal((await call(`/__hui/bots/${chief.id}/messages`, "POST", { text: "PROJECT_CONTEXT_TURN", wait: true })).body["status"], "answered");
+  const request = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("PROJECT_CONTEXT_TURN"));
+  const system = JSON.stringify(request?.system);
+  assert.match(system, /CHIEF_FOLDER_MARKER/u, "its own folder's context file");
+  assert.match(system, /PROJECT_CONTEXT_MARKER/u, "the group's project's context file");
+  assert.ok(system.indexOf("CHIEF_FOLDER_MARKER") < system.indexOf("PROJECT_CONTEXT_MARKER"), "its own folder's file first");
+
+  // A child it starts belongs to the project, not to the chief's folder.
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "sessions_spawn", input: { task: "Inspect the project", label: "Project child" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "Project child");
+  assert.ok(child, JSON.stringify(asked.body));
+  assert.equal(child.cwd, project);
+});
+
+test("an ordinary bot filed under a group carries its own folder's context, not that group's project", { timeout: 120_000 }, async () => {
+  const project = join(dir, "filed-bot-project");
+  await mkdir(project);
+  await writeFile(join(project, "AGENTS.md"), "FILED_GROUP_PROJECT_MARKER\n");
+  const group = "Filed bot E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group, cwd: project })).status, 200);
+  // A group is an ordinary bot field: only a Chief of Staff's group lends its project to its chat.
+  const bot = botOf(await call("/__hui/bots", "POST", { name: "Filed bot", group, soul: "# Who I am\nFiled.\n" }));
+  assert.equal(bot.group, group);
+  assert.equal((await call(`/__hui/bots/${bot.id}/messages`, "POST", { text: "FILED_GROUP_TURN", wait: true })).body["status"], "answered");
+  const request = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("FILED_GROUP_TURN"));
+  assert.doesNotMatch(JSON.stringify(request?.system), /FILED_GROUP_PROJECT_MARKER/u, "its group's project is not its project");
+  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+});
+
+test("a chief's session follows its group's New session defaults", { timeout: 120_000 }, async () => {
+  // A real checkout: the group's Worktree default must create one of its own.
+  const repo = join(dir, "group-defaults-repo");
+  await mkdir(repo);
+  execFileSync("git", ["init", "-q", "-b", "main", repo]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "e2e@example.com"]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "E2E"]);
+  await writeFile(join(repo, "README.md"), "# Group defaults\n");
+  execFileSync("git", ["-C", repo, "add", "README.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-q", "-m", "init"]);
+
+  const group = "Group defaults E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group })).status, 200);
+  const saved = await call(`/__hui/session-groups/${encodeURIComponent(group)}`, "PATCH", {
+    cwd: repo, workspaceMode: "worktree", baseRef: "main",
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group }));
+
+  // The chief's own directory, machine and "no worktree" cannot move the session off the group's defaults.
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: {
+      prompt: "Work in the group's checkout.",
+      title: "Group defaults child",
+      cwd: workspace,
+      worker: "local",
+      worktree: false,
+      branchName: "e2e-group-defaults",
+    } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "Group defaults child");
+  assert.ok(child, JSON.stringify(asked.body));
+  assert.equal(child.group, group);
+  assert.equal(child.cwd.startsWith(`${join(dir, "config", "hui", "worktrees")}${sep}`), true, child.cwd);
+  assert.notEqual(child.cwd, repo);
+  assert.equal(execFileSync("git", ["-C", child.cwd, "branch", "--show-current"], { encoding: "utf8" }).trim(), "feature/e2e-group-defaults");
+  assert.equal(
+    execFileSync("git", ["-C", child.cwd, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+    execFileSync("git", ["-C", repo, "rev-parse", "main"], { encoding: "utf8" }).trim(),
+    "the group's base ref is the worktree's base",
+  );
+  await settledWith(child.id, says("user", "Work in the group's checkout."));
+});
+
+test("one of a bot's own skills is read and replaced through the guarded routes", async () => {
+  const created = await call("/__hui/bots", "POST", { name: "Scribe", soul: "# Who I am\nA fixture bot.\n" });
+  const bot = botOf(created);
+  const { localBotSkills } = await import("../bots/skills.ts");
+  const { BOTS_DIR } = await import("../bots/bots.ts");
+  await localBotSkills().write(bot.id, [{ name: "verify", text: "---\nname: verify\ndescription: Verify a change.\n---\n\nOld body.\n" }]);
+  const read = await call(`/__hui/bots/${bot.id}/skills/verify`);
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+  expectSchema(BotOwnSkill, read.body);
+  assert.match(String(read.body["text"]), /Old body/u);
+  const next = "---\nname: verify\ndescription: Verify a change.\n---\n\nRun the project's own check.\n";
+  const saved = await call(`/__hui/bots/${bot.id}/skills/verify`, "PUT", { text: next });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/verify`)).body["text"], next);
+  assert.equal(await readFile(join(BOTS_DIR, bot.id, "skills", "verify", "SKILL.md"), "utf8"), next);
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/verify`, "PUT", { text: "---\nname: other\n---\n" })).status, 400, "the folder's name and the frontmatter name stay together");
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/none`)).status, 404);
 });

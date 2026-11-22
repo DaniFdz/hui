@@ -95,6 +95,11 @@ async function remoteContents(): Promise<Array<[file: string, text: string]>> {
 
 beforeAll(async () => {
   await mkdir(join(agentDir, "skills", "gateway-skill"), { recursive: true });
+  // A skill of the gateway's home, not of its agent directory: the sync mirrors it under the remote's `home/`, where
+  // PI's own home discovery on the remote cannot find it.
+  const homeSkill = join(process.env["HOME"]!, ".agents", "skills", "user-agents-skill");
+  await mkdir(homeSkill, { recursive: true });
+  await writeFile(join(homeSkill, "SKILL.md"), "---\nname: user-agents-skill\ndescription: Lives in the gateway's home.\n---\nBody\n");
   await mkdir(join(agentDir, "extensions"), { recursive: true });
   await mkdir(join(root, "gateway", "package", "skills", "package-skill"), { recursive: true });
   await mkdir(project, { recursive: true });
@@ -174,6 +179,7 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
     assert.ok(session.sessionFile?.startsWith(remoteHome), String(session.sessionFile));
     const inspection = await session.inspect!();
     assert.match(inspection.prompt, /gateway-skill/u);
+    assert.match(inspection.prompt, /user-agents-skill/u);
     assert.match(inspection.prompt, /package-skill/u);
     assert.ok(inspection.tools.some((tool) => tool.name === "browser"), "the browser runs on the worker, so a PI session there is offered it");
     const done = settled(session);
@@ -502,11 +508,12 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
   await mkdir(cwd, { recursive: true });
   await workers.sync(workerId);
   const mirrored = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "mirror", "hui", "settings.json"), "utf8")) as { browser: unknown };
-  assert.deepEqual(mirrored.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false }, "the operator's browser choice travels; the gateway's executable path does not");
+  assert.deepEqual(mirrored.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] }, "the operator's browser choice travels; the gateway's executable path does not");
   const session = await remoteRuntime("durable").start({ cwd, worker: workerId, huiSessionId: "remote-durable-parity" });
   try {
     const { prompt, tools } = await session.inspect!();
     assert.doesNotMatch(prompt, /gateway-skill/u);
+    assert.match(prompt, /user-agents-skill/u);
     assert.match(prompt, /package-skill/u);
     assert.doesNotMatch(prompt, /create-verification-skill/u);
     assert.match(prompt, /git-selective-staging/u);

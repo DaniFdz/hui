@@ -15,12 +15,20 @@
  * integration logins its mirror carries and the answer to a session's
  * `secret_request`, in a private file its agent reads (SecretFiles).
  * A bot whose chat runs here keeps its conversation and memory in this host's
- * store (`host-bots.ts`); its `bots` prompt section comes from the connected
- * gateway, which owns the roster. Sessions here browse in this machine's own
+ * store (`host-bots.ts`); its `bots` prompt section and its group's project
+ * directory come from the connected gateway, which owns the roster and the
+ * session groups. Sessions here browse in this machine's own
  * managed browser (`browser/manager.ts`), one profile under the data
  * directory, so a page a session opens is that machine's and its tabs never
  * leave it. It also samples its own machine's resources (`host.metrics`) for
  * the gateway's Dashboard.
+ *
+ * A listener on this machine reaches its trigger here, without the gateway's
+ * tailnet route: the host opens a loopback endpoint (`hook-endpoint.ts`), relays
+ * each report to a connected gateway (`hooks.report`) and keeps what no gateway
+ * could take in its own queue until one attaches, offering that queue again by
+ * itself after a link that failed or timed out. A host started with `--serve`
+ * stays up for that queue even with nobody connected.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -47,12 +55,13 @@ import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setIntegrationEnv, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
-import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, HOOK_REPORT_OP, isRecord, isUnsupportedRequest, PROTOCOL_VERSION, TRIGGER_HOOKS_FEATURE, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { HOOK_QUEUE_DIR, HOOK_RELAY_TIMEOUT_MS, HookRelayUnavailable, WorkerHookEndpoint, type HookAnswer } from "./hook-endpoint.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
-import type { WorkerPaths } from "./paths.ts";
+import { mirroredUserSkillPaths, type WorkerPaths } from "./paths.ts";
 import { createHostMetrics, sampleInBackground } from "../host-metrics.ts";
 
 /** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and kept for its chart meanwhile. */
@@ -66,15 +75,19 @@ const DETACHED_QUESTION_MS = 24 * 60 * 60_000;
 const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 /** A host with nothing to do exits after this, unless Durable work remains. */
 const HOST_IDLE_MS = 30 * 60_000;
+/** The loopback port the host's trigger hook endpoint listens on, unless `HUI_WORKER_HOOK_PORT` names another. */
+const DEFAULT_HOOK_PORT = 4180;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** A transcript larger than this is fetched in pages instead of riding along
  * with a frame, which could exceed the frame limit or hold up other sessions. */
 const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 /** How long a bot chat's model request waits for its `bots` section from the gateway before going without it. */
 const BOT_SECTION_TIMEOUT_MS = 10_000;
+/** How long it waits for its group's project directory: the same budget, asked before the same request. */
+const BOT_PROJECT_TIMEOUT_MS = BOT_SECTION_TIMEOUT_MS;
 
 /** The runtime methods a gateway may call; anything else is refused. */
-const CALLS = new Set(["prompt", "steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
+const CALLS = new Set(["prompt", "steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "setAutonomous", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "waitForTrackedPrompt", "cancelTrackedPrompt"]);
 /** PI calls that start a run, recorded before they reach the runtime. */
 const RUN_CALLS = new Set(["prompt", "continueRun"]);
@@ -108,6 +121,38 @@ type Cached = { value: unknown; until: number };
 
 const logPiRuns = (error: unknown) => console.error(`Could not record PI runs: ${error instanceof Error ? error.message : String(error)}`);
 
+/** The loopback port the host's trigger hook endpoint binds: `HUI_WORKER_HOOK_PORT`, an integer (`0` for any free
+ * one), else the default. A value that is not an integer is the default too. */
+export function hookPortFrom(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = (env["HUI_WORKER_HOOK_PORT"] ?? "").trim();
+  if (!raw) return DEFAULT_HOOK_PORT;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : DEFAULT_HOOK_PORT;
+}
+
+/** Whether this process was started as a host that must keep serving (`daemon --serve`, or `HUI_WORKER_SERVE`): a
+ * worker a listener reports to stays up with no gateway attached, so its endpoint and queue keep working. */
+export function serveRequested(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): boolean {
+  if (argv.includes("daemon") && argv.includes("--serve")) return true;
+  const value = (env["HUI_WORKER_SERVE"] ?? "").trim().toLowerCase();
+  return value !== "" && value !== "0" && value !== "false";
+}
+
+/** Whether a host with nothing to do may stop. A host asked to keep serving never idles, and neither does one
+ * handling a report or draining the queue (`hookBusy`). A report merely waiting on disk is not work: a plain daemon
+ * can stop with a queue behind it, which is what `daemon --serve` is for. */
+export function hostIdles(state: {
+  persistent: boolean;
+  hookBusy: boolean;
+  sessions: number;
+  peers: number;
+  starting: number;
+  lastActivity: number;
+}, now: number): boolean {
+  return !state.persistent && !state.hookBusy && state.sessions === 0 && state.peers === 0 && state.starting === 0
+    && now - state.lastActivity > HOST_IDLE_MS;
+}
+
 function expiry(value: unknown): number {
   const expires = isRecord(value) ? value["expires"] : undefined;
   return typeof expires === "number" ? expires : Infinity;
@@ -122,6 +167,9 @@ export class WorkerHost {
   /** Starts in progress, so concurrent opens share one runtime. */
   #starting = new Map<string, Promise<Hosted>>();
   #server: Server | undefined;
+  /** Whether this host bound the socket at `paths.socket`: only then does `close()` remove it, never one a failed bind
+   * found held by another host. */
+  #socketBound = false;
   #timer: NodeJS.Timeout | undefined;
   #lastActivity = Date.now();
   #pruned = 0;
@@ -140,14 +188,22 @@ export class WorkerHost {
   #nextStep = 0;
   #secretFiles = new SecretFiles();
   #bots: ReturnType<typeof hostBots>;
+  /** Each bot's chat here and whether its title makes it a chief, as its gateway last said (`bot.section`): a chief's
+   * prompt carries `hui_chief`, an ordinary bot's none. */
+  #chiefs = new Map<string, boolean>();
   /** This machine's browser for its sessions, with a profile of its own: no page, cookie or login here is the
    * gateway's, whose browser serves the sessions on that machine. Stopped when the last tab closes, as there. */
   readonly #browser: ManagedBrowser;
   /** This worker's mirrored browser state, kept beside its profile. */
   readonly #browserState: BrowserStateFile;
+  /** Started with `--serve`: it stays up, so a listener on this machine always has an endpoint to report to. */
+  readonly #persistent: boolean;
+  /** The loopback endpoint listeners on this machine report to, once it bound. */
+  #hook: WorkerHookEndpoint | undefined;
 
-  constructor(paths: WorkerPaths) {
+  constructor(paths: WorkerPaths, options: { persistent?: boolean } = {}) {
     this.paths = paths;
+    this.#persistent = options.persistent === true;
     this.#browserState = new BrowserStateFile(join(paths.dataDir, "browser", "state.json"));
     this.#browser = new ManagedBrowser({
       profileDir: join(paths.dataDir, "browser", "profile"),
@@ -166,6 +222,8 @@ export class WorkerHost {
     this.#durable = new DurableHost({
       dir: join(paths.stateDir, "durable"),
       agentDir: paths.agentDir,
+      // The gateway's `~/.agents/skills` live in the mirror, not in the home PI discovers here.
+      hostSkillPaths: () => mirroredUserSkillPaths(paths),
       invokeTool: ({ callerSessionId, action, params, signal, runOrigins }) => this.#gatewayTool(callerSessionId, action, params, signal, runOrigins),
       lookupCaller: async (conversationId) => this.#callers.get(String(conversationId)),
       // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
@@ -178,6 +236,10 @@ export class WorkerHost {
       defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
       // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
       section: (botId, conversationId) => this.#botSection(botId, conversationId),
+      // Its group's project is the gateway's too: its chat carries that project's context file, as a local chat's does.
+      projectDir: (botId) => this.#botProject(botId),
+      // A chief's chat here carries its delegation rule too, as the gateway that owns the roster says.
+      isChief: (botId) => this.#botChief(botId),
       // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.
       operator: async () => operatorName((await readHuiSettings()).profileName),
       // The operator allowed a bot's request here: its lists are already in its document, which this host enforces;
@@ -189,8 +251,12 @@ export class WorkerHost {
   }
 
   info(): HostInfo {
+    const hookPort = this.#hook?.port;
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release,
+      features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE, ...(hookPort === undefined ? [] : [TRIGGER_HOOKS_FEATURE])],
+      ...(hookPort === undefined ? {} : { hookPort }),
+      pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,
@@ -228,11 +294,42 @@ export class WorkerHost {
     if (existsSync(join(this.#durable.dir, "harness.sqlite"))) {
       await this.#durable.open().catch((error: unknown) => console.error(`Durable store did not open: ${error instanceof Error ? error.message : String(error)}`));
     }
-    this.#server = createServer((socket) => this.#accept(socket));
-    await new Promise<void>((resolveListen, reject) => {
-      this.#server!.once("error", reject);
-      this.#server!.listen(this.paths.socket, () => { this.#server!.off("error", reject); resolveListen(); });
+    // The endpoint a listener on this machine reports to comes first, before the socket gateways reach: a gateway that
+    // connects the moment that socket accepts keeps the `hello` it gets, so the endpoint has to be in it already. An
+    // address already in use, or a port this host may not bind, costs the endpoint only: the host serves its sessions
+    // either way, and its hello leaves the feature out.
+    const hookPort = hookPortFrom(process.env);
+    const hook = new WorkerHookEndpoint({
+      dir: join(this.paths.stateDir, HOOK_QUEUE_DIR),
+      port: hookPort,
+      relay: (token, body) => this.#relayHook(token, body),
+      // A report waiting behind a failure is offered again by itself while some gateway is still attached: only a
+      // connection that ended means nothing can take it until another one does.
+      canRelay: () => [...this.#peers].some((peer) => !peer.closed),
+      onActivity: () => this.#touch(),
     });
+    try {
+      await hook.listen();
+      this.#hook = hook;
+    } catch (error) {
+      console.error(`HUI could not open its trigger hook endpoint on 127.0.0.1:${hookPort}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    this.#server = createServer((socket) => this.#accept(socket));
+    try {
+      await new Promise<void>((resolveListen, reject) => {
+        this.#server!.once("error", reject);
+        this.#server!.listen(this.paths.socket, () => { this.#server!.off("error", reject); resolveListen(); });
+      });
+    } catch (error) {
+      // No socket to serve: the endpoint goes with it instead of holding a port nothing can reach, and this host keeps
+      // no server to wait on in `close()` — it never listened.
+      this.#server = undefined;
+      await this.#hook?.close().catch(() => undefined);
+      this.#hook = undefined;
+      throw error;
+    }
+    // From here the socket at this path is this host's, and `close()` is what removes it.
+    this.#socketBound = true;
     await chmod(this.paths.socket, 0o600);
     await writeFile(join(this.paths.stateDir, "release"), this.#release);
     this.#timer = setInterval(() => this.#sweep(), 30_000);
@@ -241,6 +338,9 @@ export class WorkerHost {
 
   async close(): Promise<void> {
     clearInterval(this.#timer);
+    // Nothing new is reported here; a relay already in flight finishes over the connection that is still open.
+    await this.#hook?.close().catch(() => undefined);
+    this.#hook = undefined;
     for (const hosted of [...this.#sessions.values()]) this.#stop(hosted);
     this.#bots.close();
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
@@ -252,7 +352,11 @@ export class WorkerHost {
     // Running Durable work is recorded, not lost: it resumes on the next start.
     await this.#durable.close().catch(() => undefined);
     await new Promise<void>((done) => this.#server ? this.#server.close(() => done()) : done());
-    await unlink(this.paths.socket).catch(() => undefined);
+    // Only a socket this host bound: a bind that failed because another one holds this path leaves that one's alone.
+    if (this.#socketBound) {
+      this.#socketBound = false;
+      await unlink(this.paths.socket).catch(() => undefined);
+    }
   }
 
   /** Another gateway still connected or a PI run that cannot resume blocks
@@ -267,6 +371,8 @@ export class WorkerHost {
     peer.keepAlive();
     this.#peers.add(peer);
     this.#touch();
+    // What waited for a gateway goes now, in order, over this one.
+    this.#hook?.drain();
     peer.onClose(() => {
       this.#peers.delete(peer);
       for (const hosted of this.#sessions.values()) if (hosted.peer === peer) hosted.peer = undefined;
@@ -394,11 +500,13 @@ export class WorkerHost {
       ...(typeof launch["model"] === "string" ? { model: launch["model"] } : {}),
       ...(typeof launch["thinking"] === "string" ? { thinking: launch["thinking"] } : {}),
       ...(typeof launch["title"] === "string" ? { title: launch["title"] } : {}),
+      ...(typeof launch["botSkills"] === "string" ? { botSkills: launch["botSkills"] } : {}),
     };
     const runtime: RuntimeSession = tool === "durable" ? await startDurable(options, this.#durable) : await piRuntime.start({
       ...options, agentDir: this.paths.agentDir,
       hostLaunch: {
         disabledSkills: launch.disabledSkills ?? [],
+        hostSkillPaths: mirroredUserSkillPaths(this.paths),
         bundledSkillPaths: strings(launch["bundledSkillPaths"]),
         disabledPluginIds: strings(launch["disabledPluginIds"]),
         // Settings → Tools → Browser, as the gateway mirrored it: this host runs the browser.
@@ -473,6 +581,7 @@ export class WorkerHost {
       ...(usage ? { usage } : {}),
       ...(thinking ? { thinking } : {}),
       ...(runtime.currentFast?.() ? { fast: true as const } : {}),
+      ...(runtime.currentAutonomous?.() ? { autonomous: true as const } : {}),
       ...(runtime.pendingQueue ? { queue: runtime.pendingQueue() } : {}),
       ...(runtime.pendingQuestions ? { questions: runtime.pendingQuestions() } : {}),
     };
@@ -563,10 +672,45 @@ export class WorkerHost {
     }
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
-      const reply = await peer.request<{ section?: unknown; name?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      const reply = await peer.request<{ section?: unknown; name?: unknown; chief?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
       // Its name with it: the soul section asks a bot still called "New Bot" for a real one.
       if (typeof reply?.name === "string") this.#bots.named(botId, reply.name);
+      // Its title too, which decides whether its prompt carries `hui_chief`.
+      if (typeof reply?.chief === "boolean") this.#chiefs.set(botId, reply.chief);
       if (typeof reply?.section === "string") return reply.section;
+    }
+    return undefined;
+  }
+
+  /** Whether a bot is a chief of staff, as the gateway that owns the roster answers: every `bot.section` reply already
+   * carries it, so this asks only while that answer has not arrived yet (the first prompt after this host started, or
+   * a gateway that predates the field, which answers for no chief). */
+  async #botChief(botId: string): Promise<boolean> {
+    const known = this.#chiefs.get(botId);
+    if (known !== undefined) return known;
+    for (const peer of [...this.#peers]) {
+      if (peer.closed) continue;
+      const reply = await peer.request<{ chief?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      if (reply === undefined) continue;
+      const chief = reply.chief === true;
+      this.#chiefs.set(botId, chief);
+      return chief;
+    }
+    return false;
+  }
+
+  /** A bot's group's project directory, from a connected gateway: only the one the bot runs for answers it, so the loop
+   * stops at its answer (a bot of no group gets `cwd: null`). With none attached, or one that does not serve it, the
+   * chat goes without its group's context file, as a gateway that keeps no session groups does. Asked before each of the
+   * chat's model requests, so a gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds
+   * at most. A group stores its remote directory as typed (`~/work`), and only this host knows its own home: it expands
+   * `~/` here, before the context file is read. */
+  async #botProject(botId: string): Promise<string | undefined> {
+    for (const peer of [...this.#peers]) {
+      if (peer.closed) continue;
+      // A refusal (another gateway's bot) rejects, and the loop asks the next one.
+      const reply = await peer.request<{ cwd?: unknown }>("bot.project", { botId }, BOT_PROJECT_TIMEOUT_MS).catch(() => undefined);
+      if (reply !== undefined) return typeof reply.cwd === "string" ? resolveWorkingDirectory(reply.cwd, this.paths.home) : undefined;
     }
     return undefined;
   }
@@ -703,7 +847,50 @@ export class WorkerHost {
     }, () => this.#touch());
   }
 
+  /** Whether this host may stop: `hostIdles`, whose `hookBusy` is a report being handled or the queue being drained,
+   * never a report waiting on disk — a plain daemon may exit with a queue and leave it for the next host. */
   #idle(): boolean {
-    return !this.#sessions.size && !this.#peers.size && !this.#starting.size && Date.now() - this.#lastActivity > HOST_IDLE_MS;
+    return hostIdles({
+      persistent: this.#persistent,
+      hookBusy: this.#hook?.busy ?? false,
+      sessions: this.#sessions.size,
+      peers: this.#peers.size,
+      starting: this.#starting.size,
+      lastActivity: this.#lastActivity,
+    }, Date.now());
+  }
+
+  /**
+   * `hooks.report { token, body }` on a connected gateway: its trigger decision, as its own route makes it. The newest
+   * gateway is asked first, and a 404 (a trigger the gateway does not own) lets the next one answer, so a machine that
+   * runs several gateways' listeners finds the one holding the trigger. Nothing else is retried here: an older gateway,
+   * or a link that fails or times out, leaves the report to the queue instead of holding the listener across a
+   * reconnect. The queue retries a link that failed or timed out by itself, never a gateway too old to serve the relay
+   * (`HookRelayUnavailable.retry`).
+   */
+  async #relayHook(token: string, body: string): Promise<HookAnswer> {
+    this.#touch();
+    let missing: HookAnswer | undefined;
+    for (const peer of [...this.#peers].reverse()) {
+      if (peer.closed) continue;
+      let answer: unknown;
+      try {
+        answer = await peer.request<HookAnswer>(HOOK_REPORT_OP, { token, body }, HOOK_RELAY_TIMEOUT_MS);
+      } catch (error) {
+        // `isUnsupportedRequest`: a gateway from before this relay, which would only refuse the next one too; a link
+        // that failed or timed out may answer the next time.
+        const older = isUnsupportedRequest(error, HOOK_REPORT_OP);
+        throw new HookRelayUnavailable(older ? "The connected HUI serves no trigger relay." : "No HUI answered the report.", { retry: !older });
+      }
+      const status = isRecord(answer) ? answer["status"] : undefined;
+      const reply = isRecord(answer) ? answer["body"] : undefined;
+      if (typeof status !== "number" || !isRecord(reply)) throw new HookRelayUnavailable("HUI answered the report with something that is not a trigger decision.");
+      const decided: HookAnswer = { status, body: reply };
+      if (status !== 404) return decided;
+      missing = decided;
+    }
+    // Every gateway denied the token: that answer is the listener's, not a reason to queue.
+    if (missing) return missing;
+    throw new HookRelayUnavailable("HUI is not connected to this worker.");
   }
 }

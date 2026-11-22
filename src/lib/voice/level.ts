@@ -1,5 +1,5 @@
 /**
- * Audio levels on a call (HUI-18): the microphone's and the bot's voice's,
+ * Audio levels on a call: the microphone's and the bot's voice's,
  * from what an analyser on each stream hears. They tell when someone speaks
  * and move the bot's face. 0 is silence, 1 is loud speech. Pure, so tests feed
  * it synthetic audio.

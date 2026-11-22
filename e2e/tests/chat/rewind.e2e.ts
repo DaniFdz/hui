@@ -1,4 +1,4 @@
-/** Rewind to here gives a settled or running user message back to the composer, and is offered only on the operator's own sent prompts outside a bot's chat (CHAT-034). */
+/** Rewind to here gives a settled or running user message back to the composer, and is offered on the operator's own sent prompts, in a bot's chat too, but not on a message a bot or session sent (CHAT-034). */
 import { expect, type Screen } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -90,7 +90,7 @@ test("Rewind to here is not offered on a session's message to its subagent", { t
   await expect(chat(screen).rewind).toHaveCount(0);
 });
 
-test("Rewind to here is not offered on a bot's message in a session, nor anywhere in a bot's chat", { tags: ["CHAT-034"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Rewind to here is not offered on a bot's message in a session, nor on what a bot sent in its own chat", { tags: ["CHAT-034"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { message, send, transcript, rewind, idle } = chat(screen);
   const { bot } = await hui.api<{ bot: { id: string; handle: string } }>("POST", "/__hui/bots", { name: "Grace", soul: "You babysit pull requests." });
   const session = await hui.createSession({ title: "Tag a bot" });
@@ -109,5 +109,30 @@ test("Rewind to here is not offered on a bot's message in a session, nor anywher
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(idle).toBeVisible();
   await expect(transcript.getByText("Hello Grace")).toBeVisible();
-  await expect(rewind).toHaveCount(0);
+  // Only the operator's own message is offered, not what the bot was sent.
+  await expect(rewind).toHaveCount(1);
+});
+
+test("Rewind to here in a bot's chat keeps the bot and its chat before the rewound message", { tags: ["CHAT-034"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const { message, send, transcript, rewind, idle } = chat(screen);
+  const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Rowan", soul: "You keep the week in order." });
+  await hui.open(`/bots/${bot.id}`);
+  await message.fill("First note");
+  await send.tap();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await expect(idle).toBeVisible();
+  await message.fill("Second note");
+  await send.tap();
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
+  await expect(idle).toBeVisible();
+  await expect(rewind).toHaveCount(2);
+
+  await rewind.nth(1).tap();
+  await expect(screen.getByText("Message restored to the composer. The previous branch is kept.")).toBeVisible();
+  await expect(message).toHaveValue("Second note");
+  await expect(message).toBeFocused();
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
+  await expect(transcript.getByText("First note")).toBeVisible();
+  await expect(transcript.getByText("Second note")).toBeHidden();
+  await expect(screen.getByLabel("Fork into a new session from here")).toHaveCount(0);
 });

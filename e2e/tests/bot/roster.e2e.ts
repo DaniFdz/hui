@@ -1,6 +1,7 @@
 /** The roster lists bots by latest activity, each with its face or emoji, name, latest message or role and a short time, and Search bots matches name, handle and title or says "No matching bots." (BOT-008). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { roster } from "./bot-panel.ts";
 
 const makeBot = async (hui: Hui, body: Record<string, unknown>) =>
   (await hui.api<{ bot: { id: string; handle: string } }>("POST", "/__hui/bots", { soul: "# Who I am\nA terse fixture bot.\n", ...body })).bot;
@@ -11,7 +12,7 @@ test("the roster lists bots by latest activity with a face or an emoji, a previe
   await hui.api("PATCH", `/__hui/bots/${zeta.id}`, { title: "Night owl" });
 
   await hui.open("/");
-  await screen.getByRole("tab", "Bots").tap();
+  await roster(screen, hui);
   const alphaRow = screen.getByLabel(/^Alpha,/u);
   const zetaRow = screen.getByLabel(/^Zeta,/u);
   await expect(alphaRow).toBeVisible();

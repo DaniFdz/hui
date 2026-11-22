@@ -13,8 +13,13 @@ test("on a phone held either way Open navigation shows the drawer over unreachab
 
   for (const orientation of ["portrait", "landscape"] as const) {
     const phone = await hui.phoneScreen(orientation);
-    const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
     await hui.open("/");
+    await expect(screen.getByRole("button", "Start session")).toBeVisible();
+    // The update notice is the page load's own check: the worker an earlier load registered must not answer it, so it
+    // goes before the route and the reload that asks.
+    await hui.clearOffline();
+    const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+    await hui.reload();
     await check.answer(available);
     await expect(review).toBeVisible();
     await expect(open).toBeVisible();
@@ -44,6 +49,32 @@ test("on a phone held either way Open navigation shows the drawer over unreachab
     await expect.poll(() => hui.reachable(review)).toBe(true);
     expect(await hui.url()).toMatch(/\/sessions$/u);
   }
+});
+
+test("on a phone New Session keeps Open navigation, and the drawer it opens still reaches the destinations", { tags: ["SHELL-011"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const open = screen.getByRole("button", "Open navigation");
+  const close = screen.getByRole("button", { name: "Close navigation", expanded: true });
+  const sessions = screen.getByTestId("nav-item").filter({ hasText: "Sessions" });
+
+  await hui.createSession({ title: "Phone anchor", group: "Phone" });
+  await hui.phoneScreen();
+  await hui.open("/");
+  await expect(open).toBeVisible();
+  await open.tap();
+  await expect(close).toBeVisible();
+  await screen.getByRole("button", "New session in PHONE").tap();
+  await expect(screen.getByTestId("new-session-composer")).toBeVisible();
+  expect(await hui.url()).toMatch(/\/new-session$/u);
+  await expect(open).toBeVisible();
+  await expect(sessions).toBeHidden();
+  expect(await hui.overflowsSideways()).toBe(false);
+
+  await open.tap();
+  await expect(close).toBeVisible();
+  await expect(sessions).toBeVisible();
+  await sessions.tap();
+  await expect(screen.getByTestId("page-title")).toHaveText("Sessions");
+  await expect(open).toBeVisible();
 });
 
 test("on a phone Open settings navigation names the page, hides it behind the drawer, opens a chosen page with focus on its heading, and a tap outside stays", { tags: ["SHELL-012"], platforms: ["web"] }, async ({ screen, hui }) => {

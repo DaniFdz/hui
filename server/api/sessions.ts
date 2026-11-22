@@ -110,6 +110,18 @@ export const SessionView = Type.Object({
   })),
   interrupted: Type.Optional(Type.Literal(true)),
   runFailed: Type.Optional(Type.Literal(true)),
+  /** The pending question a waiting session shows in lists; see SessionQuestion for the full card. */
+  question: Type.Optional(Type.Object({
+    id: Type.String(),
+    method: Type.Union([
+      Type.Literal("select"), Type.Literal("confirm"), Type.Literal("input"), Type.Literal("editor"),
+      Type.Literal("secret"), Type.Literal("questionnaire"),
+    ]),
+    title: Type.String(),
+    options: Type.Optional(Type.Array(Type.String())),
+  })),
+  /** Why the failed run ended, when the transcript (or the live run) still names it. */
+  failure: Type.Optional(Type.String()),
   background: Type.Optional(Type.Literal(true)),
   model: Type.Optional(Type.String()),
   thinking: Type.Optional(Type.String()),
@@ -120,6 +132,8 @@ export const SessionView = Type.Object({
   parentId: Type.Optional(Type.String()),
   subagent: Type.Optional(SessionSubagent),
   bot: Type.Optional(Type.Object({ id: Type.String(), handle: Type.String(), name: Type.String() })),
+  /** The bot that started this session with `create_session`; absent for a bot's own chat and older records. */
+  createdBy: Type.Optional(Type.Object({ id: Type.String(), handle: Type.String(), name: Type.String() })),
   stage: SessionStage,
   stageOrigin: SessionStageOrigin,
   goal: Type.Optional(SessionGoal),
@@ -136,6 +150,17 @@ const groupDefaults = {
   worker: Type.Optional(Type.String()),
 };
 
+/** Creating a group together with the New session defaults it starts with; an
+ * empty string leaves a default unset, as PATCH does. */
+export const SessionGroupCreateRequest = Type.Object({
+  name: Type.String(),
+  cwd: Type.Optional(Type.String()),
+  worker: Type.Optional(Type.String()),
+  workspaceMode: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("worktree"), Type.Literal("")])),
+  baseRef: Type.Optional(Type.String()),
+}, { $id: "SessionGroupCreateRequest" });
+export type SessionGroupCreateRequest = Static<typeof SessionGroupCreateRequest>;
+
 export const SessionGroup = Type.Object({ ...groupDefaults, sessions: Type.Array(SessionView) }, { $id: "SessionGroup" });
 export type SessionGroup = Static<typeof SessionGroup>;
 
@@ -151,12 +176,25 @@ export const SessionList = Type.Object({ revision: Type.Number(), groups: Type.A
 export type SessionList = Static<typeof SessionList>;
 
 export const QuestionnaireOption = Type.Object({
-  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()),
+  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()), previewHtml: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireOption" });
 export type QuestionnaireOption = Static<typeof QuestionnaireOption>;
 
+/** How a question takes its answer: options (radios, or checkboxes for a
+ * multi-select question), a slider over a numeric range, or a long text. */
+export const QuestionnaireInput = Type.Union([
+  Type.Literal("options"), Type.Literal("slider"), Type.Literal("text"),
+], { $id: "QuestionnaireInput" });
+export type QuestionnaireInput = Static<typeof QuestionnaireInput>;
+
 export const QuestionnaireQuestion = Type.Object({
   header: Type.String(), question: Type.String(), multiSelect: Type.Boolean(), options: Type.Array(QuestionnaireOption),
+  input: QuestionnaireInput,
+  /** The slider's range and step, and what its value counts in. */
+  min: Type.Optional(Type.Number()), max: Type.Optional(Type.Number()), step: Type.Optional(Type.Number()),
+  unit: Type.Optional(Type.String()),
+  /** The long-text field's prompt. */
+  placeholder: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireQuestion" });
 export type QuestionnaireQuestion = Static<typeof QuestionnaireQuestion>;
 
@@ -201,6 +239,9 @@ export type SessionPromptResponse = Static<typeof SessionPromptResponse>;
 export const SessionFastResponse = Type.Object({ fast: Type.Boolean() }, { $id: "SessionFastResponse" });
 export type SessionFastResponse = Static<typeof SessionFastResponse>;
 
+export const SessionAutonomousResponse = Type.Object({ autonomous: Type.Boolean() }, { $id: "SessionAutonomousResponse" });
+export type SessionAutonomousResponse = Static<typeof SessionAutonomousResponse>;
+
 export const SessionConnectResponse = Type.Object({ url: Type.String() }, { $id: "SessionConnectResponse" });
 export type SessionConnectResponse = Static<typeof SessionConnectResponse>;
 
@@ -232,7 +273,7 @@ export const sessionRouteSchemas = [
   { method: "POST", path: "/__hui/sessions", response: SessionResponse },
   { method: "PATCH", path: "/__hui/sessions/:id", response: SessionResponse },
   { method: "DELETE", path: "/__hui/sessions/:id", response: SessionOk },
-  { method: "POST", path: "/__hui/session-groups", response: SessionList },
+  { method: "POST", path: "/__hui/session-groups", request: SessionGroupCreateRequest, response: SessionList },
   { method: "PUT", path: "/__hui/session-groups", response: SessionList },
   { method: "PATCH", path: "/__hui/session-groups/:name", response: SessionList },
   { method: "DELETE", path: "/__hui/session-groups/:name", response: SessionList },
@@ -240,10 +281,11 @@ export const sessionRouteSchemas = [
 
 export const sessionActionRouteSchemas = [
   ...["prompt", "steer", "steer-now", "follow-up"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionPromptResponse })),
-  ...["continue", "compact", "reload", "abort", "rewind", "resume", "question"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionOk })),
+  ...["continue", "compact", "reload", "abort", "rewind", "resume", "question", "progress"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionOk })),
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
+  { method: "POST", path: "/__hui/sessions/:id/autonomous", response: SessionAutonomousResponse },
   { method: "POST", path: "/__hui/sessions/:id/queue", request: SessionQueueRequest, response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/goal", request: SessionGoalRequest, response: SessionResponse },
 ];

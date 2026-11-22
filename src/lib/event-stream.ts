@@ -1,6 +1,6 @@
 /**
- * Pure helpers for the gateway's event streams, shared by the stream clients in `src/api/` and the iOS core
- * (`ios/core/entry.ts`): decoding one server-sent event frame, and the delay before a dropped stream reconnects.
+ * Pure helpers for the gateway's event streams, used by the stream clients in `src/api/`: decoding one server-sent
+ * event frame, and the delay before a dropped stream reconnects.
  * The first retry waits about half a second and the delay doubles to a four-second ceiling, so a gateway restart
  * recovers in a few seconds without hammering the port while it is down; equal jitter keeps a screenful of tabs off
  * the same retry schedule.

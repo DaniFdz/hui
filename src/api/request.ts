@@ -15,7 +15,10 @@ export const CLIENT_HEADERS = { "x-hui": "1" } as const;
 
 /** Long enough for a phone to wake its Tailscale connection, short enough to report a dead one. */
 export const RESPONSE_TIMEOUT_MS = 20_000;
-const BODY_STALL_MS = 40_000;
+
+/** How long a transfer may go without moving a byte before it is failed. It bounds progress, never the total time a
+ * large body takes: every byte that arrives pushes the deadline back. */
+export const BODY_STALL_MS = 40_000;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -53,6 +56,22 @@ export async function fetchWithResponseDeadline(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Opens a streaming response. Its headers must arrive within the deadline,
+ * while the caller's signal still cancels it. Once the response is open the
+ * body may stream for as long as the stream lasts; streams never get a total
+ * download deadline.
+ */
+export function fetchEventStream(
+  fetcher: Fetcher,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = RESPONSE_TIMEOUT_MS,
+): Promise<Response> {
+  const { signal, ...rest } = init;
+  return fetchWithResponseDeadline(fetcher, input, rest, timeoutMs, signal ?? undefined);
 }
 
 function huiRequest(input: RequestInfo | URL, init?: RequestInit): { method: string; path: string } | undefined {

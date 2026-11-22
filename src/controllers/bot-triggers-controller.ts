@@ -135,8 +135,15 @@ export class BotTriggersController implements ReactiveController {
     }
   }
 
+  /** A created or rotated trigger's URL, once: a local bot's on this page's origin, a bot on a worker's as that machine
+   * gave it, with the sentence that says where it lives, or why HUI has none to show. */
   #reveal(created: BotTriggerCreated): Partial<BotTriggersState> {
-    return { revealed: { triggerId: created.trigger.id, name: created.trigger.name, url: `${this.#api.origin()}${created.hook.path}`, copied: false } };
+    const worker = created.hook.worker;
+    const url = worker ? worker.url : `${this.#api.origin()}${created.hook.path}`;
+    const note = worker
+      ? worker.error ?? (worker.url ? `Your listener runs on ${worker.name}: it reports to this address there.` : `HUI has no listener URL for ${worker.name} yet.`)
+      : undefined;
+    return { revealed: { triggerId: created.trigger.id, name: created.trigger.name, ...(url ? { url } : {}), copied: false, ...(note ? { note } : {}) } };
   }
 
   props(bot: BotView): { state: BotTriggersState } & BotTriggersActions {
@@ -161,7 +168,8 @@ export class BotTriggersController implements ReactiveController {
       onRotate: (trigger) => { void this.#act(bot, async () => this.#reveal(await this.#api.rotate(bot.id, trigger.id)), "action", "Could not replace the URL."); },
       onCopy: () => {
         const revealed = this.state.revealed;
-        if (!revealed) return;
+        // A worker with no endpoint has no address to copy, and the panel draws no Copy for it.
+        if (!revealed?.url) return;
         void this.#api.copy(revealed.url).then((copied) => {
           if (this.state.revealed?.url === revealed.url) this.#set({ revealed: { ...revealed, copied } });
         });

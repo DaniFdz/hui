@@ -10,7 +10,7 @@ import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["bin", "cli", "desktop", "scripts", "server", "src"];
+const ROOTS = ["bin", "cli", "desktop", "mobile/connect", "scripts", "server", "src"];
 /** A hash-pinned port of OpenClaw source (see its README): edited only by re-porting, never by hand. */
 const PINNED = "src/components/openclaw/";
 const SOURCE = /\.(?:ts|mjs|cjs|js)$/u;
@@ -21,7 +21,10 @@ async function sources(directory) {
   for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
     const path = posix.join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name !== "node_modules") found.push(...await sources(path));
+      // Generated output has no headers to check: Vite builds into mobile/connect/dist, and the Android project into
+      // mobile/android/app/build. Only those two are skipped, so a source directory called "build" elsewhere still counts.
+      const generated = path === "mobile/connect/dist" || path === "mobile/android/app/build";
+      if (entry.name !== "node_modules" && !generated) found.push(...await sources(path));
     } else if (SOURCE.test(entry.name) && !SKIPPED.test(entry.name) && !path.startsWith(PINNED)) found.push(path);
   }
   return found;

@@ -9,7 +9,7 @@ test("New Session starts on the default reasoning chosen in Models", { tags: ["S
   const before = new Set((await sessions()).map((session) => session.id));
 
   await hui.open("/settings/models");
-  await expect(screen.getByText("Saved by HUI and applied to new sessions.")).toBeVisible({ timeout: 60_000 });
+  await expect(screen.getByText("Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.")).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByText(/^Default reasoning$/u)).toBeVisible();
   await screen.getByLabel("Default reasoning: PI default").tap();
   await screen.getByLabel("Thinking effort").fill("2");

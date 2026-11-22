@@ -10,6 +10,7 @@
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { agentReplyTo } from "../../server/bots-format.ts";
+import { chiefsScripts } from "./chiefs-scene.ts";
 
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
@@ -21,7 +22,7 @@ type Call = { name: string; input: Record<string, unknown> };
  * and a script's first calls on the message that started it. */
 type Turn = { wait?: number; think?: string; say?: string | ((results: string[]) => string); calls?: Call[] | ((results: string[], prompt: string) => Call[]) };
 /** A script starts when the latest user message contains `when`; `title` and `branch` answer HUI's naming prompts. */
-type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
+export type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
 const page = (path: string) => `http://127.0.0.1:${port}${path}`;
 /** The Datadog widget graph the recorder uploads (PUT /demo/datadog-graph.png) and HUI fetches as its snapshot. */
@@ -45,6 +46,24 @@ function terminalId(results: string[]): string {
 function replyTo(prompt: string): string {
   return agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })();
 }
+/** The task progress card HUI asks the utility model for after a settled turn: the summary and plan its parser reads,
+ * picked by what the conversation is about. */
+const PROGRESS_CARDS: readonly [match: string, summary: string, steps: string[]][] = [
+  ["toCsv", "The CSV export is written; the tests are running in the project.",
+    ["done: read the orders page", "done: write the CSV formatter", "doing: run the tests", "todo: report back"]],
+  ["formatTotal", "Totals are formatted, and the tests in your terminal come next.",
+    ["done: write the currency formatter", "doing: use it on the orders page", "todo: run the tests"]],
+  ["merchant validation", "Apple Pay is in the payment sheet; merchant validation is the last piece.",
+    ["done: wire Apple Pay into the payment sheet", "doing: add the merchant validation endpoint", "todo: cover it with a Safari test"]],
+  ["ownership check", "The reviews are in; the ownership check is the next fix.",
+    ["done: read the refund endpoint", "done: run the three reviews", "doing: add the ownership check", "todo: leave partial-refund tests"]],
+];
+function progressAnswer(digest: string): string {
+  const [, summary, steps] = PROGRESS_CARDS.find(([match]) => digest.includes(match))
+    ?? ["", "The change is underway.", ["done: read the request", "doing: work through the change", "todo: report back"]];
+  return [`Summary: ${summary}`, "Plan:", ...steps.map((step) => `- ${step}`)].join("\n");
+}
+
 /** A browser snapshot's ref for an element, from the latest result that has it; a page without it fails the turn. */
 function ref(results: string[], pattern: RegExp): string {
   for (const result of results) {
@@ -185,6 +204,14 @@ const scripts: Script[] = [
       { wait: 600, say: "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging." },
     ],
   },
+  // Subagents: a goal the conversation keeps pursuing after the reviews are in.
+  {
+    when: "Continue the goal.",
+    turns: [
+      { wait: 900, think: "The ownership check is in and the watcher merges #142 when CI is green. Two follow-ups are left.", calls: [{ name: "read", input: { path: "src/refunds/route.js" } }] },
+      { wait: 1_400, say: "Goal update: the ownership check is in, and **#142** merges when CI passes. Left to do: batch the line-item queries, and add the partial-refund and over-refund tests." },
+    ],
+  },
   {
     when: "Fix the ownership check",
     title: "Review PR #142 in parallel",
@@ -214,6 +241,16 @@ const scripts: Script[] = [
       { say: (results) => /pass 3\b/u.test(results[0] ?? "")
         ? "Done: totals now show as **$1,234.50**. The formatter is in `src/orders/format-total.js`, and its 3 tests pass in your terminal."
         : `The tests did not pass in your terminal: ${(results[0] ?? "").slice(-300)}` },
+    ],
+  },
+  // Share: a link shared from a phone opens a session, whose agent reads the code the post is about.
+  {
+    when: "Look this post in Instagram",
+    title: "Order totals from an Instagram post",
+    branch: "order-totals-currency",
+    turns: [
+      { wait: 700, think: "An order total shown as 1234.5. Let me read how the orders page builds its rows.", calls: [{ name: "read", input: { path: "src/orders/orders-page.js" } }] },
+      { wait: 500, say: "That's a real one: the orders page returns `rows: orders`, so `total` prints as **1234.5**. I'd put a currency formatter in front of it and cover the rounding with a test. Want me to start?" },
     ],
   },
   // Phone: checking in on a session.
@@ -308,6 +345,8 @@ const scripts: Script[] = [
     when: "Reverted acme/payments-api#148",
     turns: [{ wait: 900, say: "Resolved: #148 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
+  // The chiefs clip's delegation and the three sessions it starts, kept beside the scene (chiefs-scene.ts).
+  ...chiefsScripts,
 ];
 
 // Anthropic Messages streaming.
@@ -391,6 +430,7 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
   }
   // HUI's naming prompts quote the first message or task.
   const named = scripts.find((script) => source.includes(script.when));
+  if (source.includes("Track the task progress of this coding-agent session")) return plain(response, progressAnswer(source));
   if (source.includes("Name this coding-agent session and its Git branch")) return plain(response, `Title: ${named?.title ?? "Demo session"}\nBranch: ${named?.branch ?? "demo-change"}`);
   if (source.includes("Generate a concise session title")) return plain(response, named?.title ?? "Demo session");
   if (source.includes("Name the Git branch")) return plain(response, named?.branch ?? "demo-change");
