@@ -45,8 +45,10 @@ test("a bot's message sits on the left under its name, opens its chat, copies an
   // Reply belongs to the message row, regardless of how the phone wraps its footer.
   const reply = row.getByRole("button", "Reply to message");
   await expect(reply).toHaveCount(1);
+  // Reply renders the message as a Markdown quote: the blockquote draws no marker, so the draft is read from the field
+  // the form sends, where the marker and the fence are the bytes a textarea would have held.
   await reply.tap();
-  await expect(screen.getByLabel("Message")).toHaveValue(/^> Grace reports back\n> \n> ```\n> const answer = 42;\n> ```/u);
+  await expect(screen.getByTestId("composer-markdown")).toHaveValue(/^> Grace reports back\n> \n> ```\n> const answer = 42;\n> ```/u);
 
   // A new color reaches the open chat without a reload.
   const before = (await hui.look(name)).color;

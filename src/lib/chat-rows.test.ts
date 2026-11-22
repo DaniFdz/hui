@@ -11,10 +11,10 @@ test("message rows carry the text they show, whether it is Markdown and their fo
     { kind: "message", id: "p", role: "user", text: "Sending", pending: true },
   ]);
   assert.deepEqual(rows.map((row) => row.kind === "messages" ? [row.messages[0]!.shown, row.messages[0]!.markdown, row.footer?.copyLabel ?? null] : row.kind), [
-    ["Mine", false, "Copy prompt"],
+    ["Mine", true, "Copy prompt"],
     ["**Reply**", true, "Copy response"],
     ["Report", true, "Copy message"],
     ["Summarize", false, "Copy message"],
-    ["Sending", false, null],
+    ["Sending", true, null],
   ]);
 });

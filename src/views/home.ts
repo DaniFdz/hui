@@ -41,12 +41,13 @@ import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
+import { composerPlaceholder, queueRows } from "../lib/composer/state.ts";
 import { composerFocusAfterSend, type ComposerFocusOwner } from "../lib/chat/composer-focus.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
-import { adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd } from "../lib/composer/textarea.ts";
+import { mountEditorAtEnd } from "../lib/composer/textarea.ts";
+import { composerEditorFor, mountComposerEditor, type ComposerControl, type ComposerEditor, type ComposerEditorOptions } from "../lib/composer/rich/editor.ts";
 import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
 import { dismissRunStatusPanel, renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
@@ -115,9 +116,9 @@ export const QUESTION_FOCUS_SELECTOR = '.session-question-card :is([role="radio"
 const sendLongPressTimers = new WeakMap<HTMLElement, number>();
 const consumedSendLongPresses = new WeakSet<HTMLElement>();
 const composerDragDepth = new WeakMap<HTMLElement, number>();
-/** The chat composer's send, recorded where it started and closed out by the render that enables the textarea again. */
+/** The chat composer's send, recorded where it started and closed out by the render that enables the editor again. */
 type ComposerSendFocus = { fromComposer: boolean; control: Element | null; sending: boolean };
-const composerSendFocus = new WeakMap<HTMLTextAreaElement, ComposerSendFocus>();
+const composerSendFocus = new WeakMap<ComposerEditor, ComposerSendFocus>();
 
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
@@ -147,38 +148,107 @@ function hasCoarsePointer(): boolean {
   return window.matchMedia?.("(pointer: coarse)").matches === true || navigator.maxTouchPoints > 0;
 }
 
-function updateComposerDraft(props: HomeProps, textarea: HTMLTextAreaElement) {
-  props.onDraftInput(textarea.value);
-  updateCompletionQueries(props, textarea);
-  syncComposerTextarea(textarea);
+function updateCompletionQueries(props: HomeProps, host: HTMLElement, control: ComposerControl) {
+  const { start, end } = control.selection();
+  const text = control.text();
+  props.onCommandQuery(slashCommandQuery(text, start, end));
+  const cwd = host.closest("form")?.elements.namedItem("cwd");
+  props.onLocalPathQuery(localPathQuery(text, start, end), cwd instanceof HTMLInputElement ? cwd.value : undefined);
 }
 
-function updateCompletionQueries(props: HomeProps, textarea: HTMLTextAreaElement) {
-  props.onCommandQuery(slashCommandQuery(textarea.value, textarea.selectionStart, textarea.selectionEnd));
-  const cwd = textarea.closest("form")?.elements.namedItem("cwd");
-  props.onLocalPathQuery(
-    localPathQuery(textarea.value, textarea.selectionStart, textarea.selectionEnd),
-    cwd instanceof HTMLInputElement ? cwd.value : undefined,
-  );
+/** Runs the completion queries off the live editor after anything that moved the caret. */
+function syncComposerQueries(props: HomeProps, host: HTMLElement): void {
+  const control = composerEditorFor(host)?.control;
+  if (control) updateCompletionQueries(props, host, control);
 }
 
-function onComposerPaste(props: HomeProps) {
-  return (event: ClipboardEvent) => {
-    if (props.sending || !event.clipboardData) return;
-    const images = Array.from(event.clipboardData.items)
-      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => file !== null);
-    if (images.length > 0) {
-      event.preventDefault();
-      props.onAddAttachments(images);
-      return;
-    }
-    const text = event.clipboardData.getData("text/plain");
-    if (text.length < PASTED_TEXT_ATTACHMENT_THRESHOLD) return;
-    event.preventDefault();
-    props.onAddAttachments([new File([text], "pasted-text.txt", { type: "text/plain" })]);
+/**
+ * A pasted image becomes an attachment, and a pasted wall of text is attached rather than dropping 40 KB into the
+ * draft. True when the composer took the clipboard, which is the editor's cue to leave the paste alone.
+ */
+function onComposerPaste(props: HomeProps, event: ClipboardEvent): boolean {
+  if (props.sending || !event.clipboardData) return false;
+  const images = Array.from(event.clipboardData.items)
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+  if (images.length > 0) {
+    props.onAddAttachments(images);
+    return true;
+  }
+  const text = event.clipboardData.getData("text/plain");
+  if (text.length < PASTED_TEXT_ATTACHMENT_THRESHOLD) return false;
+  props.onAddAttachments([new File([text], "pasted-text.txt", { type: "text/plain" })]);
+  return true;
+}
+
+/** Which surface a composer is: the chat's own prompt, or the New Session draft that starts a session. */
+type ComposerSurface = "chat" | "launch";
+
+/**
+ * What one render tells the editor. The editor owns the document and the wire; this owns what the draft means — the
+ * menus' open state, the placeholder, the Enter mode of the running turn, and the form the send belongs to.
+ */
+function composerEditorOptions(props: HomeProps, host: HTMLElement, surface: ComposerSurface, locked: boolean): ComposerEditorOptions {
+  const chat = surface === "chat";
+  const options: ComposerEditorOptions = {
+    name: chat ? "text" : "prompt",
+    label: chat ? "Message" : "What should this session work on?",
+    placeholder: chat
+      ? composerPlaceholder({
+        streaming: props.streaming,
+        coarsePointer: hasCoarsePointer(),
+        sendShortcut: props.chatPreferences.sendShortcut,
+        applePlatform: APPLE_PLATFORM,
+      })
+      : "What should this session work on?",
+    markdown: props.draft,
+    locked,
+    streaming: chat ? props.streaming : false,
+    sendShortcut: props.chatPreferences.sendShortcut,
+    ariaExpanded: props.localPathMenu.open || props.commandMenu.open,
+    ariaControls: props.localPathMenu.open
+      ? sessionControlId(props, LOCAL_PATH_MENU_ID)
+      : props.commandMenu.open ? sessionControlId(props, SLASH_MENU_ID) : undefined,
+    ariaActiveDescendant: props.localPathMenu.open && props.localPathMenu.paths.length
+      ? localPathOptionId(props.localPathMenu.activeIndex, sessionControlId(props, LOCAL_PATH_MENU_ID))
+      : props.commandMenu.open && (props.commandMenu.commands.length || props.commandMenu.paths?.length)
+        ? slashOptionId(props.commandMenu.activeIndex, sessionControlId(props, SLASH_MENU_ID))
+        : undefined,
+    onChange: (markdown) => {
+      props.onDraftInput(markdown);
+      syncComposerQueries(props, host);
+    },
+    onSelection: () => syncComposerQueries(props, host),
+    onBeforeKeyDown: (event) => {
+      props.onLocalPathKeydown(event);
+      if (event.defaultPrevented) return;
+      props.onCommandKeydown(event);
+    },
+    onSubmit: (mode) => {
+      const form = host.closest("form");
+      if (!form) return;
+      // New Session's Enter is the form's own start; the chat's is a prompt, a steer or a follow-up. Both read the
+      // hidden wire, which is fresher than the draft this render closed over.
+      if (!chat) {
+        const field = form.elements.namedItem("prompt");
+        if (field instanceof HTMLInputElement && field.value.trim()) form.requestSubmit();
+        return;
+      }
+      submitPromptFromForm(props, form, mode);
+    },
+    onPaste: (event) => onComposerPaste(props, event),
+    onFocus: () => syncComposerQueries(props, host),
+    onBlur: (event) => {
+      if (!(event.relatedTarget instanceof Element) || !event.relatedTarget.closest(".slash-menu")) {
+        props.onCommandQuery(null);
+        props.onLocalPathQuery(null);
+      }
+    },
   };
+  if (chat) options.keyShortcuts = "Enter Control+Enter Meta+Enter";
+  else options.id = "launch-prompt";
+  return options;
 }
 
 function hasDraggedFiles(transfer: DataTransfer | null): boolean {
@@ -210,8 +280,10 @@ function clearComposerDrag(surface: HTMLElement) {
 
 function focusComposerFromSurface(event: MouseEvent) {
   const target = event.target;
-  if (!(target instanceof Element) || target.closest("button, summary, select, input, textarea, details, a")) return;
-  (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>("textarea")?.focus();
+  // A click inside the editor is already where the caret belongs; re-focusing would move it to the last selection.
+  if (!(target instanceof Element) || target.closest("button, summary, select, input, textarea, details, a, [contenteditable]")) return;
+  const host = (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-composer-editor]");
+  if (host) composerEditorFor(host)?.focus();
 }
 
 /** The goal editor's transient state, owned by the composer controller and read by the Run status popover. */
@@ -795,52 +867,11 @@ function renderLaunchForm(props: HomeProps) {
               open: props.commandMenu.open && commandQuery !== null })}
             <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
             <div class="agent-chat__composer-input-row">
-              <div class="agent-chat__composer-combobox">
-                <textarea id="launch-prompt" class="new-session-page__message" name="prompt" rows="1" dir="auto" required
-                  placeholder="What should this session work on?" .value=${props.draft} ?disabled=${props.launching}
-                  @paste=${onComposerPaste(props)}
-                  @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}
-                  @keydown=${(event: KeyboardEvent) => {
-                    props.onLocalPathKeydown(event);
-                    if (event.defaultPrevented) return;
-                    props.onCommandKeydown(event);
-                    if (!event.defaultPrevented && event.key === "Enter" && composerEnterMode({
-                      streaming: false,
-                      shiftKey: event.shiftKey,
-                      ctrlKey: event.ctrlKey,
-                      metaKey: event.metaKey,
-                      isComposing: event.isComposing,
-                      coarsePointer: hasCoarsePointer(),
-                      sendShortcut: props.chatPreferences.sendShortcut,
-                    }) === "prompt") {
-                      event.preventDefault();
-                      (event.target as HTMLTextAreaElement).form?.requestSubmit();
-                    }
-                  }}
-                  @focus=${(event: FocusEvent) => {
-                    const textarea = event.target as HTMLTextAreaElement;
-                    syncComposerTextarea(textarea);
-                    updateCompletionQueries(props, textarea);
-                  }}
-                  @click=${(event: Event) => updateCompletionQueries(props, event.target as HTMLTextAreaElement)}
-                  @select=${(event: Event) => updateCompletionQueries(props, event.target as HTMLTextAreaElement)}
-                  @blur=${(event: FocusEvent) => {
-                    if (!(event.relatedTarget instanceof Element) || !event.relatedTarget.closest(".slash-menu")) {
-                      props.onCommandQuery(null);
-                      props.onLocalPathQuery(null);
-                    }
-                  }}
-                  role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
-                  aria-expanded=${String(props.localPathMenu.open || props.commandMenu.open)}
-                  aria-controls=${props.localPathMenu.open
-                    ? sessionControlId(props, LOCAL_PATH_MENU_ID)
-                    : props.commandMenu.open ? sessionControlId(props, SLASH_MENU_ID) : nothing}
-                  aria-activedescendant=${props.localPathMenu.open && props.localPathMenu.paths.length
-                    ? localPathOptionId(props.localPathMenu.activeIndex, sessionControlId(props, LOCAL_PATH_MENU_ID))
-                    : props.commandMenu.open && (props.commandMenu.commands.length || props.commandMenu.paths?.length)
-                      ? slashOptionId(props.commandMenu.activeIndex, sessionControlId(props, SLASH_MENU_ID))
-                      : nothing}></textarea>
-              </div>
+              <div class="agent-chat__composer-combobox" data-composer-editor
+                ${ref((element) => {
+                  if (!(element instanceof HTMLElement)) return;
+                  mountComposerEditor(element, composerEditorOptions(props, element, "launch", props.launching));
+                })}></div>
             </div>
             <div class="agent-chat__composer-footer">
               <div class="agent-chat__composer-lead">
@@ -949,8 +980,8 @@ export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
 }
 
-/** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
- * rendered as the agents write it. */
+/** A user-role message's text: the operator's own and a bot's or a session's (`markdown`) rendered as their Markdown, a
+ * routine's or a trigger's plain. */
 function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
   // A turn that invoked a skill carries PI's wrapper for the model; the reader gets the skill's name and the words
   // the turn added around it instead.
@@ -960,16 +991,16 @@ function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, te
     : nothing;
   const content = invoked ? expandedSkillText(invoked) : text;
   const slack = embeds ? parseSlackLink(content.trim()) : undefined;
-  if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
+  if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link" data-testid="message-text"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${content}</div>`}`;
+  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text" data-testid="message-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain" data-testid="message-text">${content}</div>`}`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
+  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}" data-testid="message-text">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -992,13 +1023,14 @@ function renderMetrics(item: TranscriptItem) {
 function replyToMessage(event: Event, props: HomeProps, text: string) {
   const source = event.currentTarget as HTMLElement;
   const root = source.closest("hui-app") ?? source.getRootNode() as Document | ShadowRoot;
-  // Typing does not re-render, so props.draft can trail the textarea: quote onto
-  // the live value instead of the one this click handler closed over.
-  const editor = root.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
-  props.onDraftChange(replyDraft(editor?.value ?? props.draft, text));
+  // Typing does not re-render, so props.draft can trail the editor: quote onto the live
+  // wire instead of the one this click handler closed over.
+  const host = root.querySelector<HTMLElement>("[data-composer-editor]");
+  const editor = host ? composerEditorFor(host) : undefined;
+  props.onDraftChange(replyDraft(editor?.control.markdown() ?? props.draft, text));
   requestAnimationFrame(() => {
     editor?.focus();
-    if (editor) editor.setSelectionRange(editor.value.length, editor.value.length);
+    editor?.caretAtEnd();
   });
 }
 
@@ -1019,7 +1051,7 @@ function renderMessage(props: HomeProps, item: ChatMessage, embeds: boolean, att
         </div>`
       : nothing}
     ${attributed ? renderUserText(props, item, embeds, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
-      : item.role === "user" ? renderUserText(props, item, embeds) : html`<div class="chat-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
+      : item.role === "user" ? renderUserText(props, item, embeds, item.text, true) : html`<div class="chat-text" data-testid="message-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${!embeds || item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
@@ -1561,36 +1593,39 @@ function renderSubagentStatusIcon(status: string) {
 }
 
 function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: PromptMode) {
+  // The wire is the hidden field: an unedited draft sends its exact source, a rich or source edit sends what it wrote.
   const input = form.elements.namedItem("text");
-  const text = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+  const text = input instanceof HTMLInputElement ? input.value.trim() : "";
   // An image alone is a valid prompt; a file alone is not, because the agent
   // still needs to be told what to do with it.
   const hasImage = props.attachments.some((item) => item.kind === "image");
   if (!text && !hasImage) return;
   // Where the send started, for the caret's way back once the post is over (see `syncComposerFocus`): a keyboard send
-  // leaves the caret in the composer, and the disabled composer the post sets takes it away. `sending` is the render
+  // leaves the caret in the composer, and the locked composer the post sets takes it away. `sending` is the render
   // edge's, so a send only records the owner here.
-  if (input instanceof HTMLTextAreaElement) {
+  const host = input instanceof HTMLInputElement ? input.closest<HTMLElement>("[data-composer-editor]") : null;
+  const editor = host ? composerEditorFor(host) : undefined;
+  if (editor) {
     const active = document.activeElement;
     const fromComposer = active instanceof Element && form.contains(active);
-    const entry = composerSendFocus.get(input) ?? { fromComposer, control: null, sending: false };
+    const entry = composerSendFocus.get(editor) ?? { fromComposer, control: null, sending: false };
     entry.fromComposer = fromComposer;
     entry.control = fromComposer ? active : null;
-    composerSendFocus.set(input, entry);
+    composerSendFocus.set(editor, entry);
   }
   props.onSendPrompt(text, props.attachments, mode);
 }
 
 /**
- * Gives the chat composer its caret back after a send that started in it: the post disables the textarea, which leaves
- * the page with no focus, so the render that enables it again puts the operator back where they were typing. It never
- * takes the focus from a control the operator moved to while the send posted, and it never opens or closes the Run
- * status panel. The ref runs before this render has committed the textarea's enabled state, so the check waits for the
- * commit instead of reading a stale `disabled`.
+ * Gives the chat composer its caret back after a send that started in it: the post locks the editor, which leaves the
+ * page with no focus, so the render that unlocks it again puts the operator back where they were typing. It never takes
+ * the focus from a control the operator moved to while the send posted, and it never opens or closes the Run status
+ * panel. The ref runs before this render has committed the editor's lock, so the check waits for the commit instead of
+ * reading a stale state.
  */
-function syncComposerFocus(textarea: HTMLTextAreaElement, sending: boolean): void {
-  const entry = composerSendFocus.get(textarea) ?? { fromComposer: false, control: null, sending };
-  composerSendFocus.set(textarea, entry);
+function syncComposerFocus(editor: ComposerEditor, sending: boolean): void {
+  const entry = composerSendFocus.get(editor) ?? { fromComposer: false, control: null, sending };
+  composerSendFocus.set(editor, entry);
   if (sending) {
     entry.sending = true;
     return;
@@ -1602,38 +1637,15 @@ function syncComposerFocus(textarea: HTMLTextAreaElement, sending: boolean): voi
   entry.sending = false;
   if (!fromComposer) return;
   queueMicrotask(() => {
-    if (!textarea.isConnected || textarea.disabled) return;
+    if (!editor.control.editable()) return;
     const active = document.activeElement;
     const owner: ComposerFocusOwner = active === null || active === document.body
       ? "body"
       : active === control ? "send-control" : "elsewhere";
     if (!composerFocusAfterSend({ fromComposer, owner })) return;
-    textarea.focus({ preventScroll: true });
-    syncComposerTextarea(textarea);
+    editor.focus();
+    editor.caretAtEnd();
   });
-}
-
-function onPromptKeydown(props: HomeProps) {
-  return (event: KeyboardEvent) => {
-    props.onLocalPathKeydown(event);
-    if (event.defaultPrevented) return;
-    props.onCommandKeydown(event);
-    if (event.defaultPrevented) return;
-    if (event.key !== "Enter" || !(event.target instanceof HTMLTextAreaElement)) return;
-    const mode = composerEnterMode({
-      streaming: props.streaming,
-      shiftKey: event.shiftKey,
-      ctrlKey: event.ctrlKey,
-      metaKey: event.metaKey,
-      isComposing: event.isComposing,
-      coarsePointer: hasCoarsePointer(),
-      sendShortcut: props.chatPreferences.sendShortcut,
-    });
-    if (!mode || mode === "newline") return;
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (form instanceof HTMLFormElement) submitPromptFromForm(props, form, mode);
-  };
 }
 
 function onPromptSubmit(props: HomeProps) {
@@ -1846,57 +1858,18 @@ function renderComposer(props: HomeProps) {
       ${props.session?.status === "starting" && props.transcript.length ? renderStartingSession() : nothing}
       ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
-        @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
+        @submit=${onPromptSubmit(props)}
         @click=${focusComposerFromSurface}>
         ${renderLocalPathMenu({ ...props.localPathMenu, id: sessionControlId(props, LOCAL_PATH_MENU_ID) })}
         ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID) })}
         <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
         <div class="agent-chat__composer-input-row">
-          <div class="agent-chat__composer-combobox">
-            <textarea
-              ${ref((element) => {
-                if (element instanceof HTMLTextAreaElement) syncComposerFocus(element, props.sending);
-              })}
-              name="text"
-              rows="1"
-              dir="auto"
-              .value=${props.draft}
-              @input=${(event: Event) => updateComposerDraft(props, event.target as HTMLTextAreaElement)}
-              @focus=${(event: FocusEvent) => {
-                const textarea = event.target as HTMLTextAreaElement;
-                syncComposerTextarea(textarea);
-                updateCompletionQueries(props, textarea);
-              }}
-              @click=${(event: Event) => updateCompletionQueries(props, event.target as HTMLTextAreaElement)}
-              @select=${(event: Event) => updateCompletionQueries(props, event.target as HTMLTextAreaElement)}
-              @blur=${(event: FocusEvent) => {
-                if (!(event.relatedTarget instanceof Element) || !event.relatedTarget.closest(".slash-menu")) {
-                  props.onCommandQuery(null);
-                  props.onLocalPathQuery(null);
-                }
-              }}
-              @paste=${onComposerPaste(props)}
-              placeholder=${composerPlaceholder({
-                streaming: props.streaming,
-                coarsePointer: hasCoarsePointer(),
-                sendShortcut: props.chatPreferences.sendShortcut,
-                applePlatform: APPLE_PLATFORM,
-              })}
-              ?disabled=${booting || props.sending}
-              aria-label="Message"
-              role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
-              aria-expanded=${String(props.localPathMenu.open || props.commandMenu.open)}
-              aria-controls=${props.localPathMenu.open
-                ? sessionControlId(props, LOCAL_PATH_MENU_ID)
-                : props.commandMenu.open ? sessionControlId(props, SLASH_MENU_ID) : nothing}
-              aria-activedescendant=${props.localPathMenu.open && props.localPathMenu.paths.length
-                ? localPathOptionId(props.localPathMenu.activeIndex, sessionControlId(props, LOCAL_PATH_MENU_ID))
-                : props.commandMenu.open && (props.commandMenu.commands.length || props.commandMenu.paths?.length)
-                  ? slashOptionId(props.commandMenu.activeIndex, sessionControlId(props, SLASH_MENU_ID))
-                  : nothing}
-              aria-keyshortcuts="Enter Control+Enter Meta+Enter"
-            ></textarea>
-          </div>
+          <div class="agent-chat__composer-combobox" data-composer-editor
+            ${ref((element) => {
+              if (!(element instanceof HTMLElement)) return;
+              const editor = mountComposerEditor(element, composerEditorOptions(props, element, "chat", booting || props.sending));
+              syncComposerFocus(editor, props.sending);
+            })}></div>
         </div>
         <div class="agent-chat__composer-footer">
           <div class="agent-chat__composer-lead agent-chat__composer-meta">

@@ -67,7 +67,7 @@ import { renderUpdateNotice } from "./views/update-notice.ts";
 import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { childSessionsByParent, customGroupOrder, mergeChildAndStartedSessions, moveGroupLabel, readSidebarSessionOptions, startedSessionsByBot, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
-import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
+import { composerEditorFor, type ComposerEditor } from "./lib/composer/rich/editor.ts";
 import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
   deleteComposerDraft,
@@ -239,7 +239,7 @@ export class HuiApp extends HuiElement {
     draftCommands: () => this.launcher.worker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills),
     defaultCwd: () => this.launcher.defaults?.cwd,
     mentionable: () => this.mentionable(),
-    textarea: () => this.composerTextarea,
+    editor: () => this.composerEditor,
     launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
@@ -310,7 +310,6 @@ export class HuiApp extends HuiElement {
   private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
   private renderedQueueEditingId: string | undefined;
-  private renderedDraftRevision = 0;
   private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
   /** One group chief creation at a time; the route is idempotent, but two clicks need one request. */
@@ -322,7 +321,7 @@ export class HuiApp extends HuiElement {
   @state() private renamingFor = "";
   @state() private deletingFor = "";
   @state() private updateSessionCreating = false;
-  private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
+  private readonly updates = new UpdateController(this, () => this.composerEditor?.focus());
   /** This device's gateway list, shared by Settings → Gateway and the sidebar's footer (SPEC.md "A device keeps a list
    * of gateways"). */
   private readonly gateways = new GatewaysController(this, undefined, {
@@ -435,7 +434,10 @@ export class HuiApp extends HuiElement {
   private stopInAppLinks: (() => void) | undefined;
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
-  private composerTextarea: HTMLTextAreaElement | null = null;
+  private composerEditorHost: HTMLElement | null = null;
+  /** The mounted composer editor, which the controller completes and focuses through. A render that replaces its host
+   * destroys it: a discarded editor stays reachable from its ProseMirror view, observers and listeners otherwise. */
+  private composerEditor: ComposerEditor | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
     // The bot panel moves between the side and a sheet; what it reads follows.
@@ -629,8 +631,9 @@ export class HuiApp extends HuiElement {
     window.clearInterval(this.sessionProgressPoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
-    if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
-    this.composerTextarea = null;
+    if (this.composerEditor) this.composerEditor.destroy();
+    this.composerEditor = null;
+    this.composerEditorHost = null;
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
@@ -806,25 +809,16 @@ export class HuiApp extends HuiElement {
         this.dispatchEvent(new Event("hui-files-connection", { bubbles: true, composed: true }));
       }
     }
-    // Session and bot panes measure their own composers.
-    const textarea = !this.embeddedPane && ((this.view === "home" && this.conversation.selected) || this.view === "bot")
-      ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
-    const draftReplaced = this.renderedDraftRevision !== this.composer.draftRevision;
-    this.renderedDraftRevision = this.composer.draftRevision;
-    if (textarea !== this.composerTextarea) {
-      if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
-      this.composerTextarea = textarea;
-      if (textarea) {
-        observeTextareaOverflow(textarea);
-        scheduleTextareaHeightAdjustment(textarea);
-      }
-    } else if (textarea && draftReplaced) {
-      // Typing measures its own textarea in the input handler; only a draft that
-      // code replaced under it needs a measuring pass after the render.
-      scheduleTextareaHeightAdjustment(textarea);
+    // Session and bot panes mount their own composers; this element keeps the one it renders itself and lets go of it
+    // when a render or a route replaces it, or the view it belonged to is gone.
+    const host = this.ownComposerHost();
+    if (host !== this.composerEditorHost) {
+      this.composerEditor?.destroy();
+      this.composerEditorHost = host;
+      this.composerEditor = host ? composerEditorFor(host) ?? null : null;
     }
-    if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
-      this.composer.browseCommands(textarea);
+    if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && host) {
+      this.composer.browseCommands();
     }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.bots.callsStatus) void this.bots.loadCallsStatus();
@@ -1539,11 +1533,28 @@ export class HuiApp extends HuiElement {
       const app = this.activePaneApp();
       // A bot's chat, or the only chat, is rendered by this element itself. A split layout is not: its composers belong
       // to pane apps, and this element's light DOM holds every pane's copy, so the fallback would focus the first one.
-      const target = app?.querySelector<HTMLElement>("textarea")
-        ?? app?.querySelector<HTMLElement>(".chat-pane__header")
-        ?? (this.work.layout ? undefined : this.renderRoot.querySelector<HTMLElement>(".agent-chat__composer-combobox > textarea"));
-      target?.focus({ preventScroll: true });
+      const host = app?.querySelector<HTMLElement>("[data-composer-editor]")
+        ?? (this.work.layout ? undefined : this.renderRoot.querySelector<HTMLElement>("[data-composer-editor]"));
+      const editor = host ? composerEditorFor(host) : undefined;
+      if (editor) editor.focus();
+      else app?.querySelector<HTMLElement>(".chat-pane__header")?.focus({ preventScroll: true });
     });
+  }
+
+  /** The composer host this element renders itself: a pane app's copy lives inside another `hui-app`, and the shell's
+   * light DOM reaches every pane's, so the nearest app ancestor decides whose host it is. */
+  private ownComposerHost(): HTMLElement | null {
+    const current = this.composerEditorHost;
+    if (current?.isConnected && current.closest("hui-app") === this) return current;
+    const host = this.renderRoot.querySelector<HTMLElement>("[data-composer-editor]");
+    return host && host.closest("hui-app") === this ? host : null;
+  }
+
+  /** The element the update dialog hands focus back to: the rich surface editing the draft, not the host around it. */
+  private composerFocusTarget(): HTMLElement | null {
+    const host = this.composerEditorHost;
+    if (!host) return null;
+    return host.querySelector<HTMLElement>(":scope > .ProseMirror");
   }
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
@@ -1669,7 +1680,7 @@ export class HuiApp extends HuiElement {
     this.note = "";
     this.noteLevel = "info";
     this.composer.closeCommands();
-    this.updates.review(this.composerTextarea, command === "check", () => this.openUpdateSession(command));
+    this.updates.review(this.composerFocusTarget(), command === "check", () => this.openUpdateSession(command));
     return true;
   }
 
@@ -2547,7 +2558,14 @@ export class HuiApp extends HuiElement {
   /** After the call view closes, focus returns to the chat it covered. */
   private focusBotChat() {
     void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
-      this.botPaneApp()?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle, .agent-chat__composer-combobox > textarea")?.focus();
+      const pane = this.botPaneApp();
+      const toggle = pane?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle");
+      if (toggle) {
+        toggle.focus();
+        return;
+      }
+      const host = pane?.renderRoot.querySelector<HTMLElement>("[data-composer-editor]");
+      if (host) composerEditorFor(host)?.focus();
     });
   }
 
@@ -3004,7 +3022,7 @@ export class HuiApp extends HuiElement {
   /** The notice a chat this element renders draws in flow, its buttons returning focus to that chat's composer. */
   private chatPowerNotice(notice: PowerNoticeProps | undefined): PowerNoticeProps | undefined {
     if (!notice) return undefined;
-    const focusComposer = () => this.embeddedPane ? this.composerTextarea?.focus() : this.focusActiveComposer();
+    const focusComposer = () => this.embeddedPane ? this.composerEditor?.focus() : this.focusActiveComposer();
     return {
       ...notice,
       onTurnOff: () => { notice.onTurnOff(); focusComposer(); },
@@ -3169,14 +3187,14 @@ export class HuiApp extends HuiElement {
         onReview: this.reviewUpdate,
         onDismiss: () => {
           this.updates.dismiss();
-          this.composerTextarea?.focus();
+          this.composerEditor?.focus();
         },
       })}
       ${this.embeddedPane ? null : renderAppLinkNotice({
         href: this.appLink,
         dismissed: this.appLinkDismissed,
         inert: noticesInert,
-        onDismiss: () => { this.appLinkDismissed = true; this.composerTextarea?.focus(); },
+        onDismiss: () => { this.appLinkDismissed = true; this.composerEditor?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.sessions.actionToast ? html`<div class="app-toast action-toast" data-level=${this.sessions.actionToast.failed ? "error" : "info"}>

@@ -6,7 +6,8 @@
  * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
  * target, answering a question and requesting a fresh progress card; and the session's message queue, with the edit of one queued message and the
  * requests that edit, remove, move and steer queued messages, or send the steered ones now. The shell reads its
- * props, measures its textarea and hands it the queue from the conversation's snapshots and events.
+ * props, hands it the queue from the conversation's snapshots and events, and points it at the mounted rich editor
+ * (`lib/composer/rich/editor.ts`), whose control is where a completion reads and writes the draft.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
 import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, recomputeSessionProgress, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
@@ -22,6 +23,7 @@ import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type Loc
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
 import { clearSideChat, settleSideChat, startSideChat } from "../lib/session/side-chat-store.ts";
 import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, parseGoalCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
+import type { ComposerEditor } from "../lib/composer/rich/editor.ts";
 import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { GoalPanelState, HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
@@ -39,7 +41,8 @@ type ComposerDeps = {
   draftCommands: () => readonly RuntimeCommand[];
   defaultCwd: () => string | undefined;
   mentionable: () => readonly BotView[];
-  textarea: () => HTMLTextAreaElement | null;
+  /** The mounted rich editor of the composer this draft belongs to, when it is on screen. */
+  editor: () => ComposerEditor | null;
   launching: () => boolean;
 };
 
@@ -47,12 +50,9 @@ type ComposerHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
 export class ComposerController {
   /** The composer's live text, deliberately not rendered from: a keystroke only
-   * changes what its own textarea already shows, so typing must not re-render
-   * the transcript behind it. Code-owned changes go through `setDraft`. */
+   * changes what its own editor already shows, so typing must not re-render the
+   * transcript behind it. Code-owned changes go through `setDraft`, which does. */
   draft = "";
-  /** Bumped by `setDraft` so the shell measures a textarea whose value code
-   * replaced, never one the operator is typing into. */
-  draftRevision = 0;
   /** Picked but not yet sent; cleared on send and on switching session. */
   attachments: readonly Attachment[] = [];
   draftSessionIds: ReadonlySet<string> = new Set();
@@ -171,11 +171,11 @@ export class ComposerController {
     void this.persistDraft();
   };
 
-  /** A draft HUI set, not one typed into the textarea: it has to reach the
-   * value, the controls derived from it and the textarea's measured height. */
+  /** A draft HUI set, not one typed into the editor: it reaches the editor's own document at once, so a rewind or a
+   * recovered send shows without waiting for the render, and the controls derived from it follow on the next one. */
   setDraft(draft: string): void {
     this.draft = draft;
-    this.draftRevision += 1;
+    this.#deps.editor()?.setMarkdown(draft);
     this.#host.requestUpdate();
   }
 
@@ -219,11 +219,15 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  browseCommands(textarea: HTMLTextAreaElement): void {
+  /** Opens the command menu on the draft's own end: a launched `/` draft or the Browse commands button. */
+  browseCommands(): void {
     this.pendingCommandBrowse = false;
-    textarea.focus();
-    textarea.setSelectionRange(this.draft.length, this.draft.length);
-    this.#setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
+    const control = this.#deps.editor()?.control;
+    if (!control) return;
+    control.focus();
+    control.caretAtEnd();
+    const { end } = control.selection();
+    this.#setCommandQuery(slashCommandQuery(control.text(), end, end));
   }
 
   #requestCommands = () => {
@@ -249,12 +253,13 @@ export class ComposerController {
   };
 
   #retryCommands = () => {
-    const textarea = this.#deps.textarea();
-    if (textarea) {
+    const control = this.#deps.editor()?.control;
+    if (control) {
       // Touch can blur the editor without focusing Retry. Restore its query and
       // focus before loading replaces that button, not after the reply arrives.
-      textarea.focus();
-      this.#setCommandQuery(slashCommandQuery(this.draft, textarea.selectionStart, textarea.selectionEnd));
+      control.focus();
+      const { start, end } = control.selection();
+      this.#setCommandQuery(slashCommandQuery(control.text(), start, end));
     }
     this.#requestCommands();
   };
@@ -284,21 +289,22 @@ export class ComposerController {
   };
 
   #selectSlashCommand = (command: ComposerCommand) => {
-    const completed = completeCommandReference(this.draft, command, this.#runtimeCommands(), this.slashQuery?.start ?? 0);
-    this.updateDraft(completed.text);
+    const control = this.#deps.editor()?.control;
+    const start = this.slashQuery?.start ?? 0;
+    const text = control?.text() ?? this.draft;
+    const completed = completeCommandReference(text, command, this.#runtimeCommands(), start);
+    if (control) {
+      // One replacement of the token the menu was opened on: the draft follows through the editor's own onChange.
+      control.replaceRange(start, Math.max(start, control.selection().end), completed.text.slice(start, completed.caret), completed.caret);
+    }
     this.resetLocalPaths();
     this.slashQuery = null;
-    void this.#host.updateComplete.then(() => {
-      const textarea = this.#deps.textarea();
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-    });
+    this.#host.requestUpdate();
   };
 
   #commandKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
+    const control = this.#deps.editor()?.control;
+    if (this.slashQuery === null || event.isComposing || !control?.isTarget(event.target instanceof Node ? event.target : null)) return;
     const commands = this.#menuCommands();
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
@@ -380,10 +386,11 @@ export class ComposerController {
 
   #selectLocalPath = (suggestion: LocalPathSuggestion) => {
     const query = this.localPathQuery;
-    if (!query) return;
+    const control = this.#deps.editor()?.control;
+    if (!query || !control) return;
     this.slashQuery = null;
-    const completed = completeLocalPath(this.draft, query, suggestion);
-    this.updateDraft(completed.text);
+    const completed = completeLocalPath(control.text(), query, suggestion);
+    control.replaceRange(query.start, Math.max(query.start, control.selection().end), completed.text.slice(query.start, completed.caret), completed.caret);
     if (suggestion.kind === "directory") {
       this.#setLocalPathQuery({
         input: suggestion.path,
@@ -394,20 +401,13 @@ export class ComposerController {
     } else {
       this.resetLocalPaths();
     }
-    void this.#host.updateComplete.then(() => {
-      const textarea = this.#deps.textarea();
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-      if (suggestion.kind !== "directory") {
-        requestAnimationFrame(() => this.resetLocalPaths());
-      }
-    });
+    this.#host.requestUpdate();
   };
 
   #localPathKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery !== null || !this.localPathQuery || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
+    const control = this.#deps.editor()?.control;
+    if (this.slashQuery !== null || !this.localPathQuery || event.isComposing
+      || !control?.isTarget(event.target instanceof Node ? event.target : null)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -973,8 +973,9 @@ export class ComposerController {
         await this.persistDraft();
         await this.#host.updateComplete;
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
-        this.#deps.textarea()?.focus();
-        this.#deps.textarea()?.setSelectionRange(text.length, text.length);
+        const control = this.#deps.editor()?.control;
+        control?.focus();
+        control?.caretAtEnd();
         this.#deps.showNote("Message restored to the composer. The previous branch is kept.", "info");
       })
       .catch((error: unknown) => {

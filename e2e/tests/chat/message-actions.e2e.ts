@@ -1,11 +1,19 @@
-/** A message's footer replies with a quote and copies it, and its context menu copies the text, a selection or code (CHAT-030, CHAT-032). The composer's quoted draft is matched without its trailing blank line, which a device's text field does not report. */
+/** A message's footer replies with a quote and copies it, and its context menu copies the text, a selection or code (CHAT-030, CHAT-032). The quoted draft is read from the Markdown field the form sends: the rich editor draws a quote as a blockquote, so no `>` marker is visible. */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
 async function reply(screen: Screen, hui: Hui, prompt: string, session?: { id: string }) {
   session ??= await hui.createSession({ title: "Message actions" });
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByLabel("Message").fill(prompt);
+  // A line break in a message is a hard break, which is what Shift+Enter writes: a fill's own newline would be a
+  // paragraph break in a rich editor, and a quote would then carry a blank quoted line.
+  const [first = "", ...rest] = prompt.split("\n");
+  const message = screen.getByLabel("Message");
+  await message.fill(first);
+  for (const line of rest) {
+    await message.press("Shift+Enter");
+    await message.pressSequentially(line);
+  }
   await screen.getByRole("button", "Send message").tap();
   const transcript = screen.getByTestId("transcript");
   await expect(transcript.getByRole("button", "Copy response").first()).toBeVisible();
@@ -101,18 +109,21 @@ test("On a phone screen the latest reply's Copy response is visible and copies o
 
 async function replyTwice(screen: Screen, hui: Hui) {
   const message = screen.getByLabel("Message");
+  // The quote is Markdown: the rich editor draws it as a blockquote and no `>` marker is visible, so the draft itself
+  // is read from the field the form sends, which is the only place the markers live.
+  const wire = screen.getByTestId("composer-markdown");
   const transcript = await reply(screen, hui, "First line\nSecond line");
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
 
   await message.fill("My draft");
   await hui.messageActions(transcript.getByText(/^First line/u));
   await screen.getByRole("button", "Reply to message").first().tap();
-  await expect(message).toHaveValue(/^My draft\n\n> First line\n> Second line\n*$/u);
+  await expect(wire).toHaveValue(/^My draft\n\n> First line\n> Second line\n*$/u);
   await hui.messageActions(transcript.getByText("Fixture response."));
   await screen.getByRole("button", "Reply to message").last().tap();
-  await expect(message).toHaveValue(/^My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response\.\n*$/u);
+  await expect(wire).toHaveValue(/^My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response\.\n*$/u);
   await expect(message).toBeFocused();
-  return { message, transcript };
+  return { message, wire, transcript };
 }
 
 test("Reply to message quotes the message after the existing draft and focuses the composer, without sending", { tags: ["CHAT-032"] }, async ({ screen, hui }) => {
@@ -122,9 +133,11 @@ test("Reply to message quotes the message after the existing draft and focuses t
 });
 
 test("Reply to message leaves the caret at the end of the composer", { tags: ["CHAT-032"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const { message, transcript } = await replyTwice(screen, hui);
+  const { wire, transcript } = await replyTwice(screen, hui);
   await hui.keyboard.down("x");
   await hui.keyboard.up("x");
-  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\nx");
+  // The caret is on the draft's own last line, below the quote: the reply's first word is a paragraph of its own, and
+  // the quote keeps its markers and its own line. The wire is canonical here, so the blank lines it normalizes.
+  await expect(wire).toHaveValue("My draft\n\n> First line\n> Second line\n\n> Fixture response.\n\nx");
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
 });
