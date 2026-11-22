@@ -170,12 +170,20 @@ test("shared tests use no agent steps, retries, skips, platform reads, app.clear
 
 test("shared tests find controls by a role or a test id the app renders", () => {
   // Both targets render HUI's own page, so a role a browser exposes is a role the phone's WebView exposes too: since the
-  // phone apps wrap the web UI (SPEC.md), a test may reach for any role, and a test id has to be one `src/` sets.
+  // phone apps wrap the web UI (SPEC.md), a test may reach for any role, and a test id has to be one `src/` sets. A node
+  // the view builds in script rather than in a template declares its id there, so that assignment counts too.
+  const declares = (id: string) => [
+    `data-testid="${id}"`,
+    `setAttribute("data-testid", "${id}")`,
+    `setAttribute('data-testid', '${id}')`,
+    `dataset.testid = "${id}"`,
+    `dataset.testid = '${id}'`,
+  ].some((declaration) => appSources.includes(declaration));
   const problems = [...testSources].flatMap(([file, source]) => {
     const declared = new Set(pairs.filter((pair) => pair.file === file && pair.source).map((pair) => pair.source!.line));
     assert.equal(source.split("\n").filter((line) => line.startsWith("test(")).length, declared.size, `${file}: every test starts a line with test(`);
     const testIds = [...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!);
-    return testIds.filter((id) => !appSources.includes(`data-testid="${id}"`)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`);
+    return testIds.filter((id) => !declares(id)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`);
   });
   assert.deepEqual(problems, []);
 });

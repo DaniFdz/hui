@@ -14,6 +14,7 @@ import { isGatewayUnavailable, GatewayHttpError } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
+import { composerEditorFor } from "../lib/composer/rich/editor.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "../lib/subagent-activity.ts";
@@ -564,13 +565,10 @@ export class ConversationController implements ReactiveController {
   showQuestion(question: RuntimeQuestion): void {
     // Every snapshot re-sends the open question: keep it, and the operator's focus in it.
     if (this.question?.id === question.id) return;
+    // What had focus before the card opened is the fallback; the composer is where the answer returns to, and the rich
+    // editor is not a textarea, so it is reached through its own control rather than a selector over the DOM.
     if (!this.question) {
-      const composer = this.#host.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
-      this.#questionReturnFocus = composer instanceof HTMLElement
-        ? composer
-        : document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : undefined;
+      this.#questionReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     }
     this.question = question;
     this.#host.requestUpdate();
@@ -580,12 +578,13 @@ export class ConversationController implements ReactiveController {
     const target = this.#questionReturnFocus;
     this.#questionReturnFocus = undefined;
     void this.#host.updateComplete.then(() => {
-      if (target?.isConnected) {
-        target.focus();
+      const host = this.#host.renderRoot.querySelector?.("[data-composer-editor]");
+      const editor = host instanceof HTMLElement ? composerEditorFor(host) : undefined;
+      if (editor) {
+        editor.focus();
         return;
       }
-      const composer = this.#host.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
-      if (composer instanceof HTMLTextAreaElement) composer.focus();
+      if (target?.isConnected) target.focus();
     });
   }
 
