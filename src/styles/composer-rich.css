@@ -36,6 +36,12 @@
   white-space: pre-wrap;
 }
 
+/* New Session's first prompt is not a chat message: it grows to its reference textarea's ten-line cap, on that
+   textarea's own expression, so the rich box and the source box keep one height on that sheet (CHAT-091). */
+.new-session-page__composer .agent-chat__composer-combobox > .ProseMirror {
+  max-height: calc(10lh + var(--chat-box-inset) + var(--chat-box-inset));
+}
+
 /* Focus is the surface's state, as it is for the reference textarea: one luminance step, no second ring. */
 .agent-chat__input:has(.agent-chat__composer-combobox > .ProseMirror:focus) {
   border-color: color-mix(in srgb, var(--chat-composer-hairline) 94%, var(--text-strong));

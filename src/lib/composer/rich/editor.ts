@@ -183,6 +183,8 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#source.rows = 1;
     this.#source.dir = "auto";
     this.#source.hidden = true;
+    // A view styles the source surface through its className from the first frame, not the first render after it.
+    this.#source.className = options.className ?? "";
     host.append(this.#source);
     this.#plugins = [
       history(),
@@ -586,7 +588,7 @@ class ComposerEditorImpl implements ComposerEditor {
   /** The active surface's identity: one labeled editor at a time, and the completion menus on whichever it is. */
   #syncSurface(): void {
     if (this.#destroyed) return;
-    const { id, placeholder, locked } = this.#options;
+    const { id, locked } = this.#options;
     const rich = this.#view.dom;
     const active = this.#sourceMode ? this.#source : rich;
     const inactive = this.#sourceMode ? rich : this.#source;
@@ -601,7 +603,7 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#applied = Object.keys(attributes);
     for (const element of [rich, this.#source]) element.removeAttribute("id");
     if (id) active.id = id;
-    this.#source.placeholder = placeholder;
+    // Only the surface that is editing carries a placeholder: a hidden source box never answers a query for it.
     this.#source.hidden = !this.#sourceMode;
     rich.hidden = this.#sourceMode;
     this.#source.disabled = locked;
@@ -620,6 +622,10 @@ class ComposerEditorImpl implements ComposerEditor {
       "aria-haspopup": "listbox",
       "aria-label": label,
       "aria-placeholder": placeholder,
+      // The rich surface is not a form control, so the sheet draws its own placeholder from `data-placeholder`; the
+      // `placeholder` attribute is there because a control found by placeholder is how a test and an operator reach the
+      // draft, and both surfaces answer to that one attribute.
+      placeholder,
       dir: "auto",
       "data-placeholder": placeholder,
     };
