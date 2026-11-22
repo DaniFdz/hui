@@ -7,7 +7,8 @@
  * represent, and the hidden input the form submits (`name="text"` in the chat, `name="prompt"` on New Session). The
  * visible editor carries rendered text; only the hidden field carries Markdown, so a send never has to read the DOM. An
  * unedited draft sends the exact source it was loaded with, a rich edit sends `serializeMarkdown`'s canonical form, and
- * an edit in the source editor sends the exact bytes typed there.
+ * an edit in the source editor sends the exact bytes typed there. A draft that ends on a blank line keeps an empty
+ * paragraph there, so the caret and the operator's next word sit below the quote they loaded, not inside it.
  *
  * The Markdown toggle lives in the composer's lead (`[data-composer-mode-toggle]`) and is the only way between the two:
  * a draft holding raw HTML, math, a table, an alert, an image or anything else the schema has no node for opens in the
@@ -16,7 +17,9 @@
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
  * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
  * newline in a fence) or the send `composerEnterMode` names, Shift+Enter always inserts one hard break, and Mod-Enter
- * always sends. Tab, Shift+Tab and the formatting chords are `keys.ts`'.
+ * always sends. Tab, Shift+Tab and the formatting chords are `keys.ts`'. The app re-reads its completion queries from
+ * the caret, so a position it has already read is not reported again: the keyup of an Enter that took a suggestion must
+ * not reopen the menu that choice just closed.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { history } from "prosemirror-history";
@@ -129,6 +132,27 @@ function emptyDocument(): ProseMirrorNode {
   return schemaNode(richSchema, "doc").create(null, schemaNode(richSchema, "paragraph").create());
 }
 
+/** Whether the wire ends on a blank line: the operator's own place to write, below a quote or a list. */
+function endsOnBlankLine(source: string): boolean {
+  return /\n[ \t]*\n$/u.test(source);
+}
+
+/**
+ * The document a loaded draft becomes. A source that ends on a blank line — a reply's quote, a round trip through the
+ * source editor — keeps one empty paragraph there, because Markdown has nowhere else to put the operator's caret: a
+ * blockquote's last line would otherwise take the first thing the operator types. The serializer writes no line for it.
+ */
+function draftDocument(source: string): ProseMirrorNode {
+  const doc = source === "" ? emptyDocument() : parseMarkdown(source);
+  if (!endsOnBlankLine(source)) return doc;
+  const last = doc.lastChild;
+  if (last === null || (last.type === richSchema.nodes.paragraph && last.content.size === 0)) return doc;
+  const blocks: ProseMirrorNode[] = [];
+  doc.forEach((block) => blocks.push(block));
+  blocks.push(schemaNode(richSchema, "paragraph").create());
+  return doc.type.create(doc.attrs, blocks);
+}
+
 /** Whether a pasted slice holds anything a plain-text paste would lose: a block that is not a paragraph, a mark, or a
  * node that is not text. A paste of plain paragraphs takes the literal path instead, so its Markdown stays text. */
 function hasStructure(slice: Slice): boolean {
@@ -172,6 +196,8 @@ class ComposerEditorImpl implements ComposerEditor {
   /** The lock the view's `editable` prop was last set from, and the attributes the active surface carries. */
   #locked: boolean;
   #applied: readonly string[] = [];
+  /** The selection the app last read, so a key or click that moved nothing asks for no read of its own. */
+  #reported: string | null = null;
   #scrollObserver: ResizeObserver | undefined;
   #scrollFrame: number | null = null;
 
@@ -248,7 +274,7 @@ class ComposerEditorImpl implements ComposerEditor {
       this.#openSource(source);
       return;
     }
-    this.#loadRich(source === "" ? emptyDocument() : parseMarkdown(source));
+    this.#loadRich(draftDocument(source));
     this.#syncSurface();
     this.#syncEmpty();
     this.#syncToggle();
@@ -301,8 +327,9 @@ class ComposerEditorImpl implements ComposerEditor {
   #dispatch(transaction: Transaction): void {
     const state = this.#view.state.apply(transaction);
     this.#view.updateState(state);
+    // A transaction is a change the app has not read yet, whether it moved the caret or rewrote the text under it.
     if (!transaction.docChanged) {
-      this.#options.onSelection();
+      this.#reportSelection(true);
       return;
     }
     // A rich edit's wire is the serializer's own Markdown; the visible document never holds a marker.
@@ -311,12 +338,27 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#syncToggle();
     this.#measureScroll();
     this.#options.onChange(this.#hidden.value);
+    this.#reportSelection(true);
+  }
+
+  /**
+   * The app re-reads its completion queries from the caret, so one report per position is enough: a key or a click the
+   * browser answered without a transaction asks again only when the caret actually moved. Pressing Enter to take a
+   * suggestion writes it in a transaction, and the key's own keyup must not reopen the menu that choice just closed.
+   */
+  #reportSelection(force = false): void {
+    const { start, end } = this.#selection();
+    const key = `${start}:${end}`;
+    if (!force && key === this.#reported) return;
+    this.#reported = key;
     this.#options.onSelection();
   }
 
   /** Loads a representable document and leaves source mode if it was in it. Clears history, puts the caret at the end. */
   #loadRich(doc: ProseMirrorNode): void {
     this.#view.updateState(this.#state(doc));
+    // A loaded draft has its own text and its own caret: whatever the app last read no longer applies to it.
+    this.#reported = null;
     if (this.#sourceMode) {
       this.#sourceMode = false;
       disconnectTextareaOverflowObserver(this.#source);
@@ -330,6 +372,7 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#source.value = source;
     const entered = !this.#sourceMode;
     this.#sourceMode = true;
+    this.#reported = null;
     this.#syncSurface();
     this.#syncEmpty();
     observeTextareaOverflow(this.#source);
@@ -343,7 +386,7 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#hidden.value = this.#source.value;
     this.#syncToggle();
     this.#options.onChange(this.#source.value);
-    this.#options.onSelection();
+    this.#reportSelection(true);
   }
 
   /** An emptied source-mode draft is a rich empty draft again, with the caret back in it. */
@@ -539,7 +582,7 @@ class ComposerEditorImpl implements ComposerEditor {
       return;
     }
     this.#hidden.value = this.#source.value;
-    this.#loadRich(this.#source.value === "" ? emptyDocument() : parseMarkdown(this.#source.value));
+    this.#loadRich(draftDocument(this.#source.value));
     this.#syncSurface();
     this.#syncToggle();
     this.#view.focus();
@@ -563,10 +606,10 @@ class ComposerEditorImpl implements ComposerEditor {
     for (const type of ["click", "select", "keyup"] as const) {
       // A caret this browser moved without a transaction (a click, an arrow key) still has to re-read the completions.
       this.#source.addEventListener(type, () => {
-        if (this.#sourceMode) this.#options.onSelection();
+        if (this.#sourceMode) this.#reportSelection();
       }, { signal });
       this.#view.dom.addEventListener(type, () => {
-        if (!this.#sourceMode) this.#options.onSelection();
+        if (!this.#sourceMode) this.#reportSelection();
       }, { signal });
     }
     this.#source.addEventListener("focus", () => this.#options.onFocus?.(), { signal });
@@ -614,7 +657,7 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #attributes(): Record<string, string> {
-    const { label, placeholder, keyShortcuts, ariaExpanded, ariaControls, ariaActiveDescendant } = this.#options;
+    const { label, placeholder, locked, keyShortcuts, ariaExpanded, ariaControls, ariaActiveDescendant } = this.#options;
     const attributes: Record<string, string> = {
       role: "combobox",
       "aria-multiline": "true",
@@ -630,6 +673,9 @@ class ComposerEditorImpl implements ComposerEditor {
       "data-placeholder": placeholder,
     };
     if (keyShortcuts) attributes["aria-keyshortcuts"] = keyShortcuts;
+    // A locked composer takes no edits: a contenteditable cannot be disabled the way a textarea could, so it says so the
+    // way ARIA spells it, and a control that reads the disabled state still finds it.
+    if (locked) attributes["aria-disabled"] = "true";
     if (ariaExpanded !== undefined) attributes["aria-expanded"] = String(ariaExpanded);
     if (ariaControls) attributes["aria-controls"] = ariaControls;
     if (ariaActiveDescendant) attributes["aria-activedescendant"] = ariaActiveDescendant;

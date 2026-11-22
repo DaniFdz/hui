@@ -128,6 +128,15 @@ test("a hard break at the end of a block is dropped, not written as a blank line
   assert.equal(serializeMarkdown(doc), "a\n\nb");
 });
 
+test("the empty paragraph a reply's caret sits in writes no line", () => {
+  const quote = parseMarkdown("My draft\n\n> First line\n> Fixture response.");
+  const caret = docOf(quote.child(0), quote.child(1), paragraph());
+  assert.equal(serializeMarkdown(caret), "My draft\n\n> First line\n> Fixture response.", "the caret's line is not Markdown");
+  const typed = docOf(quote.child(0), quote.child(1), paragraph(richSchema.text("Thanks")));
+  assert.equal(serializeMarkdown(typed), "My draft\n\n> First line\n> Fixture response.\n\nThanks", "a word typed there is its own paragraph, below the quote");
+  assert.equal(serializeMarkdown(docOf(paragraph())), "", "an empty draft keeps its one block and stays empty");
+});
+
 test("a 5,000-character draft round-trips untouched", () => {
   const source = "The quick brown fox jumps over the lazy dog. ".repeat(112).trimEnd();
   assert.ok(source.length >= 5_000, `the draft is long enough (${source.length})`);

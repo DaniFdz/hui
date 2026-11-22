@@ -16,7 +16,8 @@
  * byte, so `2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*` and an unmatched `**` survive untouched, while a line
  * that would read as Markdown syntax gets every metacharacter and its block marker escaped (`*genuine markdown*`
  * becomes `\*genuine markdown\*`). `serializeMarkdown` re-parses its own output and falls back to escaping every
- * metacharacter when the result would not read back as the same document.
+ * metacharacter when the result would not read back as the same document. An empty paragraph at the end of a document
+ * holds the editor's caret below a quote and writes no line, because no Markdown spells one.
  */
 import MarkdownIt, { type Env, type StateCore, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
@@ -164,12 +165,31 @@ export function parseMarkdown(source: string): Node {
   return representable(source) ?? sentinel(source);
 }
 
+/**
+ * The document as Markdown spells it: no Markdown writes an empty paragraph at the end of a document, so the empty
+ * paragraph an editor keeps there for the caret writes no line (the draft's one block stays, so an empty draft is
+ * still an empty draft).
+ */
+function withoutTrailingEmptyParagraphs(doc: Node): Node {
+  let count = doc.childCount;
+  while (count > 1) {
+    const last = doc.child(count - 1);
+    if (last.type !== richSchema.nodes.paragraph || last.content.size > 0) break;
+    count -= 1;
+  }
+  if (count === doc.childCount) return doc;
+  const blocks: Node[] = [];
+  for (let index = 0; index < count; index += 1) blocks.push(doc.child(index));
+  return doc.type.create(doc.attrs, blocks);
+}
+
 /** The canonical Markdown for a document. */
 export function serializeMarkdown(doc: Node): string {
-  const smart = smartSerializer.serialize(doc);
-  if (reparsesTo(smart, doc)) return smart;
+  const written = withoutTrailingEmptyParagraphs(doc);
+  const smart = smartSerializer.serialize(written);
+  if (reparsesTo(smart, written)) return smart;
   // The escaping was too optimistic about a mark boundary or a line structure: escape every metacharacter instead.
-  return conservativeSerializer.serialize(doc);
+  return conservativeSerializer.serialize(written);
 }
 
 /** The canonical Markdown for a source, or the source itself when the editor cannot represent it. */
