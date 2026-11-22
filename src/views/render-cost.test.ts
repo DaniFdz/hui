@@ -96,7 +96,9 @@ function sidebarHtml(count: number, openRow?: number): string {
   const tag = `r${renders++}-`;
   const sessions = Array.from({ length: count }, (_, index) => session(`${tag}${index}`, `Session ${index}`, "Work"));
   const data = {
-    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined,
+    selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    gateways: [{ url: "http://127.0.0.1:8787", name: "Studio Mac", state: "current" as const }], gatewayOffline: false,
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS,
     menuFor: openRow === undefined ? "" : `${tag}${openRow}`,
