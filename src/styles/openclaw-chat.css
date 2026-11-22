@@ -1983,7 +1983,8 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row .chat-tool-term__cmd,
 .tool-call-row .chat-tool-term__out { min-width: 0; max-width: 100%; }
 
-.tool-call-row .chat-tool-msg-body { overflow: hidden; }
+/* The well is the card's one scroll container: a call taller than its cap scrolls inside it instead of clipping. */
+.tool-call-row .chat-tool-msg-body { overflow-x: hidden; overflow-y: auto; }
 .tool-call-row .chat-tool-term__out { overflow-x: auto; }
 .tool-call-row .chat-tool-card__block-content { max-width: 100%; overflow-x: auto; }
 
@@ -2012,10 +2013,13 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row__meta { font-size: calc(var(--control-ui-text-xs) + 1px); }
 .tool-call-group__mark { width: 23px; height: 23px; }
 
-/* A file body is reference material, not the answer: it scrolls inside the well instead of stretching the card. */
-.tool-call-row .chat-tool-card__block-content {
-  max-height: min(38vh, 380px);
-  overflow: auto;
+/* The well scrolls the whole body, so no inner block keeps a vertical scrollbar of its own: a nested one would hide the
+   tail a second time. A line too long for the card still scrolls sideways inside its own block. */
+.tool-call-row .chat-tool-term__out,
+.tool-call-row .chat-tool-card__block-content,
+.tool-call-row .chat-tool-codemode__calls {
+  max-height: none;
+  overflow-y: hidden;
 }
 
 /* A CLI's own tint: the mark keeps its brand color, the chip behind it only borrows 12% of it. */
