@@ -49,7 +49,7 @@ function setup() {
   return { controller, host, reads, workerReads, historyReads, workerHistoryReads, answerReads, resumeReads, page };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 afterEach(() => {
   vi.useRealTimers();

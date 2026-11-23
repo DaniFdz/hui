@@ -72,6 +72,12 @@ details in the owning directory guide.
   exercises the iOS simulator.
 - Never weaken assertions, add sleeps, or hide failures to make a check pass.
   Synchronize on observable state and fix defects at their owning boundary.
+- A unit or integration test waits on the state the behaviour produces, never on
+  the wall clock: `scripts/test-hygiene.test.mjs` scans every `*.test.ts` and
+  `*.test.mjs` under `src/`, `server/`, `cli/`, `scripts/`, `bin/`, `desktop/`,
+  `evals/` and `mobile/connect/`, and refuses a promise a timer resolves or a
+  `sleep`-style helper call. A wait inside a loop that re-checks its condition
+  passes, and `quietWindow` exists only to assert that something never happens.
 
 ## Performance rules and what enforces them
 

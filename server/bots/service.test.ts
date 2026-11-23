@@ -254,6 +254,8 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     lists: new Map<string, BotAccess>(),
     /** Offers asked of the worker: [reference, cwd, botId]. */
     offers: [] as Array<[string | undefined, string | undefined, string | undefined]>,
+    /** Every chat-list read asked of the worker, by reference, whether it answered or not. */
+    accesses: [] as string[],
     /** Who hears of grants the worker reports. */
     granted: new Set<(id: string, botId: string, access: BotAccess) => void>(),
   };
@@ -275,6 +277,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
         return { reference, cwd: input.cwd ? onRemote(input.cwd) : `/home/remote/.local/share/hui-worker/bots/${input.botId}` };
       },
       access: async (reference) => {
+        remote.accesses.push(reference);
         reachable();
         const lists = remote.lists.get(reference);
         return { disabledTools: [...lists?.disabledTools ?? []], disabledSkills: [...lists?.disabledSkills ?? []] };
@@ -1978,9 +1981,20 @@ test("a grant made on a worker reaches the roster, for a bot that runs there onl
   assert.deepEqual(h.reports.map(({ level, action, summary }) => [level, action, summary]), [["info", "bots_access_reconciled", "1 bot's tool and skill lists on devbox were copied again from their chats"]]);
   // A worker gone again meanwhile leaves the copy for the next connection, with no warning.
   h.remote.online = false;
+  const reads = h.remote.accesses.length;
   for (const listener of h.remote.connected) listener("w-1");
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(h.reports.length, 1);
+  // The offline connection asks the worker for its bots' lists and is refused, while it is away...
+  await waitFor(() => h.remote.accesses.length > reads || undefined, "the offline reconnect's read of the worker");
+  // ...and the next connection, answered, copies the newer grant there and reports only that copy.
+  h.remote.online = true;
+  h.remote.lists.set(reference, { disabledTools: ["bash"], disabledSkills: [] });
+  for (const listener of h.remote.connected) listener("w-1");
+  await waitFor(() => h.reports.length === 2 || undefined, "the online reconnect's report");
+  assert.equal(h.remote.accesses.length, reads + 2, "one read per connection, the offline one reporting nothing");
+  assert.deepEqual(h.reports.map(({ level, action, summary }) => [level, action, summary]), [
+    ["info", "bots_access_reconciled", "1 bot's tool and skill lists on devbox were copied again from their chats"],
+    ["info", "bots_access_reconciled", "1 bot's tool and skill lists on devbox were copied again from their chats"],
+  ]);
 });
 
 test("a bot created on a worker gets its conversation, memory and folder there, and its chat is a session on that worker", async (t) => {

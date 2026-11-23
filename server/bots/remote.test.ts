@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, test, vi } from "vitest";
 import type { WorkerView } from "../worker/workers.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 
@@ -54,7 +54,8 @@ function link() {
   };
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+/** The memory watch is batched onto a 0 ms timer of the port's own; a test that drives it never waits it out. */
+const tick = () => vi.advanceTimersByTimeAsync(0);
 
 let queues = 0;
 /** The ports, with a clean-up queue of their own in this test's configuration. */
@@ -216,7 +217,9 @@ test("grants a worker reports reach the listeners with the worker that sent them
   assert.deepEqual(heard, [["w-1", "b", { disabledTools: ["bash"], disabledSkills: [] }]]);
 });
 
-test("memory status comes from what the worker reports: the first ask watches it, one request for a whole list, and a lost connection forgets it", async () => {
+test("memory status comes from what the worker reports: the first ask watches it, one request for a whole list, and a lost connection forgets it", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
   const fake = link();
   const { bots } = portsOf(fake);
   const memory = bots.memory("w-1");

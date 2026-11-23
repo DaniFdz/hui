@@ -70,7 +70,7 @@ beforeEach(() => {
   fake.loads = 0;
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 afterEach(() => { vi.useRealTimers(); });
 
