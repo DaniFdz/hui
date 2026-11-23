@@ -1441,6 +1441,62 @@ test("a long conversation renders its latest rows and offers the earlier ones; a
   assert.match(rowOpen, /chat-tool-term__out/u);
 });
 
+test("an opened tool call scrolls inside its own card, and no inner block adds a second vertical scrollbar", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  /** Every declaration of every rule whose selector list holds `selector` whole, so a grouped or @media rule counts too. */
+  const declarationsOf = (selector: string): string[] => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const rule = new RegExp(`(?<=^|[{};])\\s*([^{};]*?${escaped}[^{};]*?)\\s*\\{([^}]*)\\}`, "gu");
+    const holds = (prelude: string) => {
+      let depth = 0;
+      for (const part of prelude.split(",")) {
+        if (depth === 0 && part.trim() === selector) return true;
+        depth += (part.match(/\(/gu)?.length ?? 0) - (part.match(/\)/gu)?.length ?? 0);
+      }
+      return false;
+    };
+    return [...styles.matchAll(rule)]
+      .map((match) => ({ prelude: match[1] ?? "", body: match[2] ?? "" }))
+      .filter(({ prelude }) => holds(prelude))
+      .flatMap(({ body }) => body.split(";").map((line) => line.trim()).filter(Boolean));
+  };
+  const declares = (selector: string, declaration: RegExp) => declarationsOf(selector).some((line) => declaration.test(line));
+  const body = ".tool-call-row .chat-tool-msg-body";
+  const out = ".tool-call-row .chat-tool-term__out";
+  const block = ".tool-call-row .chat-tool-card__block-content";
+  const calls = ".tool-call-row .chat-tool-codemode__calls";
+
+  // The well is the one scroll container of the card: it scrolls its own overflow instead of clipping it.
+  assert.ok(declares(body, /^overflow(?:-y)?:\s*auto$/u), "the opened call's well scrolls vertically");
+  assert.ok(!declares(body, /^overflow(?:-y)?:\s*hidden$/u), "the well never clips what it cannot scroll");
+  assert.ok(declares(".chat-tool-msg-body", /^max-height:\s*min\(520px, 60vh\)$/u), "a call stays capped while it scrolls");
+
+  // Horizontal containment stays: an unbroken line scrolls sideways inside its block, never widening the card or the page.
+  for (const selector of [body, out, block]) assert.ok(declares(selector, /^max-width:\s*100%$/u), `${selector} keeps max-width: 100%`);
+  // The body and the terminal output also keep the min-width: 0 the containment group gives them; a block-level pre's own
+  // min-width is already 0, which is why the group never lists it.
+  for (const selector of [body, out]) assert.ok(declares(selector, /^min-width:\s*0$/u), `${selector} keeps min-width: 0`);
+  assert.ok(declares(out, /^overflow-x:\s*auto$/u), "a long output line scrolls sideways in its own pre");
+  assert.ok(declares(block, /^overflow-x:\s*auto$/u), "a long block line scrolls sideways in its own pre");
+
+  // The inner blocks release their own caps, so the well holds one scrollbar and the whole tail is reachable through it.
+  // Each one's complete max-height list is read: any later rule that put a cap back would add a declaration here.
+  for (const selector of [out, block, calls]) {
+    assert.deepEqual(
+      declarationsOf(selector).filter((line) => line.startsWith("max-height:")),
+      ["max-height: none"],
+      `${selector} leaves the whole body to the well`,
+    );
+  }
+
+  // The fix adds scroll only: the well keeps today's own padding, border and height, so a short call draws exactly as before.
+  assert.deepEqual(
+    declarationsOf(body).filter((line) => /^(?:height|min-height|max-height|padding(?:-[a-z]+)?|border(?:-(?!radius)[a-z]+)?):/u.test(line)).sort(),
+    ["border: 0", "padding-left: 13px", "padding: 0 12px 8px 41px", "padding: 2px 10px 10px", "padding: 2px 14px 12px 41px"],
+    "the well's own geometry is today's",
+  );
+});
+
 test("subagent and watcher cards blur nothing behind them, so a long chat keeps painting as it scrolls", () => {
   const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
   const cardRules = styles.match(/(?<=^|[{}])[^{}]*\.chat-subagents[^{}]*\{[^}]*\}/gu) ?? [];

@@ -75,7 +75,7 @@ export function renderCodemodeToolBody(item: Tool, options: { onCopy: (text: str
   const failed = view.state === "failed";
   const copy = (text: string) => (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, text, options.onCopy);
   const errorAt = view.output.search(/^Script error:/mu);
-  return html`<div class="chat-tool-msg-body"><div class="chat-tool-card ${failed ? "chat-tool-card--error" : ""}">
+  return html`<div class="chat-tool-msg-body" data-testid="tool-call-body"><div class="chat-tool-card ${failed ? "chat-tool-card--error" : ""}">
     <section class="chat-tool-card__block" tabindex="0" aria-label="Script" @contextmenu=${copy(view.code)} @keydown=${copy(view.code)}>
       <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Script</span></div>
       <pre class="chat-tool-card__block-content chat-tool-codemode__script"><code>${renderScript(view.code)}</code></pre>

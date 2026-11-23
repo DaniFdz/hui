@@ -49,11 +49,11 @@ export function renderCommandToolBody(item: Tool, options: { onCopy: (text: stri
   if (!view) return html``;
   const failed = item.failed || item.status === "failed";
   const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
-  return html`<div class="chat-tool-msg-body"><div class="chat-tool-card chat-tool-card--flush ${failed ? "chat-tool-card--error" : ""}"
+  return html`<div class="chat-tool-msg-body" data-testid="tool-call-body"><div class="chat-tool-card chat-tool-card--flush ${failed ? "chat-tool-card--error" : ""}"
     tabindex="0" @contextmenu=${copy} @keydown=${copy}>
     <div class="chat-tool-card__actions"></div>
-    <div class="chat-tool-term"><div class="chat-tool-term__cmd"><span class="chat-tool-term__prompt">$</span><code>${guard([view.command], () => renderHighlightedCommand(view.command))}</code></div>
-      ${item.output?.trim() ? html`<pre class="chat-tool-term__out"><code>${item.output}</code></pre>` : nothing}
+    <div class="chat-tool-term"><div class="chat-tool-term__cmd"><span class="chat-tool-term__prompt">$</span><code data-testid="tool-call-command">${guard([view.command], () => renderHighlightedCommand(view.command))}</code></div>
+      ${item.output?.trim() ? html`<pre class="chat-tool-term__out" data-testid="tool-call-output"><code>${item.output}</code></pre>` : nothing}
     </div>
     ${view.extras.length > 0 ? html`<div class="chat-tool-kv">${view.extras.map(([key, value]) => html`<div class="chat-tool-kv__row"><span class="chat-tool-kv__key">${key}:</span><span class="chat-tool-kv__value">${displayToolValue(value)}</span></div>`)}</div>` : nothing}
     <div class="chat-tool-card__outcome">${toolCardOutcome(item)}</div>

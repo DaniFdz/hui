@@ -261,7 +261,7 @@ export function renderToolBody(item: ToolItem, onCopy: (text: string, key: strin
   if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   const path = toolFilePath(item);
-  return html`<div class="chat-tool-msg-body"><div class="chat-tool-card">
+  return html`<div class="chat-tool-msg-body" data-testid="tool-call-body"><div class="chat-tool-card">
     <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}${path ? html` · ${renderToolFileReference(path)}` : nothing}</span>
       ${item.output !== undefined ? html`<div class="chat-tool-card__actions"><button type="button" class="chat-copy-btn" aria-label="Copy output" title="Copy output" @click=${() => onCopy(item.output ?? "", `tool-${item.id}`)}>${icons.copy}</button></div>` : nothing}
     </div>
