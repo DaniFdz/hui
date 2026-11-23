@@ -3,6 +3,7 @@ import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 test("typing in Filter changed files narrows the list to the matching paths", { tags: ["WORK-068"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -10,9 +11,8 @@ test("typing in Filter changed files narrows the list to the matching paths", { 
   await appendFile(join(repository.path, "beta.txt"), "beta\n");
   const session = await hui.createSession({ title: "Filter the changed files", cwd: repository.path });
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Diff");
+  await openWork(screen, "Diff");
   const changed = screen.getByLabel("Changed files");
   const filter = screen.getByLabel("Filter changed files");
   const row = (name: string) => changed.getByRole("button").filter({ hasText: name });

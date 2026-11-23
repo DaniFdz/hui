@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">HUI</string>
+    <string name="title_activity_main">HUI</string>
+    <string name="package_name">dev.hui.app</string>
+    <string name="custom_url_scheme">dev.hui.app</string>
+    <!-- Shown over the WebView while a gateway loads; the Connect page uses the same wording. -->
+    <string name="connecting">Connecting to HUI…</string>
+    <!-- The system back button at the root of the app: it leaves only on the second press. -->
+    <string name="press_back_again">Press back again to leave HUI</string>
+    <!-- Downloads: the system download manager's notification, and one toast per download. -->
+    <string name="download_description">Downloaded from HUI</string>
+    <string name="downloading">Downloading %1$s…</string>
+    <string name="download_saved">Saved %1$s to %2$s</string>
+    <string name="download_failed">HUI couldn\'t save that download</string>
+    <string name="download_too_large">HUI can\'t save a download larger than %1$d MiB</string>
+    <string name="download_unsupported">HUI can\'t save that download</string>
+    <!-- Another app's Share sheet (ShareTarget): a share HUI cannot open, said once at the sheet's exit. An image on its
+         own is not something New Session can take yet, and a launch with no gateway has nowhere to open it. -->
+    <string name="share_image">HUI can\'t take an image from the share sheet yet</string>
+    <string name="share_nothing">HUI couldn\'t find anything in that share to start a session with</string>
+    <string name="share_too_long">That share is too long for HUI to open</string>
+    <string name="share_no_gateway">That share needs a gateway: connect HUI first</string>
+</resources>

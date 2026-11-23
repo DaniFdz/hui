@@ -28,7 +28,7 @@ beforeEach(() => {
   fake.actions = [];
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => {}, updateComplete: Promise.resolve(true) };
 const group = { label: "repo", cwd: "/repo", workspaceMode: "worktree", baseRef: "release", sessions: [] } as unknown as SessionGroup;
 
@@ -40,6 +40,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   assert.equal(launch.branchSuggestionsOpen, false);
   launch.requestCheckout(" /repo ");
   assert.equal(launch.checkoutLoading, true);
+  assert.equal(launch.inspectedDirectory, "/repo", "the shell compares a deferred submit against the folder it inspected");
   await settle();
   assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }]);
   assert.equal(launch.checkoutLoading, false);
@@ -53,6 +54,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   launch.requestCheckout("/repo");
   assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }], "the same directory is inspected once");
   launch.requestCheckout("/other");
+  assert.equal(launch.inspectedDirectory, "/other", "the inspected folder follows the newest request");
   await settle();
   assert.equal(launch.baseRef, "main", "another directory uses the repository default");
   assert.equal(launch.worktree, false);
@@ -135,12 +137,18 @@ test("connecting a worker from the picker shows it connecting at once and follow
   fake.workers = [{ id: "w1", name: "Remote", state: "error", error: "ssh: connect to host box port 22: Connection refused" } as WorkerView];
   launch.loadWorkers();
   await settle();
-  launch.props().onConnectLaunchWorker!("w1");
-  assert.equal(launch.workers[0]!.state, "connecting", "the row leaves offline before the gateway answers");
-  assert.deepEqual(fake.actions, ["connect w1"]);
-  fake.workers = [{ id: "w1", name: "Remote", state: "connected", host: { hostname: "box" } } as WorkerView];
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  assert.equal(launch.workers[0]!.state, "connected", "the list follows the connection until it settles");
+  // The picker's own follow-up poll is the timer the controller arms; the test drives it instead of waiting it out.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    launch.props().onConnectLaunchWorker!("w1");
+    assert.equal(launch.workers[0]!.state, "connecting", "the row leaves offline before the gateway answers");
+    assert.deepEqual(fake.actions, ["connect w1"]);
+    fake.workers = [{ id: "w1", name: "Remote", state: "connected", host: { hostname: "box" } } as WorkerView];
+    await vi.advanceTimersByTimeAsync(400);
+    assert.equal(launch.workers[0]!.state, "connected", "the list follows the connection until it settles");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a group that names a worker opens New Session on it, and one that does not keeps the sticky choice", () => {

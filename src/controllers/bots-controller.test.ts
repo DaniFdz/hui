@@ -54,7 +54,7 @@ beforeEach(() => {
 });
 
 const ADA: BotView = { id: "ada", name: "Ada", sessionId: "s-ada", cwd: "/work" } as BotView;
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 class FakeDialog {
   open = false;

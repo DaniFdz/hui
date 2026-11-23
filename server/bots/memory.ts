@@ -84,6 +84,8 @@ export function optChatBotMemory(host: DurableHost): BotMemory {
       const id = await conversation(reference);
       const found = await (await host.open()).conversation(id, durableContext);
       if (!found) throw new BotMemoryUnavailableError("This bot's conversation is not in this gateway's Durable store.");
+      // An OptChat document an older HUI wrote is rewritten before this commit reads it (`docs/optchat.md`).
+      await host.optchat.adopt(id);
       // The whole setting: an absent model or thinking level goes back to OptChat's default.
       await configureOptChat(found, {
         name: settings.name,

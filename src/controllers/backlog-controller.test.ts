@@ -28,7 +28,7 @@ beforeEach(() => { fake.calls = []; });
 const FIX: BacklogItem = { id: "fix", title: "Fix the toast" } as BacklogItem;
 const DOCS: BacklogItem = { id: "docs", title: "Write docs" } as BacklogItem;
 const view = (...items: BacklogItem[]) => ({ items, jira: { status: "unconfigured" } });
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 const SOURCE = { id: "source", title: "Source" } as SessionView;
 const suggestion = (id: string) => ({ id, title: `Do ${id}`, problem: `${id} is broken`, cwd: "/repo" });

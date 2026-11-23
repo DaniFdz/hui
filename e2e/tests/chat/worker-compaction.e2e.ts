@@ -33,7 +33,7 @@ async function send(screen: Screen, text: string) {
 
 async function rewindTo(screen: Screen, hui: Hui, turn: number, text: string) {
   const { transcript, message } = chat(screen);
-  await hui.peek(transcript.getByText(text));
+  await hui.messageActions(transcript.getByText(text));
   await transcript.getByRole("button", "Rewind to here").nth(turn).tap();
   await expect(message).toHaveValue(text);
 }

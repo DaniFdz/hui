@@ -1,5 +1,5 @@
 /**
- * The language a bot speaks on calls (HUI-18), the browser's copy of
+ * The language a bot speaks on calls, the browser's copy of
  * server/bots/voice-languages.ts: Whisper's codes and names, and their English names.
  */
 import type { VoiceLanguage } from "../../api/schema/bots.ts";

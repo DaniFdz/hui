@@ -5,7 +5,7 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { decodeBrowserFrame, parseBrowserViewMessage } from "../api/browser.ts";
-import type { BrowserViewAction, BrowserViewState } from "../api/schema/browser.ts";
+import type { BrowserViewAction, BrowserViewControl, BrowserViewState } from "../api/schema/browser.ts";
 import { pointPosition, type BrowserViewConnection, type PreviewFrame } from "../lib/browser-view.ts";
 
 /** `stream` follows the page while it repaints; `snapshot` takes the current
@@ -51,6 +51,8 @@ export class BrowserViewController implements ReactiveController {
   connection: BrowserViewConnection = "idle";
   frame: BrowserFrameImage | undefined;
   action: BrowserViewAction | undefined;
+  /** The page selection the operator copied, for the pane to write to their clipboard. */
+  clipboard: { text: string; seq: number } | undefined;
   pointer: { left: number; top: number; key: number } | undefined;
   readonly #host: ReactiveControllerHost;
   readonly #open: BrowserViewSocketFactory;
@@ -61,6 +63,7 @@ export class BrowserViewController implements ReactiveController {
   #retries = 0;
   #retry: ReturnType<typeof setTimeout> | undefined;
   #pointerTimer: ReturnType<typeof setTimeout> | undefined;
+  #clipboardSeq = 0;
   #snapshotTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(host: ReactiveControllerHost, open: BrowserViewSocketFactory) {
@@ -116,7 +119,12 @@ export class BrowserViewController implements ReactiveController {
 
   /** Watch one of the conversation's tabs; null follows the agent. */
   select(tabId: string | null): void {
-    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify({ action: "select", tabId }));
+    this.send({ action: "select", tabId });
+  }
+
+  /** Operator input or Continue for a tab the agent handed over; dropped while disconnected. */
+  send(control: BrowserViewControl): void {
+    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(control));
   }
 
   async #attempt(generation: number): Promise<void> {
@@ -174,6 +182,11 @@ export class BrowserViewController implements ReactiveController {
       }
       const message = parseBrowserViewMessage(raw);
       if (!message) return;
+      if (message.type === "clipboard") {
+        this.clipboard = { text: message.text, seq: ++this.#clipboardSeq };
+        this.#host.requestUpdate();
+        return;
+      }
       if (message.type === "state") {
         const { type: _type, ...view } = message;
         this.view = view;

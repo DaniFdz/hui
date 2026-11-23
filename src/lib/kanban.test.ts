@@ -11,7 +11,6 @@ import {
   SESSION_STAGE_LABELS,
   SESSION_STAGES,
   stageRank,
-  pullRequestSummary,
   sessionStage,
   kanbanDropMove,
   laneAccepts,
@@ -192,12 +191,4 @@ test("a backlog drop inside Backlog only regroups; anywhere else it asks to star
   assert.equal(backlogLaneAccepts(task, { kind: "project", key: "\u0000project:/repo/api" }, "backlog"), false);
   assert.equal(backlogLaneAccepts(task, { kind: "project", key: "\u0000project:/repo/web" }, "backlog"), true);
   assert.equal(backlogLaneAccepts(task, { kind: "project", key: "\u0000project:/repo/api" }, "done"), true);
-});
-
-test("pull request summaries count states and name the dominant one", () => {
-  assert.equal(pullRequestSummary([]), undefined);
-  assert.deepEqual(pullRequestSummary([{ state: "merged" }]), { total: 1, counts: { merged: 1 }, dominant: "merged", label: "1 PR · 1 merged" });
-  const mixed = pullRequestSummary([{ state: "merged" }, { state: "open" }, { state: "closed" }, {}]);
-  assert.equal(mixed?.dominant, "open");
-  assert.equal(mixed?.label, "4 PRs · 1 open, 1 merged, 1 closed");
 });

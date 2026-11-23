@@ -43,8 +43,8 @@
     border: 2px solid rgb(255 255 255 / 85%); background: rgb(124 92 255 / 30%); animation: ripple 520ms ease-out forwards; }
   @keyframes ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.35); opacity: 0; } }
   #caption { position: absolute; left: 50%; bottom: 22px; transform: translate(-50%, 16px); max-width: 1400px; padding: 14px 30px; border-radius: 999px;
-    background: rgb(14 15 20 / 84%); backdrop-filter: blur(14px); box-shadow: 0 12px 40px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 10%);
-    font-size: 30px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; opacity: 0; transition: opacity 320ms, transform 320ms; z-index: 20; }
+    background: rgb(14 15 20 / 93%); box-shadow: 0 12px 40px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 10%);
+    font-size: 30px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; opacity: 0; transition: opacity 160ms, transform 160ms; z-index: 20; }
   #caption.on { opacity: 1; transform: translate(-50%, 0); }
   /* The chapter tag, under the window's left edge in the caption band. */
   #chip { position: absolute; bottom: 38px; display: flex; align-items: center; gap: 14px; font-size: 25px; font-weight: 650; color: rgb(255 255 255 / 82%);
@@ -89,8 +89,10 @@
     frame = { left: $("viewport").offsetLeft, top: $("viewport").offsetTop, width: $("window").offsetWidth, height: $("window").offsetHeight };
     base = Math.min((1920 - 160) / frame.width, (1080 - TOP - BAND) / frame.height);
     origin = { x: (1920 - frame.width * base) / 2, y: TOP };
-    // Under a window's left edge; beside a phone, which is too narrow to share its band with the caption.
-    Object.assign($("chip").style, device === "phone" ? { left: "", right: `${1920 - origin.x + 40}px` } : { left: `${origin.x}px`, right: "" });
+    // Under a window's left edge; above the caption on a phone, whose band is too narrow to share.
+    Object.assign($("chip").style, device === "phone"
+      ? { left: "0", right: "0", bottom: "92px", justifyContent: "center" }
+      : { left: `${origin.x}px`, right: "", bottom: "38px", justifyContent: "" });
     place(origin.x, origin.y, base);
     stage.cursorTo(width * 0.62, height * 0.7, 0);
   }

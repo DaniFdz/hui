@@ -9,6 +9,8 @@ export type VscodeProviderPreference = Static<typeof VscodeProviderPreference>;
 
 export const BrowserSettings = Type.Object({
   enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(), mirrorState: Type.Boolean(),
+  /** Pages agents may reach; empty is anywhere. */
+  allowedOrigins: Type.Array(Type.String()),
 }, { $id: "BrowserSettings" });
 export type BrowserSettings = Static<typeof BrowserSettings>;
 
@@ -17,35 +19,58 @@ export const VscodeSettings = Type.Object({
 }, { $id: "VscodeSettings" });
 export type VscodeSettings = Static<typeof VscodeSettings>;
 
-const TypefaceId = Type.Union([
-  Type.Literal("instrument-sans"), Type.Literal("geist"), Type.Literal("dm-sans"), Type.Literal("ibm-plex-sans"),
-  Type.Literal("space-grotesk"), Type.Literal("atkinson-hyperlegible"), Type.Literal("fraunces"), Type.Literal("lora"),
-  Type.Literal("jetbrains-mono"), Type.Literal("system"),
-]);
+/** What a notification's tap opens: the gateway's own address in a browser, or one of the HUI apps. An app link
+ * carries no address — `hui://open?path=/sessions/<id>` for the phone shell, `hui://sessions/<id>` for the desktop app —
+ * so it opens on the gateway that app is already connected to, and a device without the app ignores the tap. */
+export const NtfyLink = Type.Union([
+  Type.Literal("web"), Type.Literal("phone"), Type.Literal("desktop"),
+], { $id: "NtfyLink" });
+export type NtfyLink = Static<typeof NtfyLink>;
+
+/** The ntfy relay a phone or another device subscribes to. An empty topic means no relay; the server defaults to
+ * `https://ntfy.sh`, and `HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected topic without the
+ * token ever entering settings or a payload. */
+export const NtfySettings = Type.Object({
+  server: Type.String(), topic: Type.String(), link: NtfyLink,
+}, { $id: "NtfySettings" });
+export type NtfySettings = Static<typeof NtfySettings>;
+
+/** Web Push to this browser or a phone: off until the operator enables it on a device. `subject` is the VAPID `sub`
+ * claim, a `mailto:` or `https:` contact address a push service may use for this gateway; empty omits the claim. The
+ * gateway's private VAPID key never enters settings or a payload: it stays in `CONFIG_DIR/notifications/vapid.json`. */
+export const PushSettings = Type.Object({
+  enabled: Type.Boolean(), subject: Type.String(),
+}, { $id: "PushSettings" });
+export type PushSettings = Static<typeof PushSettings>;
 
 /** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
 const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
 
 export const Settings = Type.Object({
-  theme: Type.String(),
-  themeMode: Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
-  accent: Type.String(), fontUi: TypefaceId, fontChat: TypefaceId, fontTerminal: Type.String(),
-  textScale: Type.Union([Type.Literal(90), Type.Literal(100), Type.Literal(110), Type.Literal(125), Type.Literal(140)]),
+  // A tool's own mark and icon stay on the gateway: the icon files live in its config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it. Appearance is not here: a theme, colour
+  // mode, accent, typeface, text size or chat preference belongs to the device that shows it.
   chat: Type.Object({
-    messageWidth: Type.Union([Type.Literal("compact"), Type.Literal("comfortable"), Type.Literal("wide")]),
-    collapseTaskProgress: Type.Boolean(), sendShortcut: Type.Union([Type.Literal("enter"), Type.Literal("modifierEnter")]),
-    githubEmbeds: Type.Boolean(), datadogEmbeds: Type.Boolean(),
     toolMarks: Type.Record(Type.String(), Type.String()),
     toolIcons: Type.Record(Type.String(), Type.String()),
   }),
-  profileName: Type.String(), profileHandle: Type.String(), branchPrefix: Type.String(),
+  profileName: Type.String(), profileHandle: Type.String(),
+  /** The operator's name for this gateway; empty means the machine's hostname, which `GET /__hui/health` reports. */
+  name: Type.String(),
+  branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
-  notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
+  notifications: Type.Object({
+    tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean(),
+    ntfy: NtfySettings,
+    // Web Push: the device subscribes through the browser, and the gateway's VAPID key signs for it.
+    push: PushSettings,
+  }),
   models: Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
     // Empty follows PI's own defaultThinkingLevel.
     thinking: Type.Union([Type.Literal(""), SavedReasoningLevel]),
+    retryAttempts: Type.Number(),
     routes: Type.Immutable(Type.Array(Type.Object({
       name: Type.String(), description: Type.String(), model: Type.String(),
       thinking: Type.Optional(SavedReasoningLevel),
@@ -59,7 +84,7 @@ export const Settings = Type.Object({
   disabledPlugins: Type.Immutable(Type.Array(Type.Object({
     id: Type.String(), name: Type.String(), kind: Type.Union([Type.Literal("package"), Type.Literal("extension")]),
   }))),
-  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean(), dashboard: Type.Boolean() }),
+  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean() }),
 }, { $id: "Settings" });
 export type Settings = Static<typeof Settings>;
 

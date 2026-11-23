@@ -24,7 +24,9 @@ export async function addWorkerOnThisMachine(api: Api, homes: string[], name: st
   }
   await symlink(join(checkout, "node_modules"), join(dir, "node_modules"));
   await writeFile(join(dir, ".ready"), "");
-  const command = commandText(["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "PI_OFFLINE", "-u", "HUI_CONFIG_DIR", `HOME=${home}`, "SHELL=/bin/sh"]);
+  // `HUI_WORKER_HOOK_PORT=0`: each test's worker binds any free port for its trigger endpoint, so two tests, or a
+  // developer's own daemon on 4180, never fight over the default.
+  const command = commandText(["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "PI_OFFLINE", "-u", "HUI_CONFIG_DIR", `HOME=${home}`, "SHELL=/bin/sh", "HUI_WORKER_HOOK_PORT=0"]);
   const created = await api<{ worker: { id: string } }>("POST", "/__hui/workers", { name, command });
   await api("POST", `/__hui/workers/${created.worker.id}/connect`);
   const state = async () => (await api<{ workers: { id: string; state: string; error?: string }[] }>("GET", "/__hui/workers")).workers.find((worker) => worker.id === created.worker.id)?.state;

@@ -5,7 +5,7 @@ import WaPopup from "@awesome.me/webawesome/dist/components/popup/popup.js";
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
-import { configureAnchoredPopup } from "../lib/anchored-overlay.ts";
+import { configureAnchoredPopup, observePickerAnchor, pickerAnchorInViewport } from "../lib/anchored-overlay.ts";
 import { icons } from "../lib/icons.ts";
 import { pickerRows, type PickerOption } from "../lib/picker-options.ts";
 
@@ -30,6 +30,8 @@ export class SelectPicker<
   private readonly listboxId = nextPickerId();
   private typeahead = "";
   private typeaheadAt = 0;
+  private popupAnchor: { getBoundingClientRect(): DOMRect } | undefined;
+  private stopPopupPositioning: (() => void) | undefined;
 
   private options(): readonly Option[] {
     const { value, options } = this.params;
@@ -48,6 +50,7 @@ export class SelectPicker<
 
   private closeMenu(restoreFocus = false) {
     this.mode = "closed";
+    this.stopPopupPositioning?.();
     this.query = "";
     this.activeValue = null;
     this.typeahead = "";
@@ -146,8 +149,36 @@ export class SelectPicker<
     if (!(element instanceof WaPopup) || !this.trigger) {
       return;
     }
-    configureAnchoredPopup(element, this.trigger, this.params.placement ?? "bottom");
+    const trigger = this.trigger;
+    if (!this.popupAnchor) {
+      this.popupAnchor = { getBoundingClientRect: () => pickerAnchorInViewport(trigger.getBoundingClientRect(), {
+        offsetTop: window.visualViewport?.offsetTop ?? 0,
+        height: window.visualViewport?.height ?? window.innerHeight,
+      }) };
+    }
+    configureAnchoredPopup(element, this.popupAnchor, this.params.placement ?? "bottom");
     element.sync = "width";
+    if (this.mode !== "closed" && !this.stopPopupPositioning) {
+      // The virtual reference retains the real trigger's width. Observe its actual scroll/resize sources only while open.
+      const reposition = () => element.reposition();
+      const viewport = window.visualViewport;
+      const stopAnchor = observePickerAnchor(trigger, reposition);
+      this.ownerDocument.addEventListener("scroll", reposition, true);
+      window.addEventListener("resize", reposition);
+      viewport?.addEventListener("resize", reposition);
+      viewport?.addEventListener("scroll", reposition);
+      const resize = new ResizeObserver(reposition);
+      resize.observe(trigger);
+      this.stopPopupPositioning = () => {
+        stopAnchor();
+        this.ownerDocument.removeEventListener("scroll", reposition, true);
+        window.removeEventListener("resize", reposition);
+        viewport?.removeEventListener("resize", reposition);
+        viewport?.removeEventListener("scroll", reposition);
+        resize.disconnect();
+        this.stopPopupPositioning = undefined;
+      };
+    }
   }
 
   private readonly handleKeydown = (event: KeyboardEvent) => {

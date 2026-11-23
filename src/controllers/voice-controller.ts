@@ -1,5 +1,5 @@
 /**
- * The app's calls with bots (HUI-18): the one call, run by GPT-Live
+ * The app's calls with bots: the one call, run by GPT-Live
  * (lib/voice/live-call.ts). The top-level app owns it and renders slices of it; a call
  * outlives navigating away from its bot (its bar stays in sight). Browser
  * capabilities are injected, so the rules run under test.

@@ -1,6 +1,7 @@
-/** macOS notifications for one chat, delivered by the installed HUI app rather than Script Editor: the notify_user
- * tool's alerts for its authenticated caller, and HUI's own session notifications. The native app acknowledges
- * delivery, or that the chat is already in front; macOS controls whether its banner stays visible. */
+/** One notification for one chat: its `notify_user` payloads, its chat address, HUI's own subtitle words, and delivery
+ * through the installed HUI app rather than Script Editor (the native app acknowledges delivery, or that the chat is
+ * already in front). `services.ts` composes this channel with the ntfy relay in `server/notifications/delivery.ts`, so
+ * a phone hears the same notification while HUI is closed. */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -11,6 +12,7 @@ import { promisify } from "node:util";
 import { Type, type Static } from "typebox";
 import Value from "typebox/value";
 import { readState } from "../../cli/state.ts";
+import type { NtfyLink } from "../api/settings.ts";
 
 const parameters = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 120 }),
@@ -21,6 +23,51 @@ const parameters = Type.Object({
 
 export type DesktopNotification = Static<typeof parameters>;
 export type NotificationChat = { id: string; bot?: string };
+
+/** The subtitles HUI's own session notifications use: the desktop app and the ntfy relay show the same words, and the
+ * relay's tags are chosen by them. */
+export const NOTIFICATION_SUBTITLES = {
+  finished: "Finished",
+  failed: "Run failed",
+  needsInput: "Needs your input",
+} as const;
+
+/** The chat's own address on this gateway, or nothing when this process is not the managed gateway whose address
+ * `cli/state.ts` records. Callers that can fall back (the ntfy relay) use it for their link; the desktop app requires
+ * the managed gateway and fails without it. */
+export async function notificationChatUrl(chat: NotificationChat): Promise<string | undefined> {
+  const state = await readState();
+  if (!state || state.pid !== process.pid) return undefined;
+  return chatUrl(state.url, chat);
+}
+
+/** The link that opens one chat in an HUI app instead of the browser. It carries no address by design, so the app
+ * opens the chat on the gateway it is already connected to: `hui://open?path=/sessions/<id>` is the phone shell's deep
+ * link (`DeepLink` on Android, `SceneDelegate` on iOS), and `hui://sessions/<id>` is the desktop app's.
+ *
+ * The path stays percent-encoded the way an address carries it (`/sessions/a%20b`), never encoded as a query value:
+ * both shells decode a copy to validate it and refuse one that hides a scheme behind an escape.
+ * `chatPath` is exported for the Web Push channel, which opens the same path a tap does.
+ */
+export function appChatLink(target: "phone" | "desktop", chat: NotificationChat): string {
+  const path = chatPath(chat);
+  return target === "phone" ? `hui://open?path=${path}` : `hui://${path.replace(/^\//u, "")}`;
+}
+
+/** The click a phone notification follows: the gateway's own address for `web`, which every device can open including
+ * one without the HUI app, and the app's own link otherwise. */
+export async function notificationChatLink(chat: NotificationChat, link: NtfyLink): Promise<string | undefined> {
+  return link === "web" ? notificationChatUrl(chat) : appChatLink(link, chat);
+}
+
+/** The in-app path that opens one chat: the same path the web app addresses, and what a push message carries. */
+export function chatPath(chat: NotificationChat): string {
+  return chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
+}
+
+function chatUrl(base: string, chat: NotificationChat): string {
+  return new URL(chatPath(chat), base).href;
+}
 
 export async function deliverDesktopNotification(
   chat: NotificationChat,
@@ -37,8 +84,7 @@ export async function deliverDesktopNotification(
   if (owner !== "org.harnessui.desktop" || capability !== "3") {
     throw new Error("Install the current HUI desktop app with `hui install-app` to enable clickable chat notifications.");
   }
-  const path = chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
-  const url = new URL(path, state.url).href;
+  const url = chatUrl(state.url, chat);
   signal?.throwIfAborted();
   const token = randomBytes(32).toString("hex");
   const deadline = signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000);
@@ -79,21 +125,37 @@ export async function deliverDesktopNotification(
   }
 }
 
+export type NotificationDispatch = (
+  chat: NotificationChat,
+  notification: DesktopNotification,
+  signal?: AbortSignal,
+) => Promise<{ status: "queued" | "in-view"; url?: string; channels?: readonly string[] }>;
+
+/** `notify_user`'s delivery: the desktop app by default, or the composed desktop-and-ntfy delivery `services.ts`
+ * passes in. The result names the channels that accepted it so the tool can say where the notification went. */
 export async function notifyUser(
   caller: NotificationChat,
   params: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<{ status: "queued" | "in-view"; url: string; message: string }> {
+  deliver: NotificationDispatch = (chat, notification, deadline) => deliverDesktopNotification(chat, notification, deadline),
+): Promise<{ status: "queued" | "in-view"; url?: string; message: string }> {
   if (!Value.Check(parameters, params) || !params.title.trim()) {
     throw new Error("notify_user requires a title (1–120 characters). Subtitle (up to 120), message (up to 1000) and priority (low, normal or high) are optional, and it takes no destination.");
   }
-  const { status, url } = await deliverDesktopNotification(caller, {
+  const { status, url, channels = ["desktop"] } = await deliver(caller, {
     title: params.title.trim(),
     ...(params.subtitle?.trim() ? { subtitle: params.subtitle.trim() } : {}),
     ...(params.message?.trim() ? { message: params.message.trim() } : {}),
     priority: params.priority ?? "normal",
   }, signal);
+  if (channels.includes("ntfy")) {
+    return { status, ...(url ? { url } : {}), message: "HUI sent the notification to your phone or another device through ntfy." };
+  }
+  // Web Push is a channel of its own: the devices subscribed in Settings heard it, and no banner promises otherwise.
+  if (channels.includes("push")) {
+    return { status, ...(url ? { url } : {}), message: "HUI pushed the notification to the devices subscribed in Settings → Notifications → This device." };
+  }
   return status === "in-view"
-    ? { status, url, message: "The operator has this chat in front in the HUI app, so HUI showed no banner." }
-    : { status, url, message: "HUI queued a notification for this chat. macOS notification settings may suppress the banner." };
+    ? { status, ...(url ? { url } : {}), message: "The operator has this chat in front in the HUI app, so HUI showed no banner." }
+    : { status, ...(url ? { url } : {}), message: "HUI queued a notification for this chat. Your device's notification settings may suppress the banner." };
 }

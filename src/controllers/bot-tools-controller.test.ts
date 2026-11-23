@@ -15,8 +15,8 @@ const CATALOG: BotCatalog = {
     tool("echo", "extension"), tool("weather", "extension", { source: "user · b.js" }), tool("other", "extension"), tool("message_bot", "bots"),
   ],
   skills: [
-    { name: "alpha", path: "/s/alpha/SKILL.md", description: "Writes release notes.", source: "/s", enabled: true },
-    { name: "beta", path: "/s/beta/SKILL.md", description: "Triage bugs.", source: "HUI defaults", enabled: false },
+    { name: "alpha", path: "/s/alpha/SKILL.md", description: "Writes release notes.", source: "/s", enabled: true, own: true },
+    { name: "beta", path: "/s/beta/SKILL.md", description: "Triage bugs.", source: "HUI defaults", enabled: false, own: false },
   ],
   alwaysOn: [{ name: "write_soul", description: "Rewrite its SOUL.md" }],
   disabledTools: ["bash"],
@@ -47,6 +47,8 @@ test("the controller reads the catalog for one bot, saves one whole list at a ti
       catalog = { ...catalog, disabledTools: change.disabledTools ?? catalog.disabledTools };
     },
     answer: async (sessionId, questionId, value) => { calls.push(`answer ${sessionId} ${questionId} ${value}`); catalog = { ...catalog, disabledTools: [] }; delete catalog.request; },
+    loadSkill: async (_id, name) => ({ name, text: "---\nname: " + name + "\n---\n\nOld.\n" }),
+    saveSkill: async () => undefined,
   };
   const host = new Host();
   const tools = new BotToolsController(host, api);
@@ -85,4 +87,32 @@ test("the controller reads the catalog for one bot, saves one whole list at a ti
   api.load = async () => { throw new Error("gateway down"); };
   await tools.refresh({ ...BOT, id: "bot-b" });
   assert.equal(tools.state.error, "gateway down");
+});
+
+test("an own skill opens in the editor with its whole SKILL.md and saves it back", async () => {
+  const calls: string[] = [];
+  let text = "---\nname: alpha\n---\n\nOld.\n";
+  const api: BotToolsApi = {
+    load: async () => CATALOG,
+    save: async () => undefined,
+    answer: async () => undefined,
+    loadSkill: async (_id, name) => { calls.push(`load ${name}`); return { name, text }; },
+    saveSkill: async (_id, name, next) => { calls.push(`save ${name}`); text = next; return { name, text }; },
+  };
+  const tools = new BotToolsController(new Host(), api);
+  await tools.refresh(BOT);
+  let props = tools.props(BOT);
+  props.onEditSkill("alpha");
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(tools.state.editing?.name, "alpha");
+  assert.match(tools.state.editing?.text ?? "", /Old\./u);
+  props = tools.props(BOT);
+  props.onSkillText("---\nname: alpha\n---\n\nNew.\n");
+  props.onSaveSkill();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, ["load alpha", "save alpha"]);
+  assert.equal(tools.state.editing, undefined);
+  assert.equal(text, "---\nname: alpha\n---\n\nNew.\n");
 });

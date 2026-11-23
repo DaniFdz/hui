@@ -7,7 +7,7 @@ import { UpdateController } from "./update-controller.ts";
 const fake = vi.hoisted(() => ({ loads: 0, answers: [] as Array<"running" | "succeeded" | "offline"> }));
 
 function snapshot(status: "running" | "succeeded"): UpdateSnapshot {
-  return { currentVersion: "1.0.0", check: null, job: { id: "job-1", pid: 1, status, version: "1.1.0", message: "" } };
+  return { name: "HUI", currentVersion: "1.0.0", check: null, job: { id: "job-1", pid: 1, status, version: "1.1.0", message: "" } };
 }
 
 vi.mock("../api/update.ts", () => ({

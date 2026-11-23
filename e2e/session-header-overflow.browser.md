@@ -10,9 +10,11 @@ or changed. Include fresh screenshots in the PR description, outside Git history
   `HUI_E2E_PORT=43320 NO_PROXY=localhost,127.0.0.1 npm run e2e:sdk`.
 - Use the fixture's disposable workspace and guarded session creation API to
   seed a long sentence title and project label. Open it from the visible sidebar.
-- At 1440×900, click **Open split view**. Before the fix, the active header was
-  588 px wide with a 703 px scroll width; its close button ended at x=1555,
-  outside the 1440 px viewport. A hidden body scrollbar did not prevent the bug.
+- At 1440×900, split from another session's row menu (**Open in split pane**; the
+  chat header's **Open split view** was removed on 2026-11-14). Before the fix, the
+  active header was 588 px wide with a 703 px scroll width; its close button ended
+  at x=1555, outside the 1440 px viewport. A hidden body scrollbar did not prevent
+  the bug.
 - Send `E2E_SUBAGENTS_START` through the composer to create a real child. For
   the boundary case, patch only that disposable child's organizer metadata to
   a 200-character title and group, both without spaces. Reload its route.

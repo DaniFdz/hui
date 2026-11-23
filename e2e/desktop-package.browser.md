@@ -46,7 +46,12 @@ Non-macOS automatic registration is intentionally a no-op.
   shell/policy code, icon/metadata and opt-out/global-install gating.
 - Mocked Electron tests cover managed-gateway startup, single-instance focus,
   window-close/quit independence, visible startup failure, renderer isolation,
-  external navigation and local clipboard permissions.
+  external navigation and local clipboard permissions. They also cover the
+  window following a switch between gateways, a link to a gateway this device
+  lists or to one that answers the identity handshake on its own network, a
+  `hui://` chat link followed inside the window, and a public site left to the
+  browser without any probe; no Electron binary runs on this host, so the
+  window itself is no rendered proof.
 
 ## Native release gate
 

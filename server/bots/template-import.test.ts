@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { BOT_LIMITS, botKickoffText, type BotView } from "../bots-format.ts";
+import { writeZip } from "./templates/zip.ts";
 import { botTurnOrigin, parseRunOrigins } from "../runtimes/turn-origins.ts";
 import { botOpenerKickoffText, botTemplateKickoffText, type BotTemplate } from "./templates/formats.ts";
 import type { BotTriggerInput } from "./triggers-format.ts";
@@ -204,6 +205,23 @@ test("a worker that keeps SKILL.md only gets no files, listed as left out; a tri
   const failing = harness({ failTrigger: true });
   await assert.rejects(failing.service.create({ template: HUI_TEMPLATE }), /the trigger store is broken/u);
   assert.deepEqual(failing.calls, ["create", "skills", "trigger", "delete new"]);
+});
+
+test("an export's setup that {{user}} makes longer than a bot's BOOTSTRAP.md is cut, with a note, not refused at Create", async () => {
+  const { service, created } = harness({ operator: "Ada Lovelace" });
+  // At the cap before the fill: the new owner's own name is what pushes it past what a BOOTSTRAP.md holds.
+  const setup = `${"x".repeat(BOT_LIMITS.bootstrap - 10)} {{user}}`;
+  const zip = writeZip([
+    { path: "bot.json", data: Buffer.from(JSON.stringify({ format: "hui-bot", version: 2, bot: { name: "R" }, skills: [] })) },
+    { path: "SOUL.md", data: Buffer.from("# Who I am\n\nI help.\n") },
+    { path: "BOOTSTRAP.md", data: Buffer.from(setup) },
+  ], new Date(1980, 0, 1));
+  const preview = await service.preview({ source: { kind: "file", name: "r.hui-bot.zip", data: zip.toString("base64") } });
+  assert.equal(preview.bootstrap?.length, BOT_LIMITS.bootstrap, "the preview shows what the bot's file will hold");
+  assert.match(preview.notes.join("\n"), /Its setup \(BOOTSTRAP\.md\) has [\d,]+ characters and a bot's holds 6,000: the first 6,000 travel\./u);
+  const result = await service.create({ template: preview.template });
+  assert.equal(String(created[0]!["bootstrap"]).length, BOT_LIMITS.bootstrap, "Create writes a file the bot's limit takes");
+  assert.equal(result.opener, true);
 });
 
 test("an imported bot's first turn is not the operator's, so its gated tools refuse; a new bot's kickoff still is", () => {

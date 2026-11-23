@@ -128,11 +128,11 @@ test("settings text entry uses the canonical OpenClaw control treatment", () => 
 });
 
 test("Appearance exposes functional OpenClaw chat preferences", () => {
-  for (const label of ["Message width", "Collapse task progress", "Send shortcut"]) {
+  for (const label of ["Message width", "Send shortcut"]) {
     assert.match(settingsSource, new RegExp(label));
   }
   assert.match(settingsSource, /props\.onChangeChat/);
-  assert.match(settingsSource, /renderSettingsToggle\("Collapse task progress"/);
+  assert.doesNotMatch(settingsSource, /Collapse task progress/, "the plan is always open, not controlled by a device preference");
   for (const label of ["Message width", "Send shortcut"]) {
     assert.ok(settingsSource.includes(`renderSettingsPicker("${label}"`));
   }
@@ -143,9 +143,9 @@ test("Appearance selects interface and chat prose fonts independently", () => {
     assert.match(settingsSource, new RegExp(label));
   }
   assert.match(settingsSource, /id: "settings-font-ui"/);
-  assert.match(settingsSource, /value: props\.settings\.fontUi/);
+  assert.match(settingsSource, /value: props\.appearance\.fontUi/);
   assert.match(settingsSource, /id: "settings-font-chat"/);
-  assert.match(settingsSource, /value: props\.settings\.fontChat/);
+  assert.match(settingsSource, /value: props\.appearance\.fontChat/);
   assert.match(settingsSource, /class="settings-typography-preview"/);
   assert.match(settingsCss, /\.settings-typography-preview__caption[\s\S]*var\(--font-body\)/);
   assert.match(settingsCss, /\.settings-typography-preview__prose[\s\S]*var\(--font-chat\)/);

@@ -1,5 +1,6 @@
 /**
- * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
+ * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Its rail is
+ * the same sidebar at the shared stored width (lib/sidebar-width.ts), drag handle included. Edits leave
  * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
  * (providers, model routes, integrations, tools, browser, workers, calls) are their own elements.
  */
@@ -8,17 +9,22 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { MESSAGE_WIDTHS, SEND_SHORTCUTS, type ChatAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
+import { useModelRoles } from "../lib/provider-choices.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
-import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
+import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, describePushDevices, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
+import { lastSeenLabel, type GatewayView } from "../lib/gateways/gateway-list.ts";
+import type { PushDeviceState } from "../lib/notifications/web-push.ts";
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
 import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
+import { resizeSidebarWithKeys, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, startSidebarResize } from "../lib/sidebar-width.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
 import { renderListFilter } from "../components/list-filter.ts";
@@ -31,8 +37,10 @@ import "../components/settings/calls.ts";
 import "../components/settings/github.ts";
 import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
+import "../components/settings/local-providers.ts";
 import "../components/settings/subagent-routes.ts";
 import "../components/settings/workers.ts";
+import "../components/settings/extensions.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
@@ -64,12 +72,27 @@ export type SettingsProps = AutomationProps & {
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
   observabilityError: string;
+  /** A Work pane exists to show an extension panel in. */
+  canOpenExtensionPanel: boolean;
+  /** This device's gateways: the one serving this page first, then the saved ones. */
+  gateways: readonly GatewayView[];
+  /** Opens the Add gateway dialog, also reachable from the sidebar's gateway menu. */
+  onAddGateway: () => void;
+  /** Opens the Edit gateway dialog on one row. */
+  onEditGateway: (gateway: GatewayView) => void;
+  onSwitchGateway: (url: string) => void;
+  onRemoveGateway: (url: string) => void;
+  onRetryGateway: (url: string) => void;
   onRefreshObservability: () => void;
   onExportDiagnostics: () => void;
   onRetryPi: () => void;
   onSelectPage: (page: SettingsPage) => void;
   previews: readonly ThemePreview[];
   settings: Settings;
+  /** This device's theme, accent, typefaces, text size and chat preferences: never the gateway's. */
+  appearance: DeviceAppearance;
+  /** The browser refused to store this device's appearance, so the change is gone after a reload. */
+  appearanceSaveFailed: boolean;
   themeId: string;
   variant: ThemeVariant;
   saveFailed: boolean;
@@ -79,16 +102,34 @@ export type SettingsProps = AutomationProps & {
   onSelectMode: (mode: ThemeMode) => void;
   onSelectAccent: (accent: string) => void;
   onChangeBranchPrefix: (prefix: string) => void;
-  onChangeAppearance: (next: Partial<Pick<Settings, "fontUi" | "fontChat" | "fontTerminal" | "textScale">>) => void;
-  onChangeChat: (next: Settings["chat"]) => void;
+  onChangeAppearance: (next: Partial<DeviceAppearance>) => void;
+  onChangeChat: (next: ChatAppearance) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeCodemode: (next: Settings["codemode"]) => void;
   onChangeNotifications: (next: Settings["notifications"]) => void;
+  /** Resolves once the saved ntfy relay lands, so the test button never reports the previous topic. */
+  onSaveNtfy: (ntfy: Settings["notifications"]["ntfy"]) => Promise<boolean>;
+  /** Saves the relay the form names, publishes one test message, and reports through the shell toast. */
+  onTestNtfy: (ntfy: Settings["notifications"]["ntfy"]) => Promise<void>;
+  onCopyNtfyAddress: () => void;
+  /** What this browser can do about Web Push; the controller reads it from the page, never from the gateway. */
+  pushDevice: PushDeviceState;
+  /** Whether this device already subscribed, so the button offers the other direction after a reload. */
+  pushSubscribed: boolean;
+  /** How many devices the gateway pushes to; `undefined` until it answers. */
+  pushDevices: number | undefined;
+  /** A failed read of the push state, shown instead of a count the gateway did not give. */
+  pushStatusError: string;
+  onEnablePush: () => void;
+  onDisablePush: () => void;
+  onTestPush: () => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
+  /** Opens New Session the way the app's own New Session control does. */
+  onStartChat: () => void;
   onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -133,7 +174,7 @@ function renderThemeCard(
 }
 
 /** Heading and description sit outside the card, so rows own their inset. */
-function renderSection(heading: string, description: string, body: TemplateResult, section?: string) {
+function renderSection(heading: string, description: string, body: TemplateResult, section?: string, actions?: TemplateResult) {
   return html`
     <section class="settings-section" data-settings-section=${section ?? nothing}>
       <div class="settings-section__header">
@@ -141,6 +182,7 @@ function renderSection(heading: string, description: string, body: TemplateResul
           <h2 class="settings-section__heading">${heading}</h2>
           ${description ? html`<p class="settings-section__desc">${description}</p>` : nothing}
         </div>
+        ${actions ? html`<div class="settings-section__actions">${actions}</div>` : nothing}
       </div>
       <div class="settings-group">${body}</div>
     </section>
@@ -215,7 +257,7 @@ function renderThemeSection(props: SettingsProps) {
   const selectable = modeIsSelectable(props.variant);
   // With a single-mode theme the preference is moot, so show what is actually
   // in effect rather than highlighting a button that does not match the screen.
-  const shownMode = selectable ? props.settings.themeMode : props.variant;
+  const shownMode = selectable ? props.appearance.themeMode : props.variant;
   const body = html`
     ${
       props.previews.length > 0
@@ -270,7 +312,7 @@ function renderThemeSection(props: SettingsProps) {
   return renderSection(
     "Theme",
     props.previews.length > 0
-      ? "Choose a theme family for this Control UI client."
+      ? "Choose a theme family for this device."
       : "No themes could be loaded; the built-in defaults are in use.",
     body,
   );
@@ -278,8 +320,8 @@ function renderThemeSection(props: SettingsProps) {
 
 function renderAccentSection(props: SettingsProps) {
   const inherited = props.previews.find((preview) => preview.id === props.themeId)?.accent ?? "var(--accent)";
-  const preset = ACCENTS.find((item) => item.value === props.settings.accent);
-  const custom = Boolean(props.settings.accent && !preset);
+  const preset = ACCENTS.find((item) => item.value === props.appearance.accent);
+  const custom = Boolean(props.appearance.accent && !preset);
   return renderSection(
     "Accent",
     "Choose the accent color used by buttons, highlights and focus controls.",
@@ -288,48 +330,33 @@ function renderAccentSection(props: SettingsProps) {
         <div class="settings-accent-swatches" role="group" aria-label="Accent color">
           ${ACCENTS.map((item) => html`<button
             type="button"
-            class="settings-accent-swatch ${props.settings.accent === item.value ? "settings-accent-swatch--active" : ""}"
+            class="settings-accent-swatch ${props.appearance.accent === item.value ? "settings-accent-swatch--active" : ""}"
             style=${`--settings-accent-swatch: ${item.value || inherited}`}
             aria-label=${item.label}
-            aria-pressed=${String(props.settings.accent === item.value)}
+            aria-pressed=${String(props.appearance.accent === item.value)}
             title=${item.label}
             @click=${() => props.onSelectAccent(item.value)}
-          >${props.settings.accent === item.value
+          >${props.appearance.accent === item.value
             ? html`<span class="settings-accent-swatch__check" aria-hidden="true">${icons.check}</span>`
             : item.id === "default"
               ? html`<span class="settings-accent-swatch__reset" aria-hidden="true">${icons.rotateCcw}</span>`
               : nothing}</button>`)}
           <label
             class="settings-accent-swatch settings-accent-swatch--custom ${custom ? "settings-accent-swatch--active" : ""}"
-            style=${`--settings-accent-swatch: ${props.settings.accent || "#ff5c5c"}`}
+            style=${`--settings-accent-swatch: ${props.appearance.accent || "#ff5c5c"}`}
             title="Custom color"
           >
-            <input class="settings-accent-swatch__input" type="color" aria-label="Custom accent color" .value=${props.settings.accent || "#ff5c5c"}
+            <input class="settings-accent-swatch__input" type="color" aria-label="Custom accent color" .value=${props.appearance.accent || "#ff5c5c"}
               @change=${(event: Event) => props.onSelectAccent((event.currentTarget as HTMLInputElement).value)} />
             <span class="settings-accent-swatch__picker" aria-hidden="true">${icons.pipette}</span>
           </label>
         </div>
       </div>
       <div class="settings-row">
-        <div class="settings-row__text"><span class="settings-row__title">Current accent</span><span class="settings-row__desc">Saved locally in HUI and applied over the active theme.</span></div>
+        <div class="settings-row__text"><span class="settings-row__title">Current accent</span><span class="settings-row__desc">Stored on this device and applied over the active theme.</span></div>
         <div class="settings-row__control"><span class="settings-row__value" data-testid="settings-current-accent">${preset?.label ?? "Custom color"}</span></div>
       </div>
     `,
-  );
-}
-
-function renderLanguageSection() {
-  return renderSection(
-    "Language",
-    "",
-    renderRow(
-      "Language",
-      "Default: System. Saved locally for this browser.",
-      html`<wa-select class="settings-select" size="s" value="system" disabled>
-        <span slot="label" class="settings-control__sr-label">Language</span>
-        <wa-option value="system">System</wa-option>
-      </wa-select>`,
-    ),
   );
 }
 
@@ -356,13 +383,13 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-ui",
           label: "Interface font",
-          value: props.settings.fontUi,
+          value: props.appearance.fontUi,
           options,
           searchable: true,
           onChange: (fontUi) => props.onChangeAppearance({
-            fontUi: fontUi as Settings["fontUi"],
-            fontChat: props.settings.fontChat,
-            textScale: props.settings.textScale,
+            fontUi: fontUi as DeviceAppearance["fontUi"],
+            fontChat: props.appearance.fontChat,
+            textScale: props.appearance.textScale,
           }),
         }),
       )}
@@ -372,13 +399,13 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-chat",
           label: "Chat prose font",
-          value: props.settings.fontChat,
+          value: props.appearance.fontChat,
           options,
           searchable: true,
           onChange: (fontChat) => props.onChangeAppearance({
-            fontUi: props.settings.fontUi,
-            fontChat: fontChat as Settings["fontChat"],
-            textScale: props.settings.textScale,
+            fontUi: props.appearance.fontUi,
+            fontChat: fontChat as DeviceAppearance["fontChat"],
+            textScale: props.appearance.textScale,
           }),
         }),
       )}
@@ -388,7 +415,7 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-terminal",
           label: "Terminal font",
-          value: props.settings.fontTerminal,
+          value: props.appearance.fontTerminal,
           options: terminalFontOptions,
           searchable: true,
           searchPlaceholder: "Search or type a font name",
@@ -405,7 +432,7 @@ function renderFontSection(props: SettingsProps) {
             Good typography makes room for the conversation. Choose a face that feels comfortable to read.
           </p>
           <code class="settings-typography-preview__code">const greeting = "Hello, world!";</code>
-          <div style=${`font-family: ${terminalFontStack(props.settings.fontTerminal)}; margin-top: 16px; overflow-wrap: anywhere;`} aria-label="Terminal font preview">❯ ~/project ⎇ main &#xe0b0; &#xf07c; &#xf120; git status</div>
+          <div style=${`font-family: ${terminalFontStack(props.appearance.fontTerminal)}; margin-top: 16px; overflow-wrap: anywhere;`} aria-label="Terminal font preview">❯ ~/project ⎇ main &#xe0b0; &#xf07c; &#xf120; git status</div>
         </div>
       </div>
     `,
@@ -423,11 +450,11 @@ function renderTextSizeSection(props: SettingsProps) {
             (stop) => html`
               <button
                 type="button"
-                class="settings-text-scale__btn ${stop === props.settings.textScale ? "active" : ""}"
-                aria-pressed=${String(stop === props.settings.textScale)}
+                class="settings-text-scale__btn ${stop === props.appearance.textScale ? "active" : ""}"
+                aria-pressed=${String(stop === props.appearance.textScale)}
                 @click=${() => props.onChangeAppearance({
-                  fontUi: props.settings.fontUi,
-                  fontChat: props.settings.fontChat,
+                  fontUi: props.appearance.fontUi,
+                  fontChat: props.appearance.fontChat,
                   textScale: stop,
                 })}
               >
@@ -443,30 +470,24 @@ function renderTextSizeSection(props: SettingsProps) {
 }
 
 function renderChatSection(props: SettingsProps) {
-  const chat = props.settings.chat;
+  const chat = props.appearance.chat;
   return renderSection(
     "Chat",
-    "Composer and conversation preferences. Stored for this HUI client.",
+    "Composer and conversation preferences, stored on this device.",
     html`
       ${renderRow(
         "Message width",
         "Controls the maximum width of the conversation and composer.",
         renderSettingsPicker("Message width", chat.messageWidth,
-          [{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "wide", label: "Wide" }],
-          (value) => props.onChangeChat({ ...chat, messageWidth: value as Settings["chat"]["messageWidth"] })),
-      )}
-      ${renderRow(
-        "Collapse task progress",
-        "Start active task progress cards collapsed.",
-        renderSettingsToggle("Collapse task progress", chat.collapseTaskProgress,
-          (checked) => props.onChangeChat({ ...chat, collapseTaskProgress: checked })),
+          MESSAGE_WIDTHS.map((width) => ({ value: width, label: SETTINGS_COPY.messageWidths[width] })),
+          (value) => props.onChangeChat({ ...chat, messageWidth: value as ChatAppearance["messageWidth"] })),
       )}
       ${renderRow(
         "Send shortcut",
         "Choose whether Enter sends or inserts a new line.",
         renderSettingsPicker("Send shortcut", chat.sendShortcut,
-          [{ value: "enter", label: "Enter" }, { value: "modifierEnter", label: "⌘/Ctrl + Enter" }],
-          (value) => props.onChangeChat({ ...chat, sendShortcut: value as Settings["chat"]["sendShortcut"] })),
+          SEND_SHORTCUTS.map((shortcut) => ({ value: shortcut, label: SETTINGS_COPY.sendShortcuts[shortcut] })),
+          (value) => props.onChangeChat({ ...chat, sendShortcut: value as ChatAppearance["sendShortcut"] })),
       )}
       ${renderRow(
         "GitHub link previews",
@@ -656,16 +677,43 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
-/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). */
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above. */
 function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+/** The Model providers area: the setup wizard and the folded local model servers share one section, as main's Models
+ * page expects. A verified model fills the roles new sessions use where nothing is chosen yet; existing choices are
+ * never overwritten. */
+function renderProviderSection(props: SettingsProps) {
+  return html`<section class="settings-section hui-providers"><hui-provider-settings
+    @providers-changed=${props.onRetryPi}
+    .onUseModel=${(target: string) => {
+      const next = useModelRoles(props.settings.models, target);
+      props.onChangeModels({ ...props.settings.models, primary: next.primary, utility: next.utility });
+      return next;
+    }}
+    .onStartChat=${props.onStartChat}
+  ></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings></section>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
-  if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
-  }
+  // One template shape with or without PI's configuration: the intro joins it once the catalog lands, but the
+  // provider wizard keeps its element, so a sign-in opened while the page was loading is never closed underfoot.
+  return html`
+    ${pi ? html`<p class="settings-page__intro">
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
+    </p>` : nothing}
+    <div class="settings-stack">
+      ${renderProviderSection(props)}
+      ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+    </div>
+  `;
+}
+
+/** The half of Models that waits for PI: model routing, subagent routes, the catalog and its diagnostics. */
+function renderModelRouting(props: SettingsProps, pi: NonNullable<SettingsProps["pi"]>) {
   const model = pi.model;
   const modelOptions = [
     { value: "", label: "Use PI default" },
@@ -676,6 +724,7 @@ function renderModelsPage(props: SettingsProps) {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
   const reasoningLevel = props.settings.models.thinking;
+  const retryAttempts = props.settings.models.retryAttempts;
   const reasoningSelector = renderEffortSelector({
     label: "Default reasoning",
     level: reasoningLevel,
@@ -701,13 +750,9 @@ function renderModelsPage(props: SettingsProps) {
     },
   });
   return html`
-    <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
-    </p>
-    <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
       "HUI model routing",
-      "Saved by HUI and applied to new sessions.",
+      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
       html`
         ${renderRow(
           "Primary model",
@@ -718,6 +763,13 @@ function renderModelsPage(props: SettingsProps) {
           "Fallback model",
           "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
           routePicker("Fallback model", "fallback"),
+        )}
+        ${renderRow(
+          "Provider retries",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
+          renderSettingsPicker("Provider retries", String(retryAttempts),
+            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
         )}
         ${renderRow(
           "Utility model",
@@ -732,7 +784,7 @@ function renderModelsPage(props: SettingsProps) {
       `,
     )}
     <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-      .primary=${props.settings.models.primary} .onSave=${props.onSaveSubagentRoute}
+      .onSave=${props.onSaveSubagentRoute}
       .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
     ></hui-subagent-routes>
     ${renderCallsSection(props)}
@@ -804,6 +856,46 @@ function renderPowerSection(props: SettingsProps, status: PowerStatus) {
   `);
 }
 
+/** The gateways this device keeps: the one serving this page, the ones added here, and the dialog that adds or edits
+ * one. Switching opens that gateway in this page; the current one is never offered a Remove, and its Edit changes only
+ * its own name. */
+function renderGatewaysSection(props: SettingsProps) {
+  const now = Date.now();
+  return renderSection(
+    "Gateways",
+    "This page's gateway, and the others this device knows. Switching opens that gateway here.",
+    html`
+      <div class="settings-gateway-list" role="list">
+        ${props.gateways.map((gateway) => html`<div class="settings-row settings-gateway" role="listitem"
+          data-state=${gateway.state} data-url=${gateway.url} title=${gateway.url}>
+          <div class="settings-row__text">
+            <span class="settings-row__title settings-gateway__name">${gateway.name}</span>
+            <span class="settings-row__desc settings-gateway__address">${gateway.url}</span>
+          </div>
+          <div class="settings-row__control">
+            <span class="settings-status settings-gateway__state settings-gateway__state--${gateway.state}" role="status">
+              <span class="settings-status__dot" aria-hidden="true"></span>
+              ${gateway.state === "current" ? "Current" : gateway.state === "offline" ? "Offline" : `last seen ${lastSeenLabel(gateway.lastSeen ?? now, now)}`}
+            </span>
+            <button type="button" class="btn" aria-label=${`Edit ${gateway.name}`}
+              @click=${() => props.onEditGateway(gateway)}>Edit</button>
+            ${gateway.state === "current" ? nothing : html`<button type="button" class="btn" aria-label=${`Switch to ${gateway.name}`}
+              @click=${() => props.onSwitchGateway(gateway.url)}>Switch</button>`}
+            ${gateway.state === "offline" ? html`<button type="button" class="btn" aria-label=${`Retry ${gateway.name}`}
+              @click=${() => props.onRetryGateway(gateway.url)}>Retry</button>` : nothing}
+            ${gateway.state === "current" ? nothing : html`<button type="button" class="btn danger" aria-label=${`Remove ${gateway.name}`}
+              @click=${() => props.onRemoveGateway(gateway.url)}>Remove</button>`}
+          </div>
+        </div>`)}
+      </div>
+    `,
+    undefined,
+    html`<button type="button" class="btn btn--sm" @click=${props.onAddGateway}>Add gateway</button>`,
+  );
+}
+
+/** The gateway's own name is saved by the current gateway's Edit dialog, reported on `/__hui/health`, and shown on
+ * About and in every client that keeps more than one gateway. */
 export function renderConnectionPage(props: SettingsProps) {
   const health = props.health;
   const failed = Boolean(props.healthError);
@@ -811,6 +903,7 @@ export function renderConnectionPage(props: SettingsProps) {
   const label = failed ? "Disconnected" : health ? "Connected" : "Connecting…";
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.connection}</p>
+    ${renderGatewaysSection(props)}
     ${renderSection(
       "Access",
       "Connection checked every 3 seconds while this page is visible.",
@@ -882,28 +975,182 @@ function renderMemoryPage(props: SettingsProps) {
   `;
 }
 
-function renderNotificationsPage(props: SettingsProps) {
+export function renderNotificationsPage(props: SettingsProps) {
   const notifications = props.settings.notifications;
   const toggle = (label: string, key: "runFinished" | "runFailed" | "needsInput") =>
     renderSettingsToggle(label, notifications[key], (on) => props.onChangeNotifications({ ...notifications, [key]: on }));
   return html`
-    <p class="settings-page__intro">The HUI app on macOS shows these notifications. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
+    <p class="settings-page__intro">These notifications reach the HUI app on macOS, every device that subscribed below, and, when a topic is set, the ntfy app on your phone. Clicking one opens its chat; only the HUI app stays quiet for the chat that is already in front.</p>
     ${renderSection("Notify me when", "", html`
       ${renderRow("A run finishes", "A run you started has ended and its chat is waiting for you. Subagents, bot routines and triggers don't count. Silent.", toggle("Run finished", "runFinished"))}
       ${renderRow("A run fails", "A run you started has stopped with an error. Silent.", toggle("Run failed", "runFailed"))}
       ${renderRow("A chat needs your input", "Any chat is waiting for you to answer a question, give a secret, allow access or confirm something. Plays a sound.", toggle("Needs your input", "needsInput"))}
-    `)}`;
+    `)}
+    ${renderPushSection(props)}
+    ${renderNtfySection(props)}
+  `;
+}
+
+/** The line under "This device": one sentence per state this page is in, and what to do about it. */
+function pushStateCopy(props: SettingsProps): string {
+  if (props.pushDevice !== "ready") return SETTINGS_COPY.push.states[props.pushDevice];
+  return SETTINGS_COPY.push.states[props.pushSubscribed ? "subscribed" : "ready"];
+}
+
+/** The one control this device gets: subscribe it, forget it, or the reason neither is possible. */
+function renderPushControl(props: SettingsProps): TemplateResult {
+  const labels = SETTINGS_COPY.push.labels;
+  if (props.pushDevice !== "ready") return html`<button type="button" class="btn" disabled>${labels.enable}</button>`;
+  return props.pushSubscribed
+    ? html`<button type="button" class="btn" @click=${props.onDisablePush}>${labels.disable}</button>`
+    : html`<button type="button" class="btn primary" @click=${props.onEnablePush}>${labels.enable}</button>`;
+}
+
+/** Settings → Notifications → This device: Web Push through this browser's own push service, and the count of
+ * devices the gateway pushes to. Nothing here touches the browser: the controller subscribes and unsubscribes. */
+function renderPushSection(props: SettingsProps) {
+  const notifications = props.settings.notifications;
+  const push = notifications.push;
+  const labels = SETTINGS_COPY.push.labels;
+  // The contact address is optional, so it saves with the section's form rather than on every keystroke.
+  const submit = (event: SubmitEvent) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
+    const field = form.elements.namedItem("subject");
+    const subject = field instanceof HTMLInputElement ? field.value.trim() : push.subject;
+    props.onChangeNotifications({ ...notifications, push: { ...push, subject } });
+  };
+  return renderSection(
+    "This device",
+    "Web Push reaches this browser or phone through its own push service, so HUI can notify you with HUI closed. Every device subscribes here; the switch stops all of them.",
+    html`<form class="settings-push" @submit=${submit}>
+      ${renderRow(
+        labels.toggle,
+        "HUI pushes to the devices that subscribed below, this one included. Off stops every push, even to a device whose subscription this gateway still holds.",
+        renderSettingsToggle(labels.toggle, push.enabled, (enabled) => props.onChangeNotifications({ ...notifications, push: { ...push, enabled } })),
+      )}
+      ${renderRow("This device", pushStateCopy(props), renderPushControl(props))}
+      ${renderRow(
+        "Subscribed devices",
+        props.pushStatusError || describePushDevices(props.pushDevices),
+        html`<button type="button" class="btn" @click=${props.onTestPush}>${labels.test}</button>`,
+      )}
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Contact</span>
+          <span class="settings-row__desc">The address a push service may use to reach you, saved as the VAPID sub claim: a mailto: or https: address. Optional, and empty by default.</span>
+        </div>
+        <div class="settings-row__control">
+          <input class="settings-input" name="subject" type="text" autocomplete="off" spellcheck="false" aria-label="Push contact" placeholder="mailto:you@example.com" .value=${push.subject} />
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </div>
+      <p class="settings-page__note settings-page__intro">${SETTINGS_COPY.push.fallback}</p>
+    </form>`,
+  );
+}
+
+/** The fields the phone's ntfy app subscribes to, read from the form so a test never runs against an unsaved topic.
+ * What a tap opens is not a form field: the picker saves its own choice the moment it changes, so `link` is the
+ * saved one. */
+function ntfyFromForm(form: HTMLFormElement, link: Settings["notifications"]["ntfy"]["link"]): Settings["notifications"]["ntfy"] {
+  const fields = new FormData(form);
+  return {
+    server: String(fields.get("server") ?? "").trim(),
+    topic: String(fields.get("topic") ?? "").trim(),
+    link,
+  };
+}
+
+/** The ways a notification can open its chat, in the order the picker offers them. */
+const NOTIFICATION_LINKS = ["web", "phone", "desktop"] as const;
+
+function notificationLink(value: string): Settings["notifications"]["ntfy"]["link"] {
+  return value === "phone" || value === "desktop" ? value : "web";
+}
+
+function renderNtfySection(props: SettingsProps) {
+  const ntfy = props.settings.notifications.ntfy;
+  const submit = (event: SubmitEvent) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (form instanceof HTMLFormElement) void props.onSaveNtfy(ntfyFromForm(form, ntfy.link));
+  };
+  const test = (event: Event) => {
+    const form = (event.currentTarget as HTMLElement).closest("form");
+    if (form instanceof HTMLFormElement) void props.onTestNtfy(ntfyFromForm(form, ntfy.link));
+  };
+  // Any long, unguessable name is ntfy's own capability: it is the password the phone subscribes with.
+  const generate = (event: Event) => {
+    const form = (event.currentTarget as HTMLElement).closest("form");
+    const field = form?.elements.namedItem("topic");
+    if (!(field instanceof HTMLInputElement)) return;
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    field.value = `hui-${[...bytes].map((byte) => byte.toString(36).padStart(2, "0")).join("")}`;
+  };
+  return renderSection(
+    "Phone (ntfy)",
+    "The fallback: HUI publishes each notification to this topic, and the ntfy app on your phone shows it even when the HUI app is closed. Install ntfy, add the address below as a subscription, and treat that address as a password.",
+    html`<form class="settings-ntfy" data-testid="settings-ntfy" @submit=${submit}>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Opens in</span>
+          <span class="settings-row__desc">What tapping the notification opens, saved as soon as you pick it. An app opens the chat on the gateway it is already connected to, so it only follows links from that gateway; a device without the app ignores the tap.</span>
+        </div>
+        <div class="settings-row__control">
+          ${renderSettingsPicker(
+            "Notification link",
+            ntfy.link,
+            NOTIFICATION_LINKS.map((link) => ({ value: link, label: SETTINGS_COPY.notificationLinks[link] })),
+            () => undefined,
+            {
+              // The picker keeps its own display, so the choice is saved here: the page then renders the new value.
+              onChangeTarget: (value, select) => {
+                const form = select.closest("form");
+                const link = notificationLink(value);
+                void props.onSaveNtfy(form instanceof HTMLFormElement ? ntfyFromForm(form, link) : { ...ntfy, link });
+              },
+            },
+          )}
+        </div>
+      </div>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Server</span>
+          <span class="settings-row__desc">ntfy.sh, or the address of your own ntfy server. The gateway's HUI_NTFY_TOKEN authenticates a protected server.</span>
+        </div>
+        <div class="settings-row__control">
+          <input class="settings-input" name="server" type="url" inputmode="url" autocomplete="off" spellcheck="false" aria-label="ntfy server" placeholder="https://ntfy.sh" .value=${ntfy.server} />
+        </div>
+      </div>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Topic</span>
+          <span class="settings-row__desc">A long, unguessable name. Empty turns the phone notifications off.</span>
+        </div>
+        <div class="settings-row__control settings-ntfy__topic">
+          <input class="settings-input" name="topic" autocomplete="off" spellcheck="false" aria-label="ntfy topic" placeholder="hui-…" .value=${ntfy.topic} />
+          <button type="button" class="btn" @click=${generate}>Generate</button>
+          <button type="submit" class="btn">Save</button>
+          <button type="button" class="btn" @click=${test}>Send test</button>
+          <button type="button" class="btn" @click=${props.onCopyNtfyAddress} ?disabled=${!ntfy.topic}>Copy address</button>
+        </div>
+      </div>
+      <p class="settings-page__note settings-page__intro">${ntfy.topic ? `The phone subscribes to ${ntfy.server}/${ntfy.topic}` : "No topic yet: HUI sends nothing to a phone."}</p>
+    </form>`,
+  );
 }
 
 function renderAppearancePage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.appearance}</p>
-    ${renderLanguageSection()} ${renderThemeSection(props)} ${renderAccentSection(props)} ${renderFontSection(props)}
+    ${renderThemeSection(props)} ${renderAccentSection(props)} ${renderFontSection(props)}
     ${renderTextSizeSection(props)} ${renderChatSection(props)}
-    <p class="settings-page__note settings-page__intro">
-      ${props.saveFailed
-        ? "Could not write settings.json — changes apply now but will not be remembered."
-        : "Saved to ~/.config/hui/settings.json"}
+    <p class="settings-page__note settings-page__intro" role=${props.appearanceSaveFailed ? "alert" : nothing}>
+      ${props.appearanceSaveFailed
+        ? "Could not save on this device — the change applies now and is gone after a reload."
+        : "Saved on this device. Another browser, app or phone keeps its own appearance."}
     </p>
   `;
 }
@@ -958,7 +1205,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers" | "extensions">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -992,7 +1239,7 @@ function renderPendingSettingsPage(page: keyof typeof SETTINGS_SUMMARIES) {
 
 export function renderSettingsPage(props: SettingsProps) {
   return html`
-    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
+    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} data-testid="settings-sidebar" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <button
         type="button"
         class="settings-mobile-topbar"
@@ -1001,7 +1248,7 @@ export function renderSettingsPage(props: SettingsProps) {
         aria-expanded="false"
         @click=${toggleSettingsDrawer}
       >
-        <span aria-hidden="true">☰</span>
+        <span class="settings-mobile-topbar__icon" aria-hidden="true">${icons.menu}</span>
         <span>Settings</span>
         <strong>${SETTINGS_PAGES.find((page) => page.id === props.page)?.label}</strong>
       </button>
@@ -1077,6 +1324,18 @@ export function renderSettingsPage(props: SettingsProps) {
         <span class="sidebar-footer-build">HUI</span>
       </footer>
       </div>
+      <div
+        class="sidebar-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuemin=${SIDEBAR_WIDTH_MIN}
+        aria-valuemax=${SIDEBAR_WIDTH_MAX}
+        aria-valuenow=${sidebarWidth()}
+        tabindex="0"
+        @pointerdown=${startSidebarResize}
+        @keydown=${resizeSidebarWithKeys}
+      ></div>
     </aside>
     <main class="content settings-main" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <header class="content-header content-header--settings">
@@ -1086,7 +1345,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
+        <div class="settings-page ${["plugins", "extensions", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "notifications"
@@ -1105,6 +1364,8 @@ export function renderSettingsPage(props: SettingsProps) {
                     ? html`<hui-workers-settings></hui-workers-settings>`
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
+                      : props.page === "extensions"
+                        ? html`<hui-extensions-settings .panelAvailable=${props.canOpenExtensionPanel}></hui-extensions-settings>`
                       : props.page === "memory"
                         ? renderMemoryPage(props)
                         : props.page === "automation"
@@ -1224,7 +1485,8 @@ export function setSettingsDrawer(
   sidebar.dataset.open = String(reconciledOpen);
   const main = sidebar.parentElement?.querySelector<HTMLElement>(".settings-main");
   main?.toggleAttribute("inert", reconciledOpen);
-  sidebar.closest?.(".hui-application")?.querySelector(".hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
+  // Direct children only: the chat draws its own sleep notice with this class, and the drawer must not inert that one.
+  sidebar.closest?.(".hui-application")?.querySelector(":scope > .hui-update-notice")?.toggleAttribute("inert", reconciledOpen);
   const trigger = sidebar.querySelector<HTMLButtonElement>(".settings-mobile-topbar");
   trigger?.setAttribute("aria-expanded", String(reconciledOpen));
   trigger?.setAttribute("aria-label", reconciledOpen ? "Close settings navigation" : "Open settings navigation");

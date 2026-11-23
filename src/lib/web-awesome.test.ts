@@ -14,6 +14,34 @@ test("closed controls and unrelated open elements do not claim Escape", () => {
   assert.equal(hasOpenWebAwesomePopup(event), false);
 });
 
+/** The page the popover check reads: whether a native dialog is open, and the popovers it can see. */
+function fakeScope(scope: { dialog?: boolean; popovers?: readonly { open?: boolean }[] }): Document {
+  return {
+    querySelector: (selector: string) => (selector === "dialog[open]" && scope.dialog ? {} : null),
+    querySelectorAll: (selector: string) => (selector === "wa-popover" ? scope.popovers ?? [] : []),
+  } as unknown as Document;
+}
+
+/** A press from the composer, so no Web Awesome control is in its path. */
+function composerPress(): Event {
+  return { composedPath: () => [{ localName: "textarea" }, {}] } as unknown as Event;
+}
+
+test("an open popover owns the press its dialog gave back to the composer", () => {
+  const scope = fakeScope({ popovers: [{ open: true }] });
+  assert.equal(hasOpenWebAwesomePopup(composerPress(), scope), true);
+});
+
+test("a closed popover leaves the press to the page", () => {
+  const scope = fakeScope({ popovers: [{ open: false }] });
+  assert.equal(hasOpenWebAwesomePopup(composerPress(), scope), false);
+});
+
+test("a native dialog above the popover closes first and keeps the press", () => {
+  const scope = fakeScope({ dialog: true, popovers: [{ open: true }] });
+  assert.equal(hasOpenWebAwesomePopup(composerPress(), scope), false);
+});
+
 function escapeEvent(key: string, open: boolean) {
   const calls: string[] = [];
   const popup = {

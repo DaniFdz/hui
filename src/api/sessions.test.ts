@@ -6,13 +6,72 @@ import { test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { reconnectDelay } from "../lib/event-stream.ts";
+import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 import {
+  OPEN_HEADER_TIMEOUT_MS,
   STATUS_STREAM_STALL_MS,
+  createSessionGroup,
+  openSession,
+  recomputeSessionProgress,
   subscribeSessionStatuses,
   subscribeSession,
   type RuntimeEvent,
   type SessionStatusUpdate,
 } from "./sessions.ts";
+
+test("an open the gateway never answers is abandoned after five seconds", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.stubGlobal("fetch", nativeFetch); });
+  vi.stubGlobal("fetch", (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+  }));
+
+  assert.equal(OPEN_HEADER_TIMEOUT_MS, 5_000);
+  const opening = openSession("s1");
+  const failed = assert.rejects(opening, /HUI did not answer within 5 s/u);
+  await vi.advanceTimersByTimeAsync(OPEN_HEADER_TIMEOUT_MS);
+  await failed;
+});
+
+test("progress recompute posts to the encoded session route and surfaces a refusal", async (t) => {
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.stubGlobal("fetch", nativeFetch); });
+  let status = 200;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(String(input), "/__hui/sessions/a%2Fb/progress");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("x-hui"), "1");
+    assert.equal(init?.body, "{}");
+    return new Response(JSON.stringify(status === 200 ? { ok: true } : { error: "A refresh is already running." }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  await recomputeSessionProgress("a/b");
+  status = 409;
+  await assert.rejects(recomputeSessionProgress("a/b"), /A refresh is already running\./u);
+});
+
+test("progress recompute allows queue time beyond the ordinary HTTP deadline", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.useRealTimers(); vi.stubGlobal("fetch", nativeFetch); });
+  let deliver!: (response: Response) => void;
+  let requestSignal: AbortSignal | null | undefined;
+  vi.stubGlobal("fetch", (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+    deliver = resolve;
+    requestSignal = init?.signal;
+    requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+  }));
+  const refresh = recomputeSessionProgress("queued");
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS + 1);
+  assert.ok(requestSignal);
+  assert.equal(requestSignal.aborted, false, "queueing must not consume the model's response budget");
+  deliver(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  await refresh;
+});
 
 test("the browser runtime contract includes settled", () => {
   const event: RuntimeEvent = { type: "settled" };
@@ -85,6 +144,92 @@ test("the browser demultiplexes lifecycle snapshot and status frames, however th
   assert.deepEqual(snapshots, [[{ id: "a", status: "running" }]]);
   assert.deepEqual(updates, [{ id: "a", status: "idle" }]);
   assert.deepEqual(lists, [{ revision: 2, upserts: [] }]);
+});
+
+test("a status stream whose response headers never arrive retries instead of holding the list loading", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let connections = 0;
+  const fetcher = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    connections += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({ onSnapshot: () => {}, onStatus: () => {} }, fetcher);
+  t.onTestFinished(stop);
+
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+  assert.equal(connections, 1, "the first answer is still pending");
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.equal(connections, 2, "the unanswered connection is replaced by a retry");
+});
+
+test("a status stream that ends on a refusal says so", async () => {
+  let stopped = 0;
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {}, onStatus: () => {}, onStop: () => { stopped += 1; },
+  }, async () => new Response("{}", { status: 403 }));
+  for (let index = 0; index < 10 && !stopped; index += 1) await new Promise(setImmediate);
+  assert.equal(stopped, 1, "the shell can subscribe again after a refusal");
+  stop();
+});
+
+test("the status stream reports live once it delivers, and lost when a connection ends without it", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const states: ("live" | "lost")[] = [];
+  let connections = 0;
+  const fetcher = (async () => {
+    connections += 1;
+    if (connections > 1) throw new TypeError("Failed to fetch");
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: snapshot\ndata: {"statuses":[]}\n\n'));
+        controller.close();
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state) => states.push(state),
+  }, fetcher);
+  t.onTestFinished(stop);
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
+
+  await settle();
+  assert.deepEqual(states, ["live", "lost"], "a stream that delivered its handshake and ended was lost after being live");
+  await vi.advanceTimersByTimeAsync(reconnectDelay(1, () => 1));
+  await settle();
+  assert.deepEqual(states, ["live", "lost", "lost"], "a connection that never becomes live is an outage, not silence");
+});
+
+test("a refused status stream reports the gateway as live, and this client's own stop is not a loss", async () => {
+  const refusedStates: string[] = [];
+  const refused = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state: "live" | "lost") => refusedStates.push(state),
+  }, async () => new Response("{}", { status: 403 }));
+  for (let index = 0; index < 10 && !refusedStates.length; index += 1) await new Promise(setImmediate);
+  refused();
+  assert.deepEqual(refusedStates, ["live"], "a gateway that answers with a refusal is reachable, not offline");
+
+  const stoppedStates: string[] = [];
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {},
+    onStatus: () => {},
+    onConnection: (state: "live" | "lost") => stoppedStates.push(state),
+  }, (async (_input: RequestInfo | URL, init?: RequestInit) => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+    },
+  }), { status: 200, headers: { "content-type": "text/event-stream" } })) as typeof fetch);
+  for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
+  stop();
+  for (let index = 0; index < 10; index += 1) await new Promise(setImmediate);
+  assert.deepEqual(stoppedStates, [], "the caller stopping the stream is not the gateway going away");
 });
 
 test("a status stream that goes silent reconnects to resync", async (t) => {
@@ -203,6 +348,31 @@ for (const blocked of ["ticket", "handshake", "first snapshot"]) {
     assert.equal(tickets, expected, "a healthy idle stream keeps no establishment deadline");
   });
 }
+
+test("creating a group sends its name and every New session default in one request", async () => {
+  const original = globalThis.fetch;
+  const calls: { url: string; method: string; body: unknown; headers: Record<string, string> }[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(input), method: init.method ?? "GET", body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> });
+    return new Response(JSON.stringify({
+      revision: 4,
+      groups: [{ label: "Remote", cwd: "/srv/checkout", workspaceMode: "worktree", baseRef: "release/1.0", worker: "w1", sessions: [] }],
+    }), { status: 201, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const list = await createSessionGroup({ name: "Remote", cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0" });
+    assert.equal(list.revision, 4);
+    assert.deepEqual(list.groups.map((group) => [group.label, group.cwd, group.workspaceMode, group.baseRef, group.worker]),
+      [["Remote", "/srv/checkout", "worktree", "release/1.0", "w1"]]);
+    assert.deepEqual(calls.map(({ url, method, body }) => [url, method, body]), [["/__hui/session-groups", "POST", {
+      name: "Remote", cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0",
+    }]]);
+    assert.equal(calls[0]?.headers["content-type"], "application/json");
+    assert.equal(calls[0]?.headers["x-hui"], "1");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test("the browser reads every event stream through readEventStream", () => {
   const src = new URL("../", import.meta.url);

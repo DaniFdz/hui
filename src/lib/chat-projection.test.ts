@@ -6,6 +6,9 @@ import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscr
 test("a message HUI delivered names its sender and keeps only what they wrote", () => {
   assert.deepEqual(attributedMessage("[from @grace · hop 2] PR #7 needs **your** decision."), { sender: { kind: "bot", handle: "grace" }, body: "PR #7 needs **your** decision." });
   assert.deepEqual(attributedMessage("[from @ada] hi"), { sender: { kind: "bot", handle: "ada" }, body: "hi" });
+  // A header a bot wrote itself before HUI tagged the brief a new session starts with.
+  assert.deepEqual(attributedMessage("[from roboto · relayed from Dani's Slack instruction through @slack-notifications-bot] This session owns PR #7."),
+    { sender: { kind: "bot", handle: "roboto" }, body: "This session owns PR #7." });
   // The gateway's own header for a session's tag, return address and hop included.
   assert.deepEqual(attributedMessage("[from agent: Fix retry now · reply-to agent:9b2e-41 · hop 2] Please babysit PR #7."),
     { sender: { kind: "session", title: "Fix retry now", id: "9b2e-41" }, body: "Please babysit PR #7." });

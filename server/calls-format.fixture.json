@@ -12,11 +12,13 @@
     "personaBytes": 6000,
     "taskSeconds": 600,
     "helperSeconds": 25,
-    "helperQuestions": 6,
-    "handoffs": 4,
     "maxMinutes": 15,
     "recordLines": 400,
-    "helperMemoryBytes": 16000
+    "helperMemoryBytes": 16000,
+    "recentBytes": 4000,
+    "recentLine": 600,
+    "handoffSeconds": 6,
+    "handoff": 1600
   },
   "voices": [
     "cove",

@@ -33,6 +33,13 @@ type LegacySessionView = {
   runtime?: { active: true; memoryBytes?: number; bootDurationMs?: number };
   interrupted?: true;
   runFailed?: true;
+  question?: {
+    id: string;
+    method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
+    title: string;
+    options?: string[];
+  };
+  failure?: string;
   background?: true;
   model?: string;
   thinking?: string;
@@ -54,7 +61,7 @@ type LegacyLayout = (Omit<LegacySessionGroup<never>, "sessions"> & { ids: string
 type LegacySessionListUpdate = { revision: number; groups?: LegacyLayout; upserts: LegacySessionView[] };
 
 type LegacyQuestionnaireOption = { label: string; description: string; preview?: string };
-type LegacyQuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: LegacyQuestionnaireOption[] };
+type LegacyQuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: LegacyQuestionnaireOption[]; input: "options" | "slider" | "text"; min?: number; max?: number; step?: number; unit?: string; placeholder?: string };
 type LegacyQuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
 type LegacyQuestionnaireResult = { cancelled: boolean; answers: LegacyQuestionnaireAnswer[]; timedOut?: true; timeoutMinutes?: number };
 

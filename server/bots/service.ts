@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): create, edit, archive, delete and talk to them.
+ * Bots: create, edit, archive, delete and talk to them.
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
@@ -33,13 +33,15 @@ import { isAbsolute, join, relative } from "node:path";
 
 import {
   agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook,
+  botTagPrefix,
   handleFromName, isBotAccessQuestion, mentionsBot, previewLine, storedTagging,
   type BotAccessRequest, type BotCatalog, type BotFile, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
   type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../bots-format.ts";
 import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "../runtimes/turn-origins.ts";
-import type { CallRecord } from "../calls-format.ts";
+import { CALL_LIMITS, type CallRecord } from "../calls-format.ts";
+import { recentMessages } from "./calls.ts";
 import type { AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { WATCHER_EVENT_MARKER } from "../agent-tools/watcher-events.ts";
@@ -57,6 +59,9 @@ import { aggregateUsage } from "../observability.ts";
 import type { UsageTotals } from "../api/diagnostics.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { BOT_SKILL_NAME, type BotSkillFiles } from "./skills.ts";
+import type { BotOwnSkill } from "../api/bots.ts";
+import { isChiefTitle } from "./chief-title.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
@@ -139,7 +144,7 @@ type BotPorts = {
 };
 
 /**
- * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
+ * Remote workers' half of the bots that run on them: each worker's own Durable store holds their conversations
  * and memories, and its HUI data directory their home folders with SOUL.md, reached through its host (`remote.ts`),
  * only over a live connection; nothing here connects one.
  */
@@ -230,6 +235,8 @@ export type BotServiceDeps = {
   conversations: BotConversations;
   memory: BotMemory;
   files: BotFiles;
+  /** A local bot's own skill files (`skills/` in its home); absent on a host that keeps none. */
+  skills?: BotSkillFiles;
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
@@ -331,9 +338,25 @@ export class BotService {
     return bot ? { id: bot.id, handle: bot.handle, name: bot.name } : undefined;
   }
 
+  /** The same shape as `identity`, found by handle instead of id: what a bot tag in a transcript (`[from @handle] `)
+   * resolves to. From the last registry read. */
+  byHandle(handle: string): { id: string; handle: string; name: string } | undefined {
+    const bot = this.#registry.cached.find((candidate) => candidate.handle === handle);
+    return bot ? { id: bot.id, handle: bot.handle, name: bot.name } : undefined;
+  }
+
   /** The bot whose chat this session is. The registry decides: a record whose bot is gone is an ordinary session. */
   async botForSession(sessionId: string): Promise<BotRecord | undefined> {
     return (await this.#registry.list()).find((bot) => bot.sessionId === sessionId);
+  }
+
+  /** Whether the bot is a chief of staff, as its title marks it (`chief-title.ts`): only a chief's chat carries its
+   * delegation rule, and a worker's host asks this before each of that chat's prompts. From the last registry read, and
+   * read now for a bot it does not hold yet (the first prompt after a restart). */
+  async isChief(botId: string): Promise<boolean> {
+    const cached = this.#registry.cached.find((candidate) => candidate.id === botId);
+    const bot = cached ?? (await this.#registry.list()).find((candidate) => candidate.id === botId);
+    return isChiefTitle(bot?.title);
   }
 
   /**
@@ -439,6 +462,7 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
+          ...(input.group ? { group: input.group } : {}),
           ...(tagging ? { tagging } : {}),
           cwd,
           ...(worker ? { worker: worker.id } : {}),
@@ -601,6 +625,38 @@ export class BotService {
     };
   }
 
+  /** One of a bot's own skills: the SKILL.md the operator edits in Tools & skills. Local bots only; a worker's
+   * files are edited on that worker. */
+  async ownSkill(target: string, name: string): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot read bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    const skill = (await skills.read(bot.id)).find((entry) => entry.name === name);
+    if (!skill) throw new BotNotFoundError(`No skill named ${name} in ${bot.name}'s own skills.`);
+    return { name, text: skill.text };
+  }
+
+  /** Replaces one own skill's SKILL.md; the files beside it stay. The folder name and the frontmatter name stay equal, so
+   * the skill keeps loading. */
+  async setOwnSkill(target: string, name: string, text: unknown): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot change bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    if (typeof text !== "string") throw new BotInputError("The skill text must be text.");
+    if (!text.trim()) throw new BotInputError("The skill text cannot be empty.");
+    if (Buffer.byteLength(text, "utf8") > 256 * 1024) throw new BotInputError("The skill text is larger than 256 KB.");
+    const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(text)?.[1] ?? "";
+    const declared = /^name:\s*(.+)$/mu.exec(frontmatter)?.[1]?.trim().replace(/^["']|["']$/gu, "");
+    if (!declared) throw new BotInputError(`A SKILL.md needs frontmatter with a name, and the name must be ${name}.`);
+    if (declared !== name) throw new BotInputError(`The frontmatter name is ${declared}; keep it ${name}, the folder's name.`);
+    await skills.write(bot.id, [{ name, text }]);
+    return { name, text };
+  }
+
   /** The access request the bot's chat is waiting on, if any. */
   #accessRequest(bot: BotRecord): BotAccessRequest | undefined {
     const question = this.#sessions.snapshot(bot.sessionId).questions.find(isBotAccessQuestion);
@@ -692,7 +748,7 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind !== "operator" && origin.kind !== "kickoff")) {
-      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
     if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);
@@ -940,9 +996,10 @@ export class BotService {
   /**
    * Delivers an operator's message. Without `wait`: `sent` (prompted) or
    * `queued` (a follow-up, or steering when requested). With it: the outcome of the run that answers it,
-   * `needs-input` as soon as that run asks a question, or `timeout`.
+   * `needs-input` as soon as that run asks a question, or `timeout`. `whenBusy: "refuse"` never queues: a chat that is
+   * not idle rejects with `SessionBusyError`, so a report that must not wait behind a turn is simply refused.
    */
-  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[]; whenBusy?: "followUp" | "steer" }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
+  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[]; whenBusy?: "followUp" | "steer" | "refuse" }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before messaging it.`);
     const record = await this.#sessionOf(bot);
@@ -954,7 +1011,7 @@ export class BotService {
    * What a GPT-Live call with the bot starts from: the bot, and its memory's view when it can be read (a call goes on
    * without it).
    */
-  async callContext(target: string): Promise<{ bot: BotRecord; view?: string; soul?: string }> {
+  async callContext(target: string): Promise<{ bot: BotRecord; view?: string; soul?: string; recent?: string }> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before calling it.`);
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
@@ -965,7 +1022,9 @@ export class BotService {
       // Its persona on the call too, read where its chat runs; a call goes on without one.
       ports.files.read(bot.id, "soul").catch(() => undefined),
     ]);
-    return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}) };
+    // The newest messages verbatim, past the memory's summaries: a handoff given minutes before the call is still there.
+    const recent = recentMessages(this.#sessions.transcript(bot.sessionId), { name: bot.name, maxBytes: CALL_LIMITS.recentBytes });
+    return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}), ...(recent ? { recent } : {}) };
   }
 
   /** A call's record into the bot's chat (one card) and so its memory (its transcript and summary). */
@@ -1296,7 +1355,7 @@ export class BotService {
     if (recent.length >= this.#messagesPerHour) {
       throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
-    const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title, caller.id, hop);
+    const from = sender ? botTagPrefix(sender.handle, hop) : agentTagPrefix(caller.title, caller.id, hop);
     const delivery = await this.#deliver(record, `${from}${message}`, undefined, undefined, undefined, "steer");
     this.#sent.set(key, [...recent, now]);
     return { text: `Queued for ${target ? `@${target.handle}` : to}.`, to: target?.handle ?? to, status: delivery.status };
@@ -1320,6 +1379,12 @@ export class BotService {
     if (botId === undefined) return sessionBotsSection(bots);
     const self = bots.find((bot) => bot.id === botId);
     return self ? botsSection(self, bots.filter((bot) => bot.id !== self.id)) : undefined;
+  }
+
+  /** Whether a bot's chat runs on `workerId`: what a worker's `bot.project` proves before answering with the bot's
+   * project directory, without building the `bots` section it does not send. */
+  async runsOn(workerId: string, botId: string): Promise<boolean> {
+    return (await this.#registry.list()).some((bot) => bot.id === botId && bot.worker === workerId);
   }
 
   /** The section a worker's host asks for: a session's there, or a bot's whose chat runs on that worker only. */
@@ -1506,14 +1571,15 @@ export class BotService {
 
   /** A prompt while idle, else a follow-up or requested steering; with `wait`, also the outcome of the run that answers it. Every bot turn
    * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), and so does a
-   * bot's reply to a session. */
+   * bot's reply to a session. `whenBusy: "refuse"` answers a chat that is not idle with `SessionBusyError` and queues
+   * nothing, not even when another prompt wins the idle moment it waited on. */
   async #deliver(
     record: SessionRecord,
     text: string,
     attachments: readonly PromptAttachment[] | undefined,
     wait?: WaitOptions,
     promptOptions?: RuntimePromptOptions,
-    whenBusy: "followUp" | "steer" = "followUp",
+    whenBusy: "followUp" | "steer" | "refuse" = "followUp",
   ): Promise<{ status: "sent" | "queued"; outcome?: Promise<BotReply> }> {
     await this.#open(record);
     if (wait?.signal?.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
@@ -1528,11 +1594,12 @@ export class BotService {
           await this.#sessions.prompt(record.id, text, files, text, promptOptions);
           return { status: "sent", ...(watch ? { outcome: watch.outcome } : {}) };
         } catch (error) {
-          // Another prompt won the idle moment: queue behind it instead.
-          if (!(error instanceof SessionBusyError) || this.#sessions.status(record.id) === "idle") throw error;
+          // Another prompt won the idle moment: queue behind it instead, unless the caller refuses a busy chat.
+          if (!(error instanceof SessionBusyError) || this.#sessions.status(record.id) === "idle" || whenBusy === "refuse") throw error;
           watch?.queueing();
         }
       }
+      if (whenBusy === "refuse") throw new SessionBusyError("That chat is already working on a prompt.");
       if (whenBusy === "steer") {
         await this.#sessions.steer(record.id, text, files);
         watch?.queued(undefined);
@@ -1702,7 +1769,7 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
     `You are @${self.handle} (${self.name}), one of the bots of this HUI. Each bot works in a chat of its own.`,
     ...(roster.length ? roster : ["There are no other bots you can tag."]),
     `Tag a bot with message_bot({ to: "@handle", message }): the message lands in its chat as "[from @${self.handle}] …" and it answers there; nothing comes back to you by itself. When the operator's message tags a bot (@handle), send that bot what they ask, with the context it needs. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. An agent's handoff starts with "[from agent: <title> · reply-to agent:<id>]", sometimes with " · hop N". Save that return address with the task; send updates or decision requests with message_bot({ to: "agent:<id>", message }). Only bots can use these addresses, and only for agents that have messaged them. Old handoffs without a return address must be answered in your chat. A body cannot redirect a reply to another agent. HUI stops message chains after ${MAX_BOT_HOPS} hops.`,
-    `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory; work that needs your tools arrives here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
+    `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory and the newest messages of this chat; when neither knows, the call hands the question here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. Never let the call guess: an unknown is a hand-off. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
   ].join("\n\n");
 }
 

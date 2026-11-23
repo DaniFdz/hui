@@ -16,6 +16,7 @@ const {
   readRegistry,
   readSessionGroups,
   reorderSessionGroups,
+  sessionRegistryWrites,
   SessionRegistryError,
   updateRegistry,
   updateSessionGroup,
@@ -107,6 +108,27 @@ test("a bot's chat record keeps its bot without a registry migration; a blank on
   assert.equal(chat?.piSessionFile, "durable:4");
   assert.equal(plain && "bot" in plain, false);
   assert.equal(JSON.parse(await readFile(join(configHome, "hui", "sessions.json"), "utf8")).version, 2, "same registry version");
+});
+
+test("a session's creator bot round-trips without a registry migration; a blank one is an ordinary session", async () => {
+  await writeRegistry([
+    record("made", { lead: true, createdByBot: "chief-1" }),
+    record("plain"),
+    record("blank", { createdByBot: "  " } as Partial<SessionRecord>),
+  ]);
+  const [made, plain, blank] = await readRegistry();
+  assert.equal(made?.createdByBot, "chief-1");
+  assert.equal(made?.lead, true, "the lead mark and its creator are separate fields");
+  assert.equal(made?.bot, undefined, "a session a bot started is not that bot's own chat");
+  assert.equal(plain && "createdByBot" in plain, false, "a record without the field still parses");
+  assert.equal(blank && "createdByBot" in blank, false, "a whitespace value is dropped");
+  assert.equal(JSON.parse(await readFile(join(configHome, "hui", "sessions.json"), "utf8")).version, 2, "same registry version");
+
+  // A registry mutation reparses every record, so a field left out of toRecord would be erased here.
+  await updateRegistry((sessions) => sessions.map((session) => session.id === "made" ? { ...session, pinned: true } : session));
+  const kept = (await readRegistry()).find((session) => session.id === "made");
+  assert.equal(kept?.createdByBot, "chief-1", "a write keeps the creator bot");
+  assert.equal(kept?.pinned, true);
 });
 
 test("version one registries migrate their session groups without losing rows", async () => {
@@ -243,6 +265,28 @@ test("group checkout defaults survive read, rename and reorder and can be cleare
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout", worker: "w1" });
   await updateSessionGroup("Renamed", { worker: "" });
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout" });
+});
+
+test("a group is created with its New session defaults in one registry write", async () => {
+  await writeRegistry([]);
+  const writes = sessionRegistryWrites();
+  const created = await createSessionGroup("Remote", {
+    cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0",
+  });
+  assert.equal(sessionRegistryWrites() - writes, 1, "the group and its defaults land in one write");
+  assert.deepEqual(created, {
+    label: "Remote", cwd: "/srv/checkout", workspaceMode: "worktree", baseRef: "release/1.0", worker: "w1",
+  });
+  assert.deepEqual(await readSessionGroups(), [created]);
+  const stored = JSON.parse(await readFile(join(configHome, "hui", "sessions.json"), "utf8"));
+  assert.deepEqual(stored.groups, [created], "the registry file holds every default");
+  assert.equal(stored.version, 2);
+});
+
+test("empty New session defaults are created unset", async () => {
+  await writeRegistry([]);
+  await createSessionGroup("Plain", { cwd: "", worker: "", workspaceMode: "", baseRef: "" });
+  assert.deepEqual(await readSessionGroups(), [{ label: "Plain" }]);
 });
 
 test("an investigation marker round-trips, and one that cannot be meant is dropped", async () => {

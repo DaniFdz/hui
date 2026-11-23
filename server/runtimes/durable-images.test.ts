@@ -58,6 +58,25 @@ test("the learned cap is the model's own, kept for the next gateway to read", as
   assert.equal(await caps.get("p/other"), undefined, "an error about something else teaches nothing");
 });
 
+test("a refusal about the size of the request halves the images the model takes", async (t: TestContext) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-image-caps-size-"));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
+  const caps = new ImageCaps(join(dir, "image-caps.json"));
+  const tooLong = "400: {\"message\":\"Input is too long.\"}";
+
+  await caps.learn("p/m", 40, tooLong);
+  assert.equal(await caps.get("p/m"), 20, "half of the images the refused request carried, in one step");
+  await caps.learn("p/m", 20, tooLong);
+  assert.equal(await caps.get("p/m"), 10, "and half again while it still does not fit");
+  await caps.learn("p/m", 4, tooLong);
+  assert.equal(await caps.get("p/m"), 10, "a request within the cap teaches nothing");
+  await caps.learn("p/single", 1, tooLong);
+  assert.equal(await caps.get("p/single"), undefined, "one image that cannot be halved teaches nothing");
+
+  await caps.learn("p/tokens", 8, "400: {\"message\":\"Input is too long for requested model.\"}");
+  assert.equal(await caps.get("p/tokens"), undefined, "a context overflow is compaction's, not the image cap's");
+});
+
 test("a request refused for its image count is trimmed from then on", async (t: TestContext) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-image-limit-request-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));

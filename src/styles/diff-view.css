@@ -94,9 +94,11 @@ hui-diff-view {
 .hui-diff-body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .hui-diff-list {
   display: flex;
-  flex: 0 0 280px;
+  flex: 0 0 var(--hui-diff-list-width, 280px);
   flex-direction: column;
-  width: 280px;
+  width: var(--hui-diff-list-width, 280px);
+  min-width: 220px;
+  max-width: calc(100% - 320px);
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--panel, var(--bg));
@@ -262,7 +264,7 @@ hui-diff-view {
 .hui-diff-code .tok-invalid { color: var(--danger); }
 
 /* ── stacked (a narrow pane or screen): the list and the diff take turns ── */
-.hui-diff--stacked .hui-diff-list { flex: 1 1 auto; width: auto; border-right: 0; }
+.hui-diff--stacked .hui-diff-list { flex: 1 1 auto; width: auto; min-width: 0; max-width: none; border-right: 0; }
 .hui-diff--stacked .hui-diff-segmented { display: none; }
 .hui-diff--stacked .hui-diff-main__header { padding-inline-start: 4px; }
 

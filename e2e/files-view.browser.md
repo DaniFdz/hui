@@ -28,7 +28,8 @@ tabs) is recorded in `e2e/work-pane.browser.md`.
 5. Open `README.md`, switch Source/Rendered; open the PNG and the binary file;
    type in the filter; create a file; delete a folder; upload two files, one of
    which already exists, and cancel a large one with **Cancel upload** while it
-   is in flight. Repeat at 390×844.
+   is in flight. Drag the navigator's right edge (**Resize files navigator**),
+   hover a long name, and move it with the arrow keys. Repeat at 390×844.
 
 ## Observed
 
@@ -76,6 +77,11 @@ tabs) is recorded in `e2e/work-pane.browser.md`.
 - At 390×844 the editor took the full width with a 16 px font; the navigator
   opened as a drawer over a dimmed backdrop and closed on selection, on its
   close button or on the backdrop.
+- The navigator's **Resize files navigator** separator widened it from 260px
+  to 640px and narrowed it to 200px; the arrow keys moved it 16px a press and
+  48px with Shift, and a reload kept the chosen width. A long file name cut
+  short showed its whole path on hover. At 390×844 the navigator stayed the
+  drawer with no separator, and a tap opened the file.
 - The page reported no errors.
 
 ## Proof limits

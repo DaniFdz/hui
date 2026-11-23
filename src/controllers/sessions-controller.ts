@@ -4,18 +4,23 @@
  * unread mark current, the collapsed groups (`COLLAPSED_KEY`), the subagent trees toggled open and the open group
  * menu, and the shell's action toast and session archive toast with their timers. It also owns the Sessions page
  * (state, filters, selection, bulk delete and transcript search) and the Settings → Worktrees inventory with its
- * removal queue and the poll that runs while facts are pending. The shell decides when the stream starts and follows
- * each list into its layout and selection.
+ * removal queue and the poll that runs while facts are pending. It also publishes the registry the chat's
+ * `session:<id>` chips resolve against (`lib/session/session-reference-store.ts`), so every list and status change
+ * reaches them. The shell decides when the stream starts and follows each list into its layout and selection.
  */
 import type { ReactiveControllerHost } from "lit";
 import { applySessionListUpdate } from "../api/session-list.ts";
 import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
-import { isGatewayUnavailable } from "../api/request.ts";
+import { GatewayHttpError, isGatewayUnavailable } from "../api/request.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
+import { navigationPath } from "../lib/navigation.ts";
+import { nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
+import { publishSessionReferences } from "../lib/session/session-reference-store.ts";
 import { sessionTreeIds } from "../lib/session/tree.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "../lib/worktrees.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageProps, type SessionsPageState, type TranscriptSearchState } from "../views/sessions.ts";
@@ -48,9 +53,24 @@ type SessionsDeps = {
 };
 
 export class SessionsController {
-  groups: readonly SessionGroup[] = [];
+  /** The registry as the shell reads it; every assignment publishes it, so no list or status path can miss the chat's
+   * session chips. */
+  #groups: readonly SessionGroup[] = [];
+
+  get groups(): readonly SessionGroup[] {
+    return this.#groups;
+  }
+
+  set groups(groups: readonly SessionGroup[]) {
+    this.#groups = groups;
+    publishSessionReferences(groups);
+  }
+
   loading = true;
   error = "";
+  /** The gateway this page came from is not answering: the sidebar's footer says Offline and keeps a way to another
+   * one. A successful list read, a live status stream or its first snapshot clears it. */
+  unreachable = false;
   /** Revision of the gateway session list in `groups`; older lists lose. */
   revision = 0;
   statuses = new Map<string, SessionStatus>();
@@ -86,10 +106,15 @@ export class SessionsController {
   #streamWanted = false;
   /** One lightweight connection keeps background session lifecycle visible. */
   #statusStreamStop: (() => void) | undefined;
+  /** The phone shell's notification slot per session, handed out in the order sessions announce themselves: a session
+   * that settles twice replaces its own notification, and two sessions can never land in one slot. */
+  #notificationSlots = new Map<string, number>();
   #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   #actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   #worktreePoll: ReturnType<typeof setTimeout> | undefined;
   #worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
+  #listRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  #listRetryAttempt = 0;
 
   constructor(host: SessionsHost, deps: SessionsDeps) {
     this.#host = host;
@@ -102,16 +127,26 @@ export class SessionsController {
   }
 
   #openStatusStream(): void {
-    this.#statusStreamStop ??= subscribeSessionStatuses({
+    if (this.#statusStreamStop) return;
+    let stop: (() => void) | undefined;
+    stop = subscribeSessionStatuses({
       onSnapshot: this.#applyStatusSnapshot,
       onStatus: this.#applyStatusUpdate,
       onSessions: this.#applyListChange,
+      onStop: () => {
+        if (this.#statusStreamStop === stop) this.#statusStreamStop = undefined;
+      },
+      onConnection: (state: "live" | "lost") => this.#setUnreachable(state === "lost"),
       heldRevision: () => this.revision,
     });
+    this.#statusStreamStop = stop;
   }
 
   stop(): void {
     this.#streamWanted = false;
+    this.#listRetryAttempt = 0;
+    clearTimeout(this.#listRetryTimer);
+    this.#listRetryTimer = undefined;
     clearTimeout(this.#worktreePoll);
     clearTimeout(this.#actionToastTimer);
     this.#statusStreamStop?.();
@@ -123,7 +158,12 @@ export class SessionsController {
   }
 
   async refresh(background = false): Promise<void> {
-    if (!background) {
+    clearTimeout(this.#listRetryTimer);
+    this.#listRetryTimer = undefined;
+    // A refresh that already has a list on screen keeps it: swapping the sidebar's rows for placeholders collapses
+    // its scroll and loses the reader's place. Only a read with nothing behind it waits with placeholders.
+    const firstRead = !background && !this.revision;
+    if (firstRead) {
       this.loading = true;
       this.#host.requestUpdate();
     }
@@ -140,17 +180,22 @@ export class SessionsController {
     try {
       const { revision, groups } = await pending;
       settled = true;
+      this.#listRetryAttempt = 0;
       // The status stream may have delivered newer changes while this loaded.
       this.receive(revision, this.#hasStatusSnapshot ? mergeSessionStatuses(groups, this.statuses) : groups);
       this.error = "";
+      this.#setUnreachable(false);
     } catch (error) {
       settled = true;
       if (isGatewayUnavailable(error)) {
+        this.#setUnreachable(true);
         const groups = await saved;
         if (!this.revision) this.groups = [];
         showSaved(groups);
-      } else if (!this.revision) {
-        this.groups = [];
+      } else {
+        // Any HTTP answer — a refusal included — is the gateway being reachable, so the footer stops offering a switch.
+        if (error instanceof GatewayHttpError) this.#setUnreachable(false);
+        if (!this.revision) this.groups = [];
       }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
       if (this.groups.length === 0) {
@@ -158,8 +203,19 @@ export class SessionsController {
       } else if (this.revision) {
         this.#deps.reportError(error, message);
       }
+      // A gateway that never answered may answer shortly; a refusal will not. Keep asking while the shell wants its
+      // list, so a transient stall no longer needs a page reload.
+      if (this.#streamWanted && isGatewayUnavailable(error)) {
+        this.#listRetryAttempt += 1;
+        this.#listRetryTimer = setTimeout(() => {
+          this.#listRetryTimer = undefined;
+          if (this.#streamWanted) void this.refresh(this.revision > 0);
+        }, reconnectDelay(this.#listRetryAttempt + 1));
+      } else {
+        this.#listRetryAttempt = 0;
+      }
     } finally {
-      if (!background) this.loading = false;
+      if (firstRead) this.loading = false;
       this.#host.requestUpdate();
       this.#deps.listSettled();
       if (this.#streamWanted) this.#openStatusStream();
@@ -480,6 +536,7 @@ export class SessionsController {
   #applyStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
     // The status stream has just (re)connected, so the gateway is reachable
     // again: a list that failed to load earlier is worth asking for once more.
+    this.#setUnreachable(false);
     if (this.error && !this.loading) void this.refresh();
     this.statuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
@@ -501,6 +558,11 @@ export class SessionsController {
   #applyStatusUpdate = (update: SessionStatusUpdate) => {
     const { id, status, unread, creating, creationError, title } = update;
     const presented = this.#deps.presented(id);
+    // Only a phone shell has anything to say about a settled turn, so a browser pays for neither lookup an announcement
+    // needs. The row is read once here and handed to the announcement rather than looked up a second time.
+    const shell = nativeShell();
+    const session = shell ? this.listed(id) : undefined;
+    const previous = shell ? this.statuses.get(id) ?? session?.status : undefined;
     this.statuses.set(id, status);
     if (unread !== undefined) this.unread.set(id, unread);
     // A settled worktree session now has its real title and directory, or its error.
@@ -522,8 +584,38 @@ export class SessionsController {
     }));
     this.#host.requestUpdate();
     if (created) void this.refresh(true);
+    if (shell) this.#announceActivity(shell, update, previous, session);
     this.#deps.statusApplied(update);
   };
+
+  /** A phone in the background cannot show a turn that settled or a question that waits: the shell says it. The seam
+   * is silent while the shell is in the foreground, and a browser never gets here, so nothing changes the web. */
+  #announceActivity(shell: NativeShell, update: SessionStatusUpdate, previous: SessionStatus | undefined, session: SessionView | undefined): void {
+    if (previous === undefined || previous === update.status) return;
+    const waiting = update.status === "waiting";
+    const finished = update.status === "idle" && (previous === "running" || previous === "waiting");
+    if (!waiting && !finished) return;
+    // A subagent's own turn is its parent's news, not a notification of its own.
+    if (session?.parentId) return;
+    const path = session?.bot
+      ? navigationPath({ kind: "bot", id: session.bot.id })
+      : navigationPath({ kind: "session", id: update.id });
+    void shell.notify({
+      id: this.#notificationSlot(update.id),
+      title: update.title ?? session?.title ?? "HUI",
+      body: waiting ? "Waiting for your answer" : "Its turn finished",
+      path,
+    });
+  }
+
+  /** This session's notification slot, allocated the first time it announces itself so no two sessions can collide. */
+  #notificationSlot(id: string): number {
+    const existing = this.#notificationSlots.get(id);
+    if (existing !== undefined) return existing;
+    const slot = this.#notificationSlots.size + 1;
+    this.#notificationSlots.set(id, slot);
+    return slot;
+  }
 
   #applyListChange = (update: SessionListUpdate) => {
     if (update.revision <= this.revision) return;
@@ -533,4 +625,11 @@ export class SessionsController {
     this.error = "";
     this.#deps.listSettled();
   };
+
+  /** Assigns only when the answer changed: a stream that keeps failing must not redraw the shell for each attempt. */
+  #setUnreachable(unreachable: boolean): void {
+    if (this.unreachable === unreachable) return;
+    this.unreachable = unreachable;
+    this.#host.requestUpdate();
+  }
 }

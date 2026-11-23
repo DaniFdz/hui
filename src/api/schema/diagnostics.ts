@@ -10,7 +10,7 @@ export type DiagnosticLevel = ("info") | ("warning") | ("error");
 
 export type DiagnosticsError = { "error": string; };
 
-export type GatewayHealth = { "status": "online"; "transport": "HTTP + SSE"; "uptimeSeconds": number; "access": "Full Access"; "sessions": { "idle": number; "running": number; "waiting": number; "starting": number; "error": number; "reconnecting": number; "disconnected": number; "registered": number; "processes": number; }; };
+export type GatewayHealth = { "status": "online"; "transport": "HTTP + SSE"; "uptimeSeconds": number; "access": "Full Access"; "name": string; "sessions": { "idle": number; "running": number; "waiting": number; "starting": number; "error": number; "reconnecting": number; "disconnected": number; "registered": number; "processes": number; }; };
 
 export type ObservabilitySnapshot = { "generatedAt": string; "retention": { "kind": "memory"; "maximum": number; "since": string; }; "activity": Array<DiagnosticEvent>; "logs": Array<DiagnosticEvent>; "usage": UsageTotals; "debug": { "node": string; "platform": string; "uptimeSeconds": number; "memory": { "rssBytes": number; "heapUsedBytes": number; "heapTotalBytes": number; }; "eventCount": number; }; };
 

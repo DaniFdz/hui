@@ -90,7 +90,9 @@ test("New worktree starts the session in a new checkout on a utility-named branc
   await screen.getByLabel("Branch suggestions").getByText("release/1.0").tap();
   await expect(screen.getByLabel("Checkout: New worktree from release/1.0")).toBeVisible();
 
-  await screen.getByText("Pick where this session works, then say what to do.").tap();
+  // The popover covers the hint below it on a phone, so it is left through its own trigger, where a sideways tap cannot
+  // reach. A native popover closes on any click outside it, which the trigger is.
+  await screen.getByLabel("Checkout: New worktree from release/1.0").tap();
   await screen.getByPlaceholder("What should this session work on?").fill("Tidy the launch form");
   await screen.getByRole("button", "Start session").tap();
   await expect(screen.getByTestId("transcript")).toContainText("Fixture response.");

@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 test("a Markdown file opens rendered with its headings, lists, tables and code blocks, and Source shows and edits it", { tags: ["WORK-048"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -18,7 +19,7 @@ test("a Markdown file opens rendered with its headings, lists, tables and code b
   const pane = screen.getByLabel("Work pane");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await navigator.getByRole("button", "doc.md").tap();
   await expect(pane.getByRole("tab", "doc.md")).toBeVisible();
 

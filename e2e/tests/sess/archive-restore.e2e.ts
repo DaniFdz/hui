@@ -1,4 +1,4 @@
-/** Archive session hides a session and its subagents without stopping their work, the toast's Restore (inside a phone screen too) and the Sessions page bring the tree back, and a message to an archived session restores it too (SESS-034, SESS-035, SESS-036). */
+/** Archive session hides a session and its subagents without stopping their work, the toast's Restore (inside a phone screen too) and the Sessions page bring the tree back, a message to an archived session restores it too, and the list keeps its place while the refresh reads (SESS-034, SESS-035, SESS-036). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -38,16 +38,43 @@ test("Archive session hides the whole tree, returns an open view Home and keeps 
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
 });
 
+test("the sidebar keeps its place when archiving refreshes the list", { tags: ["SESS-034"], platforms: ["web"] }, async ({ screen, hui }) => {
+  // The status stream sends no list frames here, so only the refresh's own read can end its loading state.
+  await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
+  for (let index = 1; index <= 40; index += 1) await hui.createSession({ title: `Seeded session ${index}` });
+  await hui.reload();
+  const reference = screen.getByLabel(row("Seeded session 40"));
+  await expect(reference).toBeVisible();
+  await hui.scrollTo(screen.getByTestId("shell-sidebar"), screen.getByLabel(row("Seeded session 20")));
+  const place = async () => Math.round((await reference.boundingBox())!.y);
+  const before = await place();
+  expect(before).toBeLessThan(0);
+
+  const refresh = await hui.intercept("GET", /\/__hui\/sessions$/u);
+  await hui.sessionMenu("Seeded session 15");
+  await screen.getByText("Archive session", { visible: true }).tap();
+  await refresh.arrived();
+  await expect(reference).toBeVisible();
+  expect(await place()).toBe(before);
+  await refresh.deliver();
+
+  await expect(screen.getByText("Archived “Seeded session 15”.")).toBeVisible();
+  await expect(screen.getByLabel(row("Seeded session 15"))).toBeHidden();
+  expect(await place()).toBe(before);
+});
+
 test("archiving a session closes its split pane and leaves the open conversation alone", { tags: ["SESS-034"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.createSession({ title: "Split parent" });
   const other = await hui.createSession({ title: "Main conversation" });
   await hui.open(`/sessions/${other.id}`);
+  await hui.sessionList();
   await hui.sessionMenu("Split parent");
   await screen.getByText("Open in split pane", { visible: true }).tap();
   await expect(screen.getByLabel(/^Split parent, status idle, .*, open in split pane$/u)).toBeVisible();
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveCount(2);
   await screen.getByTestId("session-title", { visible: true }).filter({ hasText: "Main conversation" }).tap();
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${other.id}$`, "u"));
+  await hui.sessionList();
   await hui.sessionMenu("Split parent");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Split parent”.")).toBeVisible();
@@ -61,6 +88,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   const restore = screen.getByRole("button", "Restore");
   const session = await hui.createSession({ title: "Fragile restore" });
   await hui.open("/");
+  await hui.sessionList();
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
@@ -74,6 +102,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await expect(screen.getByText("Session restored.")).toBeVisible();
   await expect(screen.getByLabel(row("Fragile restore"))).toBeVisible();
 
+  await hui.sessionList();
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
@@ -86,6 +115,7 @@ test("on a phone screen the archive toast keeps Restore and its dismiss button i
   const restore = screen.getByRole("button", "Restore");
   const dismiss = screen.getByRole("button", "Dismiss archive notification");
   const archive = async () => {
+    await hui.sessionList();
     await hui.sessionMenu("Pocket session");
     await screen.getByText("Archive session", { visible: true }).tap();
     await expect(toast).toBeVisible();

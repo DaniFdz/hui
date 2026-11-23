@@ -1,11 +1,15 @@
 /**
- * Settings → Tools → Browser. The switches and path save through the shared settings store; the gateway reports the
- * process, its tabs and previews, which this page polls and captures while it is open.
+ * Settings → Tools → Browser. The switches, the path and the origin allowlist save through the shared settings store;
+ * the gateway reports the process, its tabs and previews, which this page polls and captures while it is open. Site
+ * secrets are their own list: names and origins come back from the gateway, values only ever go one way. An import of
+ * an exported login is an action rather than a setting: the typed path goes to the gateway, which reads the file on
+ * its own disk, and only a count of cookies and the domains they name come back.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import type { BrowserStatus, BrowserTabView } from "../../api/schema/browser.ts";
+import { keyed } from "lit/directives/keyed.js";
+import type { BrowserSecretView, BrowserStatus, BrowserTabView } from "../../api/schema/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "../../lib/browser-status.ts";
-import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../../api/browser.ts";
+import { controlBrowser, importBrowserCookies, loadBrowserSecrets, loadBrowserStatus, previewBrowserTab, removeBrowserSecret, saveBrowserSecret } from "../../api/browser.ts";
 import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../../lib/settings/settings.ts";
 import { renderSettingsToggle } from "../../views/settings-toggle.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
@@ -14,6 +18,22 @@ loadViewAssets(() => import("../../styles/tools.css"));
 
 /** Tabs and state change as agents work; this page is the only reader. */
 const POLL_MS = 4_000;
+
+/** The route's own sentence for a path it will not accept (server/routes/browser.ts). Kept in step with it so an empty
+ * field is refused here instead of costing a round-trip to say the same thing. */
+export const COOKIE_PATH_SENTENCE = "Give an absolute path to the cookie file.";
+
+/** What a submission sends: the path as typed but trimmed, or the refusal to show without asking the gateway. */
+export function cookieImportPath(value: string): { path: string } | { error: string } {
+  const path = value.trim();
+  return path ? { path } : { error: COOKIE_PATH_SENTENCE };
+}
+
+/** The report's message as the lines to draw: it counts cookies, names domains, and says when they apply. Each line is
+ * its own element because the text is the gateway's and its breaks are meaningful. */
+export function cookieReportLines(message: string): string[] {
+  return message.split("\n").map((line) => line.trimEnd()).filter((line) => line !== "");
+}
 
 export class HuiBrowserSettings extends LitElement {
   static override properties = {
@@ -28,6 +48,15 @@ export class HuiBrowserSettings extends LitElement {
   #error = "";
   #request = 0;
   #poll?: ReturnType<typeof setTimeout>;
+  #secrets: BrowserSecretView[] | undefined;
+  #secretError = "";
+  /** Remounts the add form after a save so its value field is empty again. */
+  #secretForm = 0;
+  /** The last import's report, and the refusal of the last one. Neither is a setting, so neither is saved, and both
+   * outlive the status poll that rewrites everything the gateway reports. */
+  #cookieReport = "";
+  #cookieError = "";
+  #importing = false;
   /** Preview data URLs keyed by tab id, with the URL they were captured for. */
   readonly #previews = new Map<string, { url: string; image?: string; error?: string }>();
 
@@ -42,6 +71,7 @@ export class HuiBrowserSettings extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     void this.#refresh();
+    void this.#refreshSecrets();
   }
 
   override disconnectedCallback() {
@@ -163,6 +193,156 @@ export class HuiBrowserSettings extends LitElement {
     </form>`;
   }
 
+  /** The list is the browser's whole reach: a page outside it is refused, and a link that leaves it is stopped. */
+  #renderOrigins() {
+    const settings = this.settings;
+    const count = settings.allowedOrigins.length;
+    const description = count
+      ? `${count} pattern${count === 1 ? "" : "s"}. A page outside them is refused, a link or redirect that leaves them is stopped and the tab is left blank, and a local file is refused. Subresources a page loads are not filtered.`
+      : "Empty lets agents browse anywhere, which is the default. One pattern per line: example.com, example.com:8443, https://app.example.com, or *.example.com for subdomains only.";
+    return html`<form class="settings-row browser-settings__origins" @submit=${(event: SubmitEvent) => {
+      event.preventDefault();
+      const raw = new FormData(event.currentTarget as HTMLFormElement).get("allowedOrigins");
+      const patterns = String(raw ?? "").split(/[\n,]/u).map((pattern) => pattern.trim()).filter(Boolean);
+      void this.#save({ ...settings, allowedOrigins: patterns });
+    }}>
+      <div class="settings-row__text">
+        <label class="settings-row__title" for="browser-allowed-origins">Allowed origins</label>
+        <span class="settings-row__desc">${description}</span>
+      </div>
+      <div class="settings-row__control">
+        <textarea class="settings-input browser-settings__origins-input" id="browser-allowed-origins" name="allowedOrigins"
+          rows="4" spellcheck="false" autocomplete="off" placeholder="example.com&#10;*.example.com"
+          .value=${settings.allowedOrigins.join("\n")}></textarea>
+        <button type="submit" class="btn">Save origins</button>
+      </div>
+    </form>`;
+  }
+
+  /**
+   * An import is one action against the gateway's own disk: the path leaves exactly as typed, and nothing of a cookie
+   * comes back. The field keeps its value so a corrected file can be retried without typing the path again.
+   */
+  async #importCookies(event: SubmitEvent) {
+    event.preventDefault();
+    const value = String(new FormData(event.currentTarget as HTMLFormElement).get("cookiesFile") ?? "");
+    const target = cookieImportPath(value);
+    this.#cookieReport = "";
+    this.#cookieError = "error" in target ? target.error : "";
+    if ("error" in target) {
+      this.requestUpdate();
+      return;
+    }
+    this.#importing = true;
+    this.requestUpdate();
+    try {
+      this.#cookieReport = (await importBrowserCookies(target.path)).message;
+      this.#cookieError = "";
+    } catch (error) {
+      this.#cookieError = error instanceof Error ? error.message : "The cookies could not be imported.";
+    } finally {
+      this.#importing = false;
+      this.requestUpdate();
+    }
+  }
+
+  /**
+   * A login another browser exported, as an absolute path on this machine: only cookies are read, and the report below
+   * counts them and names their domains. An action, so it writes no setting and the status poll leaves its answer alone.
+   */
+  #renderCookieImport() {
+    return html`<form class="settings-row pi-install-form browser-settings__cookies" @submit=${(event: SubmitEvent) => void this.#importCookies(event)}>
+      <div class="settings-row__text">
+        <span class="settings-row__title">Import cookies</span>
+        <span class="settings-row__desc">The login another browser exported, as a Playwright <code>storageState</code> file or a list of cookies, by absolute path on this machine, so this HUI browser starts signed in. Only cookies are read; a file's <code>origins</code> are ignored. No cookie name or value comes back to this page: the line below only counts them and names their domains.</span>
+        ${this.#cookieError ? html`<span class="settings-row__desc browser-settings__problem" role="alert">${this.#cookieError}</span>` : nothing}
+        <div class="browser-settings__report" role="status">${cookieReportLines(this.#cookieReport).map((line) => html`<span class="settings-row__desc">${line}</span>`)}</div>
+      </div>
+      <div class="settings-row__control">
+        <input class="settings-input" name="cookiesFile" aria-label="Cookies file" spellcheck="false" autocomplete="off"
+          placeholder="/home/you/cookies.json" />
+        <button type="submit" class="btn" ?disabled=${this.#importing}>Import cookies</button>
+      </div>
+    </form>`;
+  }
+
+  async #refreshSecrets() {
+    try {
+      this.#secrets = await loadBrowserSecrets();
+      this.#secretError = "";
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The site secrets could not be loaded.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  async #addSecret(event: SubmitEvent) {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const name = String(data.get("name") ?? "").trim();
+    const origin = String(data.get("origin") ?? "").trim();
+    const value = String(data.get("value") ?? "");
+    try {
+      this.#secrets = await saveBrowserSecret({ name, origin, value });
+      this.#secretError = "";
+      this.#secretForm += 1;
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The secret could not be saved.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  async #removeSecret(name: string) {
+    try {
+      this.#secrets = await removeBrowserSecret(name);
+      this.#secretError = "";
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The secret could not be removed.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  /** What is stored is a name and an origin; a value is write-only from here. */
+  #renderSecrets() {
+    const secrets = this.#secrets;
+    return html`<h3 class="browser-settings__subheading">Site secrets</h3>
+      <div class="settings-group browser-settings__secrets">
+        ${secrets === undefined
+          ? html`<div class="settings-row"><div class="settings-row__text"><span class="settings-row__desc">Loading…</span></div></div>`
+          : secrets.length === 0
+            ? html`<div class="settings-row"><div class="settings-row__text"><span class="settings-row__desc">None stored. An agent can type one into a login field without ever seeing it, and this machine keeps it in a file only you can read.</span></div></div>`
+            : secrets.map((secret) => html`<div class="settings-row">
+                <div class="settings-row__text">
+                  <span class="settings-row__title">${secret.name}</span>
+                  <span class="settings-row__desc">${secret.origin}${secret.createdAt ? ` · stored ${new Date(secret.createdAt).toLocaleDateString()}` : ""}</span>
+                </div>
+                <div class="settings-row__control"><button type="button" class="btn btn--sm" @click=${() => void this.#removeSecret(secret.name)}>Delete ${secret.name}</button></div>
+              </div>`)}
+        <form class="settings-row browser-settings__secret-form" @submit=${(event: SubmitEvent) => void this.#addSecret(event)}>
+          <div class="settings-row__text">
+            <span class="settings-row__title">Add a site secret</span>
+            <span class="settings-row__desc">The agent types it into a field whose page is exactly this origin, and its value never appears in the chat, a tool result or a log. Page script on that origin can still read the field once it is filled, so keep the origin allowlist narrow.</span>
+            ${this.#secretError ? html`<span class="settings-row__desc browser-settings__problem">${this.#secretError}</span>` : nothing}
+          </div>
+          <div class="settings-row__control browser-settings__secret-fields">
+            ${keyed(this.#secretForm, html`
+              <label class="browser-settings__label" for="browser-secret-name">Secret name</label>
+              <input class="settings-input" id="browser-secret-name" name="name" spellcheck="false" autocomplete="off" placeholder="github">
+              <label class="browser-settings__label" for="browser-secret-origin">Secret origin</label>
+              <input class="settings-input" id="browser-secret-origin" name="origin" spellcheck="false" autocomplete="off" placeholder="https://github.com">
+              <label class="browser-settings__label" for="browser-secret-value">Secret value</label>
+              <input class="settings-input" id="browser-secret-value" name="value" type="password" autocomplete="new-password">
+            `)}
+            <button type="submit" class="btn">Add secret</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
   #renderProcess(status: BrowserStatus) {
     const running = status.state === "running";
     const pending = status.state === "starting" || status.state === "stopping";
@@ -234,6 +414,8 @@ export class HuiBrowserSettings extends LitElement {
             </div>
             <div class="settings-row__control">${renderSettingsToggle("Run headless", settings.headless, (checked) => void this.#save({ ...settings, headless: checked }))}</div>
           </div>
+          ${this.#renderOrigins()}
+          ${this.#renderSecrets()}
           <div class="settings-row">
             <div class="settings-row__text">
               <span class="settings-row__title">Mirror browser state</span>
@@ -241,6 +423,7 @@ export class HuiBrowserSettings extends LitElement {
             </div>
             <div class="settings-row__control">${renderSettingsToggle("Mirror browser state", settings.mirrorState, (checked) => void this.#save({ ...settings, mirrorState: checked }))}</div>
           </div>
+          ${this.#renderCookieImport()}
           ${this.#renderExecutable(status)}
           ${status ? this.#renderProcess(status) : nothing}
           ${status?.profileDir ? html`<div class="settings-row">

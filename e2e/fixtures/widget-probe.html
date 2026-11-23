@@ -48,7 +48,13 @@
     const response = await fetch("/__hui/settings", { headers: { "x-hui": "1" } });
     return "HTTP " + response.status + " " + (await response.text()).slice(0, 80);
   }, "/__hui/settings");
-  await attempt("Read HUI's cookies", () => "read " + document.cookie.length + " characters");
+  await attempt("Read HUI's cookies", () => {
+    const cookies = document.cookie;
+    // WebKit returns an empty string for an opaque origin; Chromium throws.
+    // Only an opaque, empty read is isolation: a same-origin read or any exposed cookie is a failure.
+    if (self.origin === "null" && cookies === "") throw new Error("opaque origin exposes no cookies");
+    return "read " + cookies.length + " characters";
+  });
   await attempt("Read localStorage", () => window.localStorage.length + " keys");
   await attempt("Read HUI's DOM (top.document)", () => "title " + window.top.document.title);
   await attempt("Navigate the top window", async () => {

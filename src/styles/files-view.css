@@ -38,9 +38,11 @@ hui-files-view {
 /* ── Files navigator ── */
 .hui-files-nav {
   display: flex;
-  flex: 0 0 260px;
+  flex: 0 0 var(--hui-files-nav-width, 260px);
   flex-direction: column;
-  width: 260px;
+  width: var(--hui-files-nav-width, 260px);
+  min-width: 200px;
+  max-width: calc(100% - 240px);
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--panel, var(--bg));
@@ -241,7 +243,10 @@ hui-files-view {
   top: 0;
   bottom: 0;
   left: 0;
+  flex: 0 0 auto;
   width: min(86%, 320px);
+  min-width: 0;
+  max-width: none;
   box-shadow: var(--shadow-lg, 0 8px 32px rgb(0 0 0 / 25%));
 }
 .hui-files-backdrop {

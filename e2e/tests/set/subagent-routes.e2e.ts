@@ -3,7 +3,7 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
-test("Subagent routes show summaries and use a modal for creating and editing", { tags: ["SET-078"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Subagent routes show summaries and use a modal for creating and editing", { tags: ["SET-078"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { primary: "hui-e2e/fixture-deep", fallback: "", utility: "", routes: [] } });
   const savedRoutes = async () => (await hui.api<Settings>("GET", "/__hui/settings")).models.routes;
@@ -21,7 +21,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   await expect(dialog).toBeVisible();
   await expect(name).toBeFocused();
   await expect(name).toHaveValue("");
-  await expect(dialog.getByRole("button", "Model: HUI Route Fixture")).toBeVisible();
+  await expect(dialog.getByRole("button", "Model: Inherit the caller's model")).toBeVisible();
   await expect.poll(savedRoutes).toEqual([]);
   await name.fill("discarded");
   await dialog.getByRole("button", "Cancel").tap();
@@ -47,7 +47,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   }
   await name.fill(" fast ");
   await dialog.getByLabel("Description", { exact: true }).fill("Quick lookups");
-  await dialog.getByRole("button", "Model: HUI Route Fixture").tap();
+  await dialog.getByRole("button", "Model: Inherit the caller's model").tap();
   await dialog.getByLabel("Model", { exact: true }).getByText("HUI SDK Fixture", { exact: true }).tap();
   await dialog.getByRole("button", "Thinking: Inherit parent").tap();
   await dialog.getByLabel("Thinking", { exact: true }).getByText("low", { exact: true }).tap();
@@ -67,7 +67,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   await expect.poll(async () => (await savedRoutes()).map((route) => route.name)).toEqual(["fast"]);
   await name.fill("deep");
   await dialog.getByLabel("Description", { exact: true }).fill("Careful debugging");
-  await expect(dialog.getByRole("button", "Model: HUI Route Fixture")).toBeVisible();
+  await expect(dialog.getByRole("button", "Model: Inherit the caller's model")).toBeVisible();
   await dialog.getByRole("button", "Thinking: Inherit parent").tap();
   await dialog.getByLabel("Thinking", { exact: true }).getByText("high", { exact: true }).tap();
   await dialog.getByRole("button", "Add route").tap();
@@ -104,7 +104,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   await expect(route.getByText("Quick tasks", { exact: true })).toBeVisible();
 
   await edit("deep").tap();
-  await expect(editDialog.getByRole("button", "Model: HUI Route Fixture")).toBeVisible();
+  await expect(editDialog.getByRole("button", "Model: Inherit the caller's model")).toBeVisible();
   await expect(editDialog.getByRole("button", "Thinking: high")).toBeVisible();
   for (const invalid of ["", "two words", "fast"]) {
     await editName.fill(invalid);
@@ -114,7 +114,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   }
   await editName.fill("expert");
   await editDialog.getByLabel("Description", { exact: true }).fill("Careful debugging and design work");
-  await editDialog.getByRole("button", "Model: HUI Route Fixture").tap();
+  await editDialog.getByRole("button", "Model: Inherit the caller's model").tap();
   await editDialog.getByLabel("Model", { exact: true }).getByText("HUI SDK Fixture", { exact: true }).tap();
   await editDialog.getByRole("button", "Thinking: high").tap();
   await editDialog.getByLabel("Thinking", { exact: true }).getByText("Inherit parent", { exact: true }).tap();
@@ -165,7 +165,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   await expect.poll(async () => (await savedRoutes()).length).toBe(50);
 });
 
-test("a routed spawn uses its model and thinking; invalid routes create no children", { tags: ["SET-079"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a routed spawn uses its model and thinking; invalid routes create no children", { tags: ["SET-079"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: {
     primary: "hui-e2e/fixture", fallback: "", utility: "",
@@ -185,8 +185,8 @@ test("a routed spawn uses its model and thinking; invalid routes create no child
   };
 
   await hui.open(`/sessions/${session.id}`);
-  await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true })).toBeVisible();
-  await expect(screen.getByLabel("Thinking: high", { exact: true })).toBeVisible();
+  await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByLabel("Thinking: high", { exact: true, visible: true })).toBeVisible();
   await expect(sessions).toHaveCount(1);
   await send({ task: "E2E_SUBAGENT_CHILD unknown", label: "Unknown worker", route: "no-such-route" });
   await expect(transcript.getByText(/^tool answered:.*Unknown route: no-such-route\. Configured routes are fast, deep\./su)).toBeVisible();
@@ -211,4 +211,27 @@ test("a routed spawn uses its model and thinking; invalid routes create no child
   await screen.getByLabel(/^Route parent, status idle,/u).tap();
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: high", { exact: true })).toBeVisible();
+});
+
+test("a route without a model runs its child on the caller's model and thinking", { tags: ["SET-079"] }, async ({ screen, hui }) => {
+  const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
+  await hui.api("PUT", "/__hui/settings", { ...settings, models: {
+    primary: "hui-e2e/fixture", fallback: "", utility: "",
+    routes: [{ name: "inherit", description: "Runs on the caller's model." }],
+  } });
+  const session = await hui.createSession({ title: "Inherit parent" });
+  const sessions = screen.getByLabel(/, tool durable, stage investigation/u);
+  await hui.open(`/sessions/${session.id}`);
+  await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByLabel("Thinking: high", { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await screen.getByLabel("Message").fill(`E2E_CALL:${Buffer.from(JSON.stringify({ name: "sessions_spawn", input: {
+    task: "E2E_SUBAGENT_CHILD inherited", label: "Inherited worker", route: "inherit",
+  } })).toString("base64url")}`);
+  await screen.getByRole("button", "Send message").tap();
+  await screen.getByRole("button", "Expand subagents of Inherit parent").tap();
+  await expect(sessions).toHaveCount(2);
+  await screen.getByLabel(/^Inherited worker, status idle,/u).tap();
+  await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByLabel("Thinking: high", { exact: true, visible: true })).toBeVisible();
 });

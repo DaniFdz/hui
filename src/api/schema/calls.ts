@@ -3,7 +3,7 @@ import type { GptLiveVoice } from "./bots.ts";
 
 export type CallDelegationRequest = { "id": string; "request": string; };
 
-export type CallDelegationResult = { "status": ("answered") | ("handed-off") | ("failed") | ("timeout") | ("limit"); "speak": string; "task"?: string; };
+export type CallDelegationResult = { "status": ("answered") | ("handed-off") | ("failed") | ("timeout"); "speak": string; "task"?: string; };
 
 export type CallEnded = { "ended": boolean; };
 

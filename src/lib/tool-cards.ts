@@ -1,9 +1,10 @@
 /**
  * What the chat's read, command and codemode tool cards show, worked out from a tool call: the file a read names, the
- * command a shell call runs, a codemode script's calls and outcome. Pure, so the web's cards
- * (`src/views/chat/*-tool-card.ts`) and the iOS core read tool calls the same way.
+ * command a shell call runs, a codemode script's calls and outcome, and how long a finished call took. Pure, so the
+ * web's cards (`src/views/chat/*-tool-card.ts`) and `chat-rows.ts` read tool calls the same way.
  */
 import type { TranscriptItem } from "../api/sessions.ts";
+import { elapsedLabel } from "./message-metadata.ts";
 import { stripShellPreamble } from "./tool-shell-display.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
@@ -140,6 +141,23 @@ export function formatCallDuration(ms: number): string {
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1_000)}s`;
+}
+
+/**
+ * How long the gateway measured the tool itself taking, worded as the message footer words a call's duration
+ * (" in 87 ms"), or nothing while it runs or when the gateway reported no timing.
+ */
+export function toolTiming(item: Tool): string {
+  const duration = item.metrics?.durationMs;
+  if (duration === undefined || (item.status ?? "running") === "running") return "";
+  return ` in ${elapsedLabel(duration)}`;
+}
+
+/** The outcome line of a read or command card: what happened, and how long it took. */
+export function toolCardOutcome(item: Tool): string {
+  const running = (item.status ?? "running") === "running";
+  const failed = item.failed || item.status === "failed";
+  return `${failed ? "failed" : running ? "Running" : "Completed"}${toolTiming(item)}`;
 }
 
 /** The row's line after the name: the tools the script called. Its badge says what failed. */

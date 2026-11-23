@@ -35,6 +35,7 @@
     "/settings/skills",
     "/settings/automation",
     "/settings/plugins",
+    "/settings/extensions",
     "/settings/memory",
     "/settings/security",
     "/settings/diagnostics",

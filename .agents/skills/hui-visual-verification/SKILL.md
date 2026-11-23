@@ -82,18 +82,19 @@ viewport, scenario, commit, fixture type and limitations alongside the images.
 Screenshots prove appearance, not streaming, persistence or backend correctness;
 retain the assertions that demonstrate those behaviors.
 
-For a change the iOS app shows, also:
+Also run the shared tests of the use cases the change touches with
+`npm run e2e -- --tag <ID>`. Screenshots the tests write under `.e2e/results/`
+are copied outside the checkout before upload; the library writes there because
+`.e2e/` is ignored, so keep everything else outside the tree.
 
-1. Run the shared tests of the use cases the change touches on both platforms:
-   `npm run e2e -- --tag <ID>`, then `npm run ios:build` and
-   `npm run e2e:ios -- --tag <ID>` on the booted "HUI iPhone" simulator
-   (`ios/AGENTS.md` says how to create it).
-2. Take the screenshots the tests wrote under `.e2e/results/` and copy them
-   outside the checkout for upload. The library writes there because `.e2e/` is
-   ignored; keep everything else outside the tree.
-3. Look at new or changed iOS screens yourself, with
-   `xcrun simctl io booted screenshot <path outside the checkout>`, and record
-   any gap.
+### The phone app
+
+A change under `mobile/`, or one whose phone layout is what moved, gets the emulator's proof: follow
+[the Android procedure](references/android.md), which builds this checkout's Connect page and APK with
+`npm run mobile -- dev`, drives the app with `agent-device` and captures each affected state at `--scale 0.4` in light
+and dark. The iPhone's evidence is CI's once WP5 adds the job: [the iOS evidence](references/ios.md) says where `ios-smoke`'s
+screenshots are, what they can show and what stays a proof gap, and why a WebKit capture at an iPhone size is never the
+app's proof.
 
 **Done:** fresh, visually inspected images and behavior assertions agree.
 

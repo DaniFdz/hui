@@ -1,0 +1,39 @@
+/* The boundary between a view's file list and its content (lib/panel-width.ts): a seven-pixel hit area that
+   overlaps the list's edge and cancels its own width, so dragging it never changes the layout by itself. */
+.hui-panel-resizer {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 7px;
+  align-self: stretch;
+  width: 7px;
+  margin-inline-start: -7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.hui-panel-resizer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 1px;
+  background: transparent;
+  transition: background 150ms ease-out, width 150ms ease-out;
+}
+
+.hui-panel-resizer:hover::after,
+.hui-panel-resizer.is-resizing::after,
+.hui-panel-resizer:focus-visible::after {
+  width: 2px;
+  background: var(--accent);
+}
+
+.hui-panel-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.hui-panel-resizing {
+  cursor: col-resize;
+  user-select: none;
+}

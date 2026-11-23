@@ -1,5 +1,5 @@
 /**
- * Triggers in the gateway (HUI-18): the service and the route its listeners report to, wired to the gateway's bots
+ * Triggers in the gateway: the service and the route its listeners report to, wired to the gateway's bots
  * and the GitHub CLI that reads the pull requests a delivery links to. `services.ts` makes one of these,
  * `backend.ts` starts and stops it, and `hui.ts` routes `/__hui/bots/:id/triggers…` and `POST /__hui/hooks/<token>` to it.
  */
@@ -8,7 +8,7 @@ import type { IncomingMessage } from "node:http";
 import type { BotRecord } from "../bots-format.ts";
 import { createBotTriggerRoutes } from "../routes/bot-triggers.ts";
 import { BotTriggerService } from "./triggers.ts";
-import { HOOK_ROUTE, isTailnetOrLoopback, readHookBody } from "./triggers-listener.ts";
+import { HOOK_ROUTE, isTailnetOrLoopback, parseHookBody, readHookBody } from "./triggers-listener.ts";
 import { ghRaw, pullRequestReader, type GhRaw } from "./triggers-prs.ts";
 import { triggerStore } from "./triggers-store.ts";
 
@@ -19,6 +19,9 @@ export type GatewayTriggerDeps = {
   /** The GitHub CLI the gateway runs (`HUI_GITHUB_CLI` points tests at a fake). */
   ghCommand: string;
   report(event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }): void;
+  /** Where a bot on a worker takes its listeners' reports: that machine's own loopback endpoint, or why it has none
+   * (`BotTriggerServiceDeps.hookWorker`). */
+  hookWorker?(bot: BotRecord): { id: string; name: string; base?: string; error?: string } | undefined;
   /** Overrides for tests: the store file and gh. */
   triggersFile?: string;
   ghRaw?: GhRaw;
@@ -35,6 +38,7 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
     bots: { list: deps.listBots, deliver: (botId, text, delivery) => deps.send(botId, { text, whenBusy: delivery }) },
     pullRequests: (urls, diffBudget) => readPullRequests(urls, diffBudget),
     report,
+    ...(deps.hookWorker ? { hookWorker: deps.hookWorker } : {}),
   });
   return {
     service,
@@ -48,6 +52,20 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
       const token = HOOK_ROUTE.exec(path)?.[1];
       if (!token) return { status: 404, body: { error: "No trigger has this URL." } };
       return service.hook(token, () => readHookBody(request));
+    },
+    /**
+     * A report a worker's host relayed over its gateway connection (`hooks.report`): the same decision path as the route,
+     * answered the same way, its body parsed as JSON here. The route's caller rule is the worker's own: its endpoint binds
+     * loopback on that machine, so a report it relays is a listener's there. Only a connected worker peer makes this
+     * request (`services.ts`), and nothing about the token or the body is logged.
+     */
+    async relay(params: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
+      const token = params["token"];
+      const body = params["body"];
+      if (typeof token !== "string" || !token.trim() || typeof body !== "string") {
+        return { status: 400, body: { error: "A relayed report carries its trigger's token and the listener's body as text." } };
+      }
+      return service.hook(token, async () => parseHookBody(body));
     },
   };
 }

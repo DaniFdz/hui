@@ -441,13 +441,14 @@ class WorkerConnection {
     };
   }
 
-  async startSession(key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
+  async startSession(key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string; botSkills?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     const launch: RemoteLaunch = {
       ...await this.#launchDefaults(this.#sync?.pluginIds ?? new Map()), cwd: options.cwd,
       ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
       ...(options.model ? { model: options.model } : {}),
       ...(options.thinking ? { thinking: options.thinking } : {}),
       ...(options.title ? { title: options.title } : {}),
+      ...(options.botSkills ? { botSkills: options.botSkills } : {}),
     };
     // Registered before the request: events can arrive in the same chunk as
     // the reply, before the awaiting code below resumes.
@@ -666,6 +667,23 @@ export class WorkerService {
     return connection && !connection.closed ? connection.host.features ?? [] : undefined;
   }
 
+  /** Resolves once this worker's connection is registered here, or rejects with why opening it failed. A host sends its
+   * own requests as soon as its socket is up, which is before the gateway has finished connecting: anything that must
+   * reach the worker's chats waits for this instead of failing on a connection it cannot see yet. */
+  async ready(id: string): Promise<void> {
+    const connection = this.#connections.get(id);
+    if (connection && !connection.closed) return;
+    await this.#connecting.get(id);
+  }
+
+  /** The loopback port a connected worker's host listens on for the reports of listeners running on that machine:
+   * undefined while HUI is not connected, for a host that predates the endpoint, and for one that could not bind it. */
+  hookPort(id: string): number | undefined {
+    const connection = this.#connections.get(id);
+    const port = connection && !connection.closed ? connection.host.hookPort : undefined;
+    return typeof port === "number" && port > 0 ? port : undefined;
+  }
+
   /** One request to the host of a connected worker. Never connects: without a live connection it fails at once. */
   hostRequest<T>(id: string, op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     const connection = this.#connections.get(id);
@@ -876,7 +894,7 @@ export class WorkerService {
   }
 
   /** Starts (or reattaches to) one HUI session's runtime on the worker. */
-  async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
+  async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string; botSkills?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     // An unreachable (or removed) worker says nothing about the session, which
     // may well be running there.
     const unreachable = (error: unknown) => new RuntimeUnreachableError(error instanceof Error ? error.message : String(error), this.#reconnect.has(id));

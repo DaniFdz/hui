@@ -31,6 +31,12 @@ test("Skills sit beside the tools, searchable once there are many; the request i
   assert.match(skills, /const searchable = catalog\.skills\.length >= SKILL_SEARCH_MIN;/u);
   assert.match(skills, /type="search" placeholder="Search skills" aria-label="Search skills"/u);
   assert.match(skills, /No skill matches/u);
+  const editor = between(source, "function renderSkillEditor(", "export function renderBotToolsTab(");
+  assert.match(skills, /skill\.own \? html`<button type="button" class="btn btn--sm" aria-label=\$\{`Edit skill \$\{skill\.name\}`\}/u);
+  assert.match(skills, /props\.state\.editing\?\.name === skill\.name \? renderSkillEditor\(props, skill, disabled\) : nothing/u);
+  assert.match(editor, /aria-label=\$\{`Skill text for \$\{skill\.name\}`\}/u, "the whole SKILL.md is editable");
+  assert.match(editor, /Keep <code>name: \$\{skill\.name\}<\/code>/u, "the folder's name stays the frontmatter name");
+  assert.match(editor, /Save skill/u);
   const request = between(source, "function renderRequest(", "function renderTools(");
   assert.match(request, /const \[allow, deny\] = BOT_ACCESS_ANSWERS;/u);
   assert.match(request, /@click=\$\{\(\) => props\.onAnswer\(allow\)\}>\$\{allow\}<\/button>/u);
@@ -48,4 +54,6 @@ test("the Tools & skills page's styles use theme tokens only, so dark and light 
   assert.match(styles, /\.bot-tools__group \{[^}]*background: var\(--card\);/u);
   assert.match(styles, /\.bot-tools__powerful \{[^}]*color: var\(--warn\);/u);
   assert.match(styles, /@media \(pointer: coarse\) \{\n\s+\.bot-tools__row \{ min-height: 44px; \}/u);
+  assert.match(styles, /\.bot-tools__editor \{[^}]*border: 1px solid var\(--border\);/u);
+  assert.match(styles, /\.bot-tools__skill-text \{[^}]*font-family: var\(--font-mono\);/u);
 });
