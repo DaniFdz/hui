@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { attachPeer, LineSplitter } from "./protocol.ts";
 
-function pair() {
+function pair(onLine?: (line: string) => boolean) {
   const ab = new PassThrough();
   const ba = new PassThrough();
-  return { a: attachPeer(ba, ab), b: attachPeer(ab, ba), ab, ba };
+  return { a: attachPeer(ba, ab, onLine), b: attachPeer(ab, ba), ab, ba };
 }
 
 const aborted = (signal: AbortSignal) => signal.aborted ? Promise.resolve() : new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
@@ -50,12 +50,14 @@ test("malformed input closes the peer instead of throwing", async () => {
 });
 
 test("a peer that goes silent is closed, one that pings is kept", async () => {
-  const { a, b } = pair();
+  // Every frame `a` hears is on the wire here, so its pings are the state that proves the window elapsed open.
+  let pings = 0;
+  const { a, b } = pair((line) => { if (line.includes("\"t\":\"ping\"")) pings += 1; return false; });
   // Generous misses: a loaded test run can stall timers, never for half a second.
   b.keepAlive(10, 50);
   a.keepAlive(10, 50);
-  // Both ping: neither closes while the other is alive.
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  // Both ping: neither closes while the other is alive. A dozen pings of b's own, over as many of its intervals.
+  await vi.waitFor(() => assert.ok(pings >= 12, `b pinged a ${pings} times`), { timeout: 10_000 });
   assert.equal(a.closed || b.closed, false);
   const silent = pair();
   silent.a.keepAlive(10, 3);

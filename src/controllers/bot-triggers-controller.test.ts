@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTriggerCreated, BotTriggersList } from "../api/schema/bot-triggers.ts";
 import type { BotView } from "../api/schema/bots.ts";
@@ -129,8 +129,8 @@ test("a test says how its run went", async () => {
   const controller = new BotTriggersController(host(), { api: api() });
   await controller.refresh(BOT);
   controller.props(BOT).onTest(controller.state.list!.triggers[0]!);
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(controller.state.notice, "Sent a test event to Ada's chat.");
+  // The run starts its request and reports the notice when it answers, so the notice is what there is to wait on.
+  await vi.waitFor(() => assert.equal(controller.state.notice, "Sent a test event to Ada's chat."));
 });
 
 test("following the bots stream starts reading once the bot is known, and reads again when its chat changes state", async () => {

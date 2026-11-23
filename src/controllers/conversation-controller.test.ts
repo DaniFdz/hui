@@ -58,7 +58,7 @@ beforeEach(() => {
   fake.savedHeld = undefined;
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function conversation(state: { selected?: SessionView; streaming?: boolean } = {}) {
   const errors: string[] = [];

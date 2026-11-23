@@ -43,7 +43,7 @@ function setup(overrides: Partial<AutomationApi> = {}) {
   return { controller, host, calls, controllers, scrolled };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("the controller joins its host and reads the scheduler's snapshot", async () => {
   const { controller, controllers, calls } = setup();
@@ -159,15 +159,19 @@ test("an open automation page re-reads the scheduler, never while busy, and stop
 
 test("a poll waits for a slow read instead of superseding it", async () => {
   vi.useFakeTimers();
+  let answer: (value: AutomationSnapshot) => void = () => {};
   const { controller, calls } = setup({
     loadAutomation: () => {
       calls.push("load");
-      return new Promise((resolve) => setTimeout(() => resolve(snapshot([TASK])), AUTOMATION_POLL_MS + 1_000));
+      // The read stays out until the test answers it, so the poll it outlasts is the test's to observe.
+      return new Promise((resolve) => { answer = resolve; });
     },
   });
   controller.startPolling();
-  await vi.advanceTimersByTimeAsync(AUTOMATION_POLL_MS * 2 + 1_000);
+  await vi.advanceTimersByTimeAsync(AUTOMATION_POLL_MS * 2);
   assert.deepEqual(calls, ["load"]);
+  answer(snapshot([TASK]));
+  await vi.advanceTimersByTimeAsync(0);
   assert.deepEqual(controller.snapshot?.tasks, [TASK]);
   controller.stopPolling();
 });

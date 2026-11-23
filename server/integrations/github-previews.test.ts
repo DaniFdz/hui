@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 import {
   classifyGhFailure,
@@ -144,16 +144,22 @@ test("a burst goes out in batches of 25, at most two gh calls at once", async ()
   let running = 0;
   let peak = 0;
   const sizes: number[] = [];
+  // The stub's queries stay out until the test releases them, so concurrency is what the test observes, not the clock.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
   const answer = graphql(Object.fromEntries(Array.from({ length: 60 }, (_, index) => [`acme/r${index}`, { ...repo, nameWithOwner: `acme/r${index}` }])));
   const previews = new GitHubPreviews({ ...answer, query: async (query) => {
     sizes.push(aliases(query));
     running += 1;
     peak = Math.max(peak, running);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await held;
     running -= 1;
     return answer.query(query);
   } });
-  const results = await Promise.all(Array.from({ length: 60 }, (_, index) => previews.lookup(`https://github.com/acme/r${index}`)));
+  const lookups = Promise.all(Array.from({ length: 60 }, (_, index) => previews.lookup(`https://github.com/acme/r${index}`)));
+  await vi.waitFor(() => assert.ok(running >= 2, "two gh calls in flight"), { timeout: 5_000 });
+  release();
+  const results = await lookups;
   assert.deepEqual(sizes, [25, 25, 10]);
   assert.equal(peak, 2);
   assert.deepEqual(results.map((result) => result.preview?.kind === "repo" && result.preview.fullName), Array.from({ length: 60 }, (_, index) => `acme/r${index}`));
