@@ -1119,6 +1119,17 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "CHAT-094",
+    title: "Read a long tool call inside its card",
+    behaviour:
+      "An opened tool call taller than its cap — the shorter of 520px and 60vh — scrolls vertically inside its own card: the body is the card's one scroll region, by wheel and by the keyboard once the card has focus, so the whole command and the tail of its output are reachable instead of clipped. The card keeps that cap, a line too long for the card never widens it or overflows the page at 390px, and a call shorter than the cap draws exactly as before.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: { excluded: "The shared test sets a desktop browser to 1440×900 as well as 390×844, and the wide layout is a phone's own limit; the fix is the shared stylesheet, so a phone's wrapped page scrolls the same card by touch, which this test does not prove.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+  },
 ];
 
 export default cases;
