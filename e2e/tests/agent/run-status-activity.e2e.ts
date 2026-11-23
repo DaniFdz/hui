@@ -16,7 +16,7 @@ const BADGE = `${TRIGGER} .chat-run-status__activity-dot`;
 const PING = `${BADGE} .chat-run-status__activity-ping`;
 const HEAD_BADGE = ".chat-run-status__head .chat-run-status__activity-dot";
 const HEAD_PING = `${HEAD_BADGE} .chat-run-status__activity-ping`;
-const controls = [".bot-call-toggle", ".bot-panel-toggle", ".bot-header-menu__trigger", "[aria-label='Continue without a prompt']", ".chat-pane__close-pane", ".chat-pane__nav-toggle"];
+const controls = [".bot-call-toggle", ".bot-panel-toggle", ".bot-header-menu__trigger", "[aria-label='Continue without a prompt']", ".chat-pane__close-pane"];
 
 async function utility(hui: Hui, enabled = true) {
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
@@ -174,7 +174,8 @@ test("growing live helper counts leave every control to the right fixed without 
     expect(triggerBox).not.toBeNull();
     for (const [selector, x] of before) expect(x, `${selector} follows Run status`).toBeGreaterThan(triggerBox!.x);
     const nav = await hui.rect(`${scope} .chat-pane__nav-toggle`);
-    if (nav) for (const [selector, x] of before) if (selector.endsWith(".chat-pane__nav-toggle") === false) expect(nav.x, `${selector} stays left of navigation`).toBeGreaterThan(x);
+    // A phone's menu leads the header and Run status's panel clears it; the panel's own geometry is SHELL-047's.
+    if (nav) expect(nav.x + nav.width, "navigation leads the header").toBeLessThanOrEqual(triggerBox!.x);
     const fixed = async () => {
       for (const [selector, x] of before) {
         const box = await hui.rect(selector);
@@ -210,7 +211,7 @@ test("growing live helper counts leave every control to the right fixed without 
     if (nav) {
       const box = await panel.boundingBox();
       expect(box).not.toBeNull();
-      expect(box!.x + box!.width).toBeLessThanOrEqual(nav.x);
+      expect(box!.x, "the panel clears navigation").toBeGreaterThanOrEqual(nav.x + nav.width);
       if ((await hui.viewportSize()).width === 390) {
         await expect.poll(async () => Math.abs((await panel.boundingBox())!.width - 318)).toBeLessThanOrEqual(1);
       }

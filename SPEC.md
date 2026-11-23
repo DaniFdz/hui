@@ -2007,7 +2007,7 @@ card is registry state, so it is there immediately after a gateway restart.
 
 ### Run status
 
-The chat header's leftmost action is **Run status**, present whenever the
+The actions group's leftmost control is **Run status**, present whenever the
 conversation has a goal, a plan, a recent batch of helpers, child sessions or background
 watchers; otherwise it is absent. It reads the most urgent state — Waiting for
 your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
@@ -2026,12 +2026,12 @@ there is no second count or “active” word. A changed active set replays one 
 streamed output with the same set retains its node and animation. Reduced motion
 disables the ping, not live detail updates.
 Header actions run left to right: Run status, Call, bot-panel toggle, bot menu, Continue, Close pane (where present).
-The phone navigation toggle follows the actions group at the far right. The group's right edge stays fixed as the pill
-grows, so all the controls to its right keep their positions. On a narrow pane or a phone the trigger keeps
-only its mark and live detail.
+On a phone the navigation toggle is the first control of the header's leading group, at the left edge. The actions
+group's right edge stays fixed as the pill grows, so every control in it keeps its position. On a narrow pane or a
+phone the trigger keeps only its mark and live detail.
 
 Clicking the trigger opens one popover whose settled top-right corner is
-the actions group's (just left of navigation on a phone); while it is out the pill is not drawn at all — the panel's first
+the actions group's, clearing the phone's leading navigation toggle; while it is out the pill is not drawn at all — the panel's first
 line is its own title, the pill's mark, state word and live detail set at the
 card's left padding on the same 12px the rows below use, with the chevron, now
 pointing up, at the box's right edge as the close — so the two boxes never show
