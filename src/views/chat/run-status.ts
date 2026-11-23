@@ -1,22 +1,21 @@
 /**
- * The chat header's Run status: the compact trigger and the popover that holds a
- * conversation's goal (with its controls and editor), its Task progress plan, the
- * latest batch of helpers, child sessions and background watchers. The popover is HUI's only
- * home for those surfaces, and it opens only when the operator opens it: a
- * run never opens or closes it, and neither does the width of the window. The
- * trigger stays out of the transcript so a phone keeps the whole conversation.
- * The pill morphs into the panel and back as one painted box: the panel's width
- * and height grow out of the trigger's box to the actions group's pinned top-right.
- * The top stays fixed while the right edge travels; the pill is not drawn at all while the panel is
- * out — the panel's first line is its own title and the close: one button carrying the pill's mark,
- * its one state word and count at the card's left padding, plus its chevron mark keeping the pill's
- * slot at the box's right edge, so a tap anywhere on that line closes the panel. Left-aligned copy
- * inside a box growing to the left would glide with that edge, so the title's copy is held while the
- * box grows and written once it has arrived; the rows inside it fade in behind the box, and a close
- * draws the same box back into the pill before Web Awesome hides the dialog, dropping the title with
- * its first frame and painting the pill once that close has landed. Escape and an outside click close
- * it too, and so does the phone header's session-list control, whose tap the panel would otherwise
- * take.
+ * The chat header's Run status: the compact trigger and the popover that holds a conversation's
+ * goal (with its controls and editor), its Task progress plan, the latest batch of helpers, child
+ * sessions and background watchers. The popover is HUI's only home for those surfaces, and it
+ * opens only when the operator opens it: a run never opens or closes it, and neither does the
+ * width of the window. The trigger stays out of the transcript so a phone keeps the whole
+ * conversation. The pill morphs into the panel and back as one painted box: the panel's width and
+ * height grow out of the trigger's box to the actions group's pinned top-right. The top stays
+ * fixed while the right edge travels; the pill is not drawn at all while the panel is out — the
+ * panel's first line is its own title and the close: one button carrying the pill's mark, its one
+ * state word and count at the card's left padding, plus its chevron mark keeping the pill's slot
+ * at the box's right edge, so a tap anywhere on that line closes the panel. Left-aligned copy
+ * inside a box growing to the left would glide with that edge, so the title's copy is held while
+ * the box grows and written once it has arrived; the rows inside it fade in behind the box, and a
+ * close draws the same box back into the pill before Web Awesome hides the dialog, dropping the
+ * title with its first frame and painting the pill once that close has landed. Escape and an
+ * outside click close it too, and so does the phone header's session-list control, whose tap the
+ * panel would otherwise take.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";

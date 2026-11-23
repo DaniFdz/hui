@@ -225,7 +225,8 @@
 }
 
 /* The whole line is one control: the copy and the chevron mark are the head's close, so a tap anywhere that reads as the
-   pill closes the panel. It is a plain button reset over the head's own padding (the repo has no global one), stretched
+   pill closes the panel. It is a plain button reset over the head's own padding: the base stylesheet already passes the
+   font and colour through, so what is reset here is the border, background, padding and line-height. It is stretched
    across the head with the padding cancelled by equal negative margins, so its box is exactly the head's box and its copy
    stays where it was: the mark, word and count keep the rows' 12px, and the chevron's slot is still the head's 28px. It
    stays in flow, unpositioned, so the chevron mark still absolutely positions against the sticky head. */
@@ -236,7 +237,6 @@
   justify-content: flex-start;
   flex: 1 1 auto;
   align-self: stretch;
-  gap: 5px;
   box-sizing: border-box;
   min-width: 0;
   margin-inline: -12px -28px;

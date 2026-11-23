@@ -298,7 +298,8 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(trigger).toBeFocused();
   await expect(trigger).toHaveText("Working");
 
-  // A tap in the panel's body is the panel's own: the Plan section's title area, not one of its buttons, closes nothing.
+  // A press that starts inside the panel's body is the panel's own and never the popover's light-dismiss, so nothing in
+  // the body closes it: the Plan's title area is chosen because it is not one of that body's buttons.
   await trigger.tap();
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
