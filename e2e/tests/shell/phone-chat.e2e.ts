@@ -65,7 +65,9 @@ test(
     await expect.poll(() => hui.contentOf(".chat-run-status__head .chat-run-status__state")).toBe("Status");
     const pill = await trigger.boundingBox();
     const actions = await hui.rect(".chat-pane__header-actions");
-    const nav = await screen.getByRole("button", "Open navigation").boundingBox();
+    // Scoped to the header: the shell topbar draws an Open navigation button of its own.
+    const navToggle = header.getByRole("button", "Open navigation");
+    const nav = await navToggle.boundingBox();
     const panel = await popover.boundingBox();
     expect(pill).not.toBeNull();
     expect(actions).not.toBeNull();
@@ -75,6 +77,9 @@ test(
     expect(Math.abs(panel!.x + panel!.width - actions!.x - actions!.width)).toBeLessThanOrEqual(1);
     // The menu leads the header, so the panel that settles on the actions group's right edge clears it.
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(panel!.x);
+    // It sits in the header's own row, not merely somewhere on the screen.
+    expect(nav!.y).toBeGreaterThanOrEqual(head!.y);
+    expect(nav!.y + nav!.height).toBeLessThanOrEqual(head!.y + head!.height + 1);
     // The menu leads the header, before the chooser that follows it in the same leading group.
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(chooser!.x);
     if ((await hui.viewportSize()).width === 390) expect(Math.abs(panel!.width - 318)).toBeLessThanOrEqual(1);
@@ -83,7 +88,7 @@ test(
     expect(nav!.width).toBeGreaterThanOrEqual(24);
     expect(await hui.overflowsSideways()).toBe(false);
     // The tap that opens the drawer also dismisses the panel sitting over the header row.
-    await screen.getByRole("button", "Open navigation").tap();
+    await navToggle.tap();
     await expect(popover).toBeHidden();
     await expect(screen.getByRole("button", "Close navigation").first()).toBeVisible();
     // The menu it came from keeps the header on one row.
