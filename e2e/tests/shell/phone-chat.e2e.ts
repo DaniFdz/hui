@@ -87,6 +87,14 @@ test(
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(actions!.x);
     expect(nav!.width).toBeGreaterThanOrEqual(24);
     expect(await hui.overflowsSideways()).toBe(false);
+    // The panel's own first line is the phone's close: one tap on the pill's copy and chevron mark folds it back into the
+    // pill, which paints again with the state its accessible name carries.
+    await screen.getByTestId("run-status-head-close").tap();
+    await expect(popover).toBeHidden();
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveAccessibleName(/^Run status: /u);
+    await trigger.tap();
+    await expect(popover).toBeVisible();
     // The tap that opens the drawer also dismisses the panel sitting over the header row.
     await navToggle.tap();
     await expect(popover).toBeHidden();

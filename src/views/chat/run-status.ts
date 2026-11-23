@@ -1,22 +1,21 @@
 /**
- * The chat header's Run status: the compact trigger and the popover that holds a
- * conversation's goal (with its controls and editor), its Task progress plan, the
- * latest batch of helpers, child sessions and background watchers. The popover is HUI's only
- * home for those surfaces, and it opens only when the operator opens it: a
- * run never opens or closes it, and neither does the width of the window. The
- * trigger stays out of the transcript so a phone keeps the whole conversation.
- * The pill morphs into the panel and back as one painted box: the panel's width
- * and height grow out of the trigger's box to the actions group's pinned top-right.
- * The top stays fixed while the right edge travels; the pill is not drawn at all while the panel is
- * out — the panel's first line is its own title, the pill's mark, one state word and
- * count at the card's left padding, and its chevron, now the close, at the box's
- * right edge. Left-aligned copy inside a box growing to the left would glide with
- * that edge, so the title's copy is held while the box grows and written once it has
- * arrived; the rows inside it fade in behind the box, and a close draws the same box
- * back into the pill before Web Awesome hides the dialog, dropping the title with its
- * first frame and painting the pill once that close has landed. Escape and an outside
- * click close it too, and so does the phone header's session-list control, whose tap
- * the panel would otherwise take.
+ * The chat header's Run status: the compact trigger and the popover that holds a conversation's
+ * goal (with its controls and editor), its Task progress plan, the latest batch of helpers, child
+ * sessions and background watchers. The popover is HUI's only home for those surfaces, and it
+ * opens only when the operator opens it: a run never opens or closes it, and neither does the
+ * width of the window. The trigger stays out of the transcript so a phone keeps the whole
+ * conversation. The pill morphs into the panel and back as one painted box: the panel's width and
+ * height grow out of the trigger's box to the actions group's pinned top-right. The top stays
+ * fixed while the right edge travels; the pill is not drawn at all while the panel is out — the
+ * panel's first line is its own title and the close: one button carrying the pill's mark, its one
+ * state word and count at the card's left padding, plus its chevron mark keeping the pill's slot
+ * at the box's right edge, so a tap anywhere on that line closes the panel. Left-aligned copy
+ * inside a box growing to the left would glide with that edge, so the title's copy is held while
+ * the box grows and written once it has arrived; the rows inside it fade in behind the box, and a
+ * close draws the same box back into the pill before Web Awesome hides the dialog, dropping the
+ * title with its first frame and painting the pill once that close has landed. Escape and an
+ * outside click close it too, and so does the phone header's session-list control, whose tap the
+ * panel would otherwise take.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -357,9 +356,10 @@ const popoverStates = new WeakMap<Element, RunStatusPopoverState>();
 
 /**
  * Records the show or hide Web Awesome performed as the panel's open state, whether the operator pressed the trigger or
- * dismissed the panel they were reading: Escape, an outside click, the chevron, or another popover opening — Web Awesome's
- * popover is a singleton, so opening another pane's closes this one with a `wa-hide` the operator did not aim at this
- * panel. Nothing else opens it, and a close recorded this way still holds until the operator opens the panel again.
+ * dismissed the panel they were reading: Escape, an outside click, the head's close line, or another popover opening —
+ * Web Awesome's popover is a singleton, so opening another pane's closes this one with a `wa-hide` the operator did not
+ * aim at this panel. Nothing else opens it, and a close recorded this way still holds until the operator opens the panel
+ * again.
  */
 function settleRunStatusPanel(popover: RunStatusPopover, open: boolean): void {
   const trigger = document.getElementById(popover.getAttribute("for") ?? "");
@@ -423,7 +423,7 @@ function runStatusBoxFrame(box: RunStatusMorphBox): Keyframe {
  * not on this curve: left-aligned, it would travel with the box's left edge, so it waits for the box to arrive. */
 const CONTENT_SHOWN_FROM = 0.45;
 const CONTENT_SHOWN_TO = 0.75;
-/** The head's rule and the close chevron belong to the panel, not to the pill's box: they arrive after the rows have. */
+/** The head's rule and its chevron mark belong to the panel, not to the pill's box: they arrive after the rows have. */
 const CHROME_SHOWN_FROM = 0.7;
 /** A closing box has to read as the pill before it arrives, so the rows and the chrome leave in its first quarter. */
 const CONTENT_HIDDEN_BY = 0.25;
@@ -472,8 +472,8 @@ function runStatusContentMorphs(panel: HTMLElement, timing: { duration: number; 
       : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
   }
   if (chevron) {
-    // The close chevron: it starts pointing the way the closed pill's did and flips up over the growth, so the frames the
-    // copy is held for still carry the control the operator pressed.
+    // The chevron mark of the head's close: it starts pointing the way the closed pill's did and flips up over the growth,
+    // so the frames the copy is held for still carry the control the operator pressed.
     animations.push(chevron.animate(phase === "opening"
       ? [{ transform: "rotate(0deg)" }, { transform: "rotate(180deg)" }]
       : [{ transform: "rotate(180deg)" }, { transform: "rotate(0deg)" }], { duration: timing.duration, easing: timing.easing, fill: "both" }));
@@ -722,9 +722,9 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, retr
 }
 
 /**
- * Closes the panel through the chevron's path: the operator's own close, recorded so no later run reopens it, and the
+ * Closes the panel through the head's close line: the operator's own close, recorded so no later run reopens it, and the
  * popover hidden so the box draws itself back into the pill. `keepFocus` leaves the focus where a tap on another control
- * of the header put it; the chevron wants it back on the trigger.
+ * of the header put it; the head line wants it back on the trigger.
  */
 function closeRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverState, options: { keepFocus: boolean }): void {
   state.panel = runStatusPanelChosen(false);
@@ -763,8 +763,8 @@ export function renderRunStatus(props: RunStatusProps) {
     const popover = document.getElementById(`${panelId}-surface`) as RunStatusPopover | null;
     const state = popover ? popoverStates.get(popover) : undefined;
     if (popover && state) {
-      // The chevron is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus comes
-      // back to the trigger once the box has drawn back into it and the pill has painted again.
+      // The head line is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus
+      // comes back to the trigger once the box has drawn back into it and the pill has painted again.
       closeRunStatusPanel(popover, state, { keepFocus: false });
     }
   };
@@ -797,13 +797,15 @@ export function renderRunStatus(props: RunStatusProps) {
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
         <header class="chat-run-status__head">
-          <span class="chat-run-status__state" data-tone=${model.tone}>
-            <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
-            <span class="chat-run-status__label">${model.label}</span>
-            ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
-            ${renderActivity(model)}
-          </span>
-          <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__collapse" aria-label="Close run status" @click=${closePanel}>${icons.chevronDown}</button>
+          <button type="button" class="chat-run-status__head-close" data-testid="run-status-head-close" @click=${closePanel}>
+            <span class="chat-run-status__state" data-tone=${model.tone}>
+              <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
+              <span class="chat-run-status__label">${model.label}</span>
+              ${model.detail ? html`<span class="chat-run-status__count"> · ${model.detail}</span>` : nothing}
+              ${renderActivity(model)}
+            </span>
+            <span class="chat-run-status__collapse" aria-hidden="true">${icons.chevronDown}</span>
+          </button>
         </header>
         <div class="chat-run-status__body">
           ${renderGoal(props, model, panelId)}

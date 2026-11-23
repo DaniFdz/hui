@@ -2032,10 +2032,10 @@ phone the trigger keeps only its mark and live detail.
 
 Clicking the trigger opens one popover whose settled top-right corner is
 the actions group's, clearing the phone's leading navigation toggle; while it is out the pill is not drawn at all — the panel's first
-line is its own title, the pill's mark, state word and live detail set at the
+line is its own title and its own close, the pill's mark, state word and live detail set at the
 card's left padding on the same 12px the rows below use, with the chevron, now
-pointing up, at the box's right edge as the close — so the two boxes never show
-together and no word floats alone at the right. The
+pointing up, held in the pill's slot at the box's right edge as the mark of that
+close — so the two boxes never show together and no word floats alone at the right. The
 pill morphs into the panel and back as one painted box: the panel's own width and
 height grow out of the pill's box — the pill's own width, height and round — to the measured panel box. Its top stays pinned while its right edge travels
 from the trigger's right edge to the actions group's fixed edge while only the panel is painted and the rows inside it fade in near
@@ -2045,11 +2045,16 @@ chevron carries the first frame — and written once the box has arrived, where 
 stays; a close drops it with the fold's first frame. A close draws the same box
 back into the pill before it hides, and the pill returns only once that close has
 landed, so the pill and the panel never show together. The head reads what the
-pill reads — the mark, the state word and live detail — and the chevron it turns
-into closes the panel and returns focus to the trigger; the trigger stays in
+pill reads — the mark, the state word and live detail — and that whole line is one
+close: the mark, the state word, the count, the live dots and the head's own padding
+are a single control named by the copy it shows, with the chevron it turned into held
+in the pill's slot at the box's right edge as its mark, so a tap or press anywhere on
+that line — on the words or on the chevron — closes the panel and returns focus to the
+trigger; the trigger stays in
 place as the popover's anchor, unpainted, and gives its accessible name and
 aria-expanded back when the pill paints again.
-Escape or an outside click closes it too. A window
+Escape or an outside click closes it too, and a control inside the panel's body closes
+nothing. A window
 that asks for reduced motion gets no morph and opens and closes at once, and
 only a real open or close animates: a streamed frame that changes the plan or
 the helpers never restarts it. The panel opens only when the operator opens it,
@@ -2076,8 +2081,11 @@ goal's own word is the head's whenever the head reads it, so the Goal section
 head then prints its title alone, and the section carries the goal's status
 only while the head says another state — Working, Waiting for your answer, or a
 failed helper or watcher. The popover scrolls inside itself, closes on
-its chevron (Close run status), Escape or an outside click, and never resizes
-the conversation. None of those
+the first line of its head — the mark, the state word, the count, the live dots and the
+head's own padding as one control, with the chevron as its mark — or on Escape or an
+outside click, and never resizes the conversation; its body's own controls, Plan's
+Recompute, the goal's buttons and the helper, session and watcher rows, close
+nothing. None of those
 surfaces draws above the composer or in the transcript; a helper or watcher that
 settles still writes its own transcript event.
 
@@ -2097,8 +2105,10 @@ runs until they close it — a run the conversation starts on its own cannot shu
 the panel they are reading — and their close holds until they open it again. A
 reload starts closed. This supersedes the 2026-11-15 wide-window default, which
 opened the panel as soon as a run streamed; the rest of that decision stands: one
-control opens and closes it — a closed panel's pill opens it, and the chevron in
-the open panel's head closes it, with focus returning to the trigger — and because
+control opens and closes it — a closed panel's pill opens it, and the open panel's
+whole first line closes it, the mark, state word, count, live dots and head padding
+being one control named by the copy it shows, with the chevron as its mark in the
+pill's slot, and focus returning to the trigger — and because
 the pill becomes the panel, the head carries the state word and count the pill
 showed, in the panel's own left-aligned title line, written once the box has
 arrived rather than gliding with the growth, with the pill itself not drawn while

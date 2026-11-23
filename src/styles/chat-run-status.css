@@ -207,10 +207,10 @@
   }
 }
 
-/* The panel's first line is its own title, not the pill's copy parked at the box's right edge: the mark, the one state
-   word and the count start at the card's left padding, on the same 12px the section rows below them use, and the close
-   chevron keeps the box's right edge in the pill's chevron slot (its 24px and 4px inset, so 28px of padding here).
-   Nothing else is added to that line: no eyebrow and no second title above the rows. */
+/* The panel's first line is its own title and its own close, not the pill's copy parked at the box's right edge: the mark,
+   the one state word and the count start at the card's left padding, on the same 12px the section rows below them use, and
+   the chevron mark keeps the box's right edge in the pill's chevron slot (its 24px and 4px inset, so 28px of padding
+   here). Nothing else is added to that line: no eyebrow and no second title above the rows. */
 .chat-run-status__head {
   position: sticky;
   top: 0;
@@ -222,6 +222,45 @@
   padding: 0 28px 0 12px;
   border-bottom: 1px solid var(--border);
   background: var(--card);
+}
+
+/* The whole line is one control: the copy and the chevron mark are the head's close, so a tap anywhere that reads as the
+   pill closes the panel. It is a plain button reset over the head's own padding: the base stylesheet already passes the
+   font and colour through, so what is reset here is the border, background, padding and line-height. It is stretched
+   across the head with the padding cancelled by equal negative margins, so its box is exactly the head's box and its copy
+   stays where it was: the mark, word and count keep the rows' 12px, and the chevron's slot is still the head's 28px. It
+   stays in flow, unpositioned, so the chevron mark still absolutely positions against the sticky head. */
+.chat-run-status__head-close {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1 1 auto;
+  align-self: stretch;
+  box-sizing: border-box;
+  min-width: 0;
+  margin-inline: -12px -28px;
+  padding: 0 28px 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  text-align: start;
+  cursor: pointer;
+}
+
+.chat-run-status__head-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Inset, because the button is flush with the panel's edges and the panel clips its overflow. */
+.chat-run-status__head-close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 /* The body holds the panel's rows, and it is the part that arrives with the box: they fade in once it has taken its room,
@@ -241,9 +280,10 @@
   font-size: 12.5px;
 }
 
-/* The head's chevron is the pill's chevron, converted: it keeps the box's right edge and the pill's slot, points up while
-   the panel is out, and closes. It is the one part of the head painted from the first frame, which is why the title's copy
-   can wait for the box to arrive. */
+/* The head's chevron is the pill's chevron, converted, and now the mark of the head's close rather than a control of its
+   own: it keeps the box's right edge and the pill's slot, and points up while the panel is out. It is the one part of the
+   head painted from the first frame, which is why the title's copy can wait for the box to arrive. It carries no handler:
+   its taps bubble to the button around it, which is the close. */
 .chat-run-status__collapse {
   position: absolute;
   inset-inline-end: 4px;
@@ -257,7 +297,6 @@
   height: 24px;
   min-height: 24px;
   padding: 0;
-  border-radius: var(--radius-sm);
   color: var(--muted);
 }
 
@@ -269,16 +308,6 @@
   /* Pointing up, as the pill's own does while its panel is out: the morph turns it from the closed pill's down chevron,
      and this is where it rests once the box has finished growing. */
   transform: rotate(180deg);
-}
-
-.chat-run-status__collapse:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.chat-run-status__collapse:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
 }
 
 .chat-run-status__state {
@@ -678,8 +707,13 @@
   }
 
   /* The head's title keeps the rows' own left edge: a phone's tighter section padding moves both, so the panel's first
-     line still starts where the rows under it do. */
+     line still starts where the rows under it do, and its close keeps covering that padding. */
   .chat-run-status__head {
+    padding-inline-start: 11px;
+  }
+
+  .chat-run-status__head-close {
+    margin-inline-start: -11px;
     padding-inline-start: 11px;
   }
 }

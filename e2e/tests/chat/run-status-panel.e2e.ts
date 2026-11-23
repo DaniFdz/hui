@@ -23,9 +23,12 @@ const LABEL = `${TRIGGER} .chat-run-status__label`;
 const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
 /** The head's whole copy — mark, state phrase and muted live-work detail — the panel's own title line. */
 const HEAD_COPY = `.chat-run-status__head .chat-run-status__state`;
-/** The mark that opens that title line, and the close chevron that keeps the box's right edge. */
+/** The mark that opens that title line, and the chevron mark that keeps the box's right edge. */
 const HEAD_MARK = `.chat-run-status__head .chat-run-status__state-mark`;
 const CLOSE = ".chat-run-status__collapse";
+/** The panel's first line, and the one control that is its whole box: the copy and the chevron mark are the close. */
+const HEAD = ".chat-run-status__head";
+const HEAD_CLOSE = ".chat-run-status__head-close";
 /** A section's own title, the rows' left padding the head's title has to line up with. */
 const SECTION_TITLE = `${PANEL} .chat-run-status__section-title`;
 
@@ -42,8 +45,8 @@ test("Run status stays shut through a run until the operator opens it, and then 
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
   const idle = screen.getByLabel("Session status: Idle");
-  /** The panel's own close, the chevron in its head: one press of it is the operator's close. */
-  const close = () => screen.getByLabel("Close run status");
+  /** The panel's own close, the head's whole line: one press of it is the operator's close. */
+  const close = () => screen.getByTestId("run-status-head-close");
   // A held turn: its tool call keeps the run streaming until `hui.provider.release()`. It starts only from an idle
   // session, because a send during a run would steer that run instead of starting the next one.
   const hold = async () => {
@@ -139,8 +142,8 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(popover.getByText("Working", { exact: true })).toBeVisible();
   await expect(popover).toBeVisible();
 
-  // Close run status folds it back into the pill and gives the focus back to the trigger, and that close holds into the
-  // run after it too: the one this ends is released first, so the next turn is a run of its own.
+  // The head's close line folds it back into the pill and gives the focus back to the trigger, and that close holds into
+  // the run after it too: the one this ends is released first, so the next turn is a run of its own.
   await close().tap();
   await expect(trigger).not.toBeExpanded();
   await expect(trigger).toBeVisible();
@@ -154,11 +157,11 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(trigger).not.toBeExpanded();
   await expect(popover).toBeHidden();
 
-  // One control: a closed panel's pill opens it, and the panel's own chevron closes it, with Escape and an outside click
-  // as the other ways out. Each direction draws one painted card — the panel itself — whose width, height and corner grow
-  // out of the trigger's own box, read here from the frames the browser drew. The pill is not painted in any of them: the
-  // panel's head is the converted pill, and the chevron it turns into is the close. Close run status starts the fold, and
-  // its first frame is already on the pinned corner.
+  // One control: a closed panel's pill opens it, and the head's close line — the converted pill itself — closes it, with
+  // Escape and an outside click as the other ways out. Each direction draws one painted card — the panel itself — whose
+  // width, height and corner grow out of the trigger's own box, read here from the frames the browser drew. The pill is
+  // not painted in any of them: the panel's head is the converted pill, and the chevron it turns into marks that close.
+  // The head's close line starts the fold, and its first frame is already on the pinned corner.
   await trigger.tap();
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
@@ -174,7 +177,7 @@ test("Run status stays shut through a run until the operator opens it, and then 
   expect(actions).not.toBeNull();
   const actionsRight = actions!.x + actions!.width;
   const actionsTop = actions!.y;
-  const closing = await hui.morphFrames(PANEL, TRIGGER, () => screen.getByLabel("Close run status").tap(), [HEAD_COPY, CLOSE]);
+  const closing = await hui.morphFrames(PANEL, TRIGGER, () => close().tap(), [HEAD_COPY, CLOSE]);
   const shrinking = closing.filter((frame) => frame.box.painted && frame.box.width > 0);
   const settledWidth = Math.max(...shrinking.map((frame) => frame.box.width));
   expect(shrinking.some((frame) => frame.box.width < settledWidth - 20), "the close draws the box shrinking").toBe(true);
@@ -258,6 +261,52 @@ test("Run status stays shut through a run until the operator opens it, and then 
   await expect(popover.getByText("Working", { exact: true })).toHaveCount(1);
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
+  // The line the operator reads as the pill is one control's own box, not just its words: the head's whole line — mark,
+  // state word, count, live dots and the head's own padding — is the close, with the chevron inside it as its mark.
+  await expect(screen.getByTestId("run-status-head-close")).toHaveCount(1);
+  const settledHead = await hui.rect(HEAD);
+  const settledHeadClose = await hui.rect(HEAD_CLOSE);
+  expect(settledHead, "the head draws its first line").not.toBeNull();
+  expect(settledHeadClose, "and that line is a control").not.toBeNull();
+  expect(Math.abs((settledHeadClose?.width ?? 0) - (settledHead?.width ?? 0)), "the close is the head's whole width, not just its words").toBeLessThanOrEqual(1);
+  expect(settledHeadClose?.height ?? 0, "and its whole height").toBeGreaterThanOrEqual(27);
+
+  // The words are the control: one tap on the state word closes the panel, well left of the chevron at the box's right
+  // edge, and the focus comes back to the pill that anchors it.
+  await popover.getByText("Working", { exact: true }).tap();
+  await expect(trigger).not.toBeExpanded();
+  await expect(trigger).toBeVisible();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveText("Working");
+
+  // The chevron's own slot in the pill's right edge is inside the same control, so a tap there closes it as well: the
+  // reopen's box has landed once the close covers the head again, which is the box the tap's point is read from.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
+  await expect(trigger).toBeExpanded();
+  await expect.poll(async () => {
+    const [box, head] = [await hui.rect(HEAD_CLOSE), await hui.rect(HEAD)];
+    return box && head ? Math.round(Math.abs(box.width - head.width)) : Number.NaN;
+  }).toBe(0);
+  const chevronSlot = await hui.rect(HEAD_CLOSE);
+  expect(chevronSlot, "the close is on screen").not.toBeNull();
+  await screen.getByTestId("run-status-head-close").tap({ position: { x: (chevronSlot?.width ?? 0) - 16, y: (chevronSlot?.height ?? 0) / 2 } });
+  await expect(trigger).not.toBeExpanded();
+  await expect(trigger).toBeVisible();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveText("Working");
+
+  // A press that starts inside the panel's body is the panel's own and never the popover's light-dismiss, so nothing in
+  // the body closes it: the Plan's title area is chosen because it is not one of that body's buttons.
+  await trigger.tap();
+  await expect(popover).toBeVisible();
+  await expect(trigger).toBeExpanded();
+  await screen.getByTestId("task-progress").tap({ position: { x: 10, y: 10 } });
+  await expect(popover).toBeVisible();
+  await expect(trigger).toBeExpanded();
+  await expect(screen.getByTestId("run-status-head-close")).toBeVisible();
   await close().tap();
   await expect(trigger).not.toBeExpanded();
   await expect(trigger).toBeVisible();
@@ -295,7 +344,20 @@ test("Run status stays shut through a run until the operator opens it, and then 
   // into the accessible name (the labels are the view's own media queries, not this test's).
   await hui.phoneScreen();
   await expect(popover).toBeVisible();
-  await close().tap();
+  // The whole head line is the close at a phone's width too: the box is still the head's own line, the mark-and-word end of
+  // it a tap away.
+  await expect.poll(async () => {
+    const [box, head] = [await hui.rect(HEAD_CLOSE), await hui.rect(HEAD)];
+    return box && head ? Math.round(Math.abs(box.width - head.width)) : Number.NaN;
+  }).toBe(0);
+  const phoneHead = await hui.rect(HEAD);
+  const phoneClose = await hui.rect(HEAD_CLOSE);
+  expect(phoneHead, "the head draws its first line on a phone").not.toBeNull();
+  expect(phoneClose, "and that line is a control there too").not.toBeNull();
+  expect(phoneClose?.height ?? 0, "the close is the head's whole height").toBeGreaterThanOrEqual(27);
+  expect(phoneClose?.y ?? 0, "starting at the head's own top edge").toBeLessThanOrEqual((phoneHead?.y ?? 0) + 1);
+  expect((phoneClose?.y ?? 0) + (phoneClose?.height ?? 0), "and covering the line down to its rule").toBeGreaterThanOrEqual((phoneHead?.y ?? 0) + (phoneHead?.height ?? 0) - 1);
+  await screen.getByTestId("run-status-head-close").tap({ position: { x: 40, y: 14 } });
   await expect(trigger).not.toBeExpanded();
   await expect(trigger).toBeVisible();
   await expect(popover).toBeHidden();

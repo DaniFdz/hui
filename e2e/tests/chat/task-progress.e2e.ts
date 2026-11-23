@@ -27,8 +27,8 @@ test("Task progress stays open, recomputes on request, and survives a reload", {
   // The plan lives in the popover: the title, the count, the utility model's note and each step's state.
   await expect(trigger).toHaveAccessibleName(/^Run status:/u);
   await openPanel();
-  // Close run status is the operator's close on a phone too, and it gives focus back to the trigger.
-  await screen.getByLabel("Close run status").tap();
+  // The head's close line is the operator's close on a phone too, and it gives focus back to the trigger.
+  await screen.getByTestId("run-status-head-close").tap();
   await expect(popover).toBeHidden();
   await expect(trigger).toBeFocused();
   await openPanel();
