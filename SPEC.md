@@ -2007,7 +2007,7 @@ card is registry state, so it is there immediately after a gateway restart.
 
 ### Run status
 
-The chat header's leftmost action is **Run status**, present whenever the
+The actions group's leftmost control is **Run status**, present whenever the
 conversation has a goal, a plan, a recent batch of helpers, child sessions or background
 watchers; otherwise it is absent. It reads the most urgent state — Waiting for
 your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,

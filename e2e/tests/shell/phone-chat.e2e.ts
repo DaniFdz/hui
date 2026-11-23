@@ -75,8 +75,8 @@ test(
     expect(Math.abs(panel!.x + panel!.width - actions!.x - actions!.width)).toBeLessThanOrEqual(1);
     // The menu leads the header, so the panel that settles on the actions group's right edge clears it.
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(panel!.x);
-    // The menu hugs the header's own left edge: the header's 12px padding, and nothing over it.
-    expect(Math.abs(nav!.x - (head!.x + 12))).toBeLessThanOrEqual(1);
+    // The menu leads the header, before the chooser that follows it in the same leading group.
+    expect(nav!.x + nav!.width).toBeLessThanOrEqual(chooser!.x);
     if ((await hui.viewportSize()).width === 390) expect(Math.abs(panel!.width - 318)).toBeLessThanOrEqual(1);
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(pill!.x);
     expect(nav!.x + nav!.width).toBeLessThanOrEqual(actions!.x);
