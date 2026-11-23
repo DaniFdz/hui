@@ -64,7 +64,7 @@ test("side work pings once per active set, not per streamed frame, and respects 
   expect(streamed?.startTime).toBe(streamedFirst?.startTime);
   await hui.provider.release();
   await expect.poll(() => hui.drawn(HEAD_BADGE)).toBe(false);
-  await screen.getByLabel("Close run status").tap();
+  await screen.getByTestId("run-status-head-close").tap();
   await expect(trigger).toBeVisible();
   await expect.poll(() => hui.drawn(BADGE)).toBe(false);
 
@@ -118,7 +118,7 @@ test("live watcher detail counts only running watchers and does not repeat the g
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect.poll(() => hui.contentOf(".chat-run-status__head .chat-run-status__state")).toBe("Goal paused");
   await expect.poll(() => hui.contentOf(".chat-run-status__head .chat-run-status__count")).toBe("");
-  await screen.getByLabel("Close run status").tap();
+  await screen.getByTestId("run-status-head-close").tap();
   await expect(trigger).toBeVisible();
   await expect.poll(() => hui.contentOf(`${TRIGGER} .chat-run-status__count`)).toBe("");
 
@@ -217,7 +217,7 @@ test("growing live helper counts leave every control to the right fixed without 
       }
     }
     expect(await hui.overflowsSideways()).toBe(false);
-    await panel.getByLabel("Close run status").tap();
+    await panel.getByTestId("run-status-head-close").tap();
     await expect(panel).toBeHidden();
     await expect(trigger).toBeVisible();
     await fixed();

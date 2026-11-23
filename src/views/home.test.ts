@@ -526,15 +526,33 @@ test("Task progress lives in the Run status popover and never draws in the trans
   assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
   assert.doesNotMatch(html, /class="chat-run-status__count"/u, "plan completion stays in the Plan section");
-  // One box: the head's chevron — the pill's, turned up — is the close, and the head's copy is exposed inside the dialog,
-  // because the pill itself is not painted while the panel is out.
-  assert.match(html, /class="chat-run-status__head"[\s\S]*?chat-run-status__collapse" aria-label="Close run status"/u);
+  // One close, and it is the whole line: the head's copy and its chevron mark are a single button, so a tap anywhere that
+  // reads as the pill closes the panel. The pill itself is not painted while the panel is out, which is why the dialog's
+  // own first line carries that state — and it names the close instead of a second, invisible label for assistive tech.
+  assert.equal(html.match(/data-testid="run-status-head-close"/gu)?.length, 1, "the panel holds exactly one close control");
+  assert.match(html, /<button type="button" class="chat-run-status__head-close" data-testid="run-status-head-close"/u, "the head's line is that one control");
+  assert.doesNotMatch(html, /aria-label="Close run status"/u, "the close is named by the copy it shows, not by a label beside it");
+  const headCloseAt = html.indexOf('data-testid="run-status-head-close"');
+  const headCloseEnd = html.indexOf("</button>", headCloseAt);
+  const headClose = html.slice(headCloseAt, headCloseEnd);
+  assert.match(headClose, /class="chat-run-status__state" data-tone=running>/u, "the control carries the state copy");
+  assert.match(headClose, /<span class="chat-run-status__collapse" aria-hidden="true"><svg/u, "and the chevron that marks it as the pill's own close");
+  assert.doesNotMatch(headClose, /chat-run-status__body|data-testid="task-progress"/u, "the rows are the dialog's, not the close's");
+  assert.match(
+    html.slice(headCloseEnd),
+    /^<\/button>\s*<\/header>\s*<div class="chat-run-status__body">/u,
+    "the close ends with the head, and the body starts after it",
+  );
   assert.match(html, /class="chat-run-status__state" data-tone=running>\s*<span class="chat-run-status__state-mark" aria-hidden="true">/u, "the head's word and count are readable while the pill is not drawn");
   assert.doesNotMatch(html, /chat-run-status__close/u, "the X is gone: the chevron closes");
   const panelStyles = readStyles("../styles/chat-run-status.css");
   assert.match(panelStyles, /\.chat-run-status__trigger \{[^}]*height: 28px;/s, "the trigger's own height is the overlay the popover uses to pin the panel's top edge");
   assert.match(panelStyles, /\.chat-run-status__trigger-chevron svg \{[^}]*width: 13px;[^}]*height: 13px;/s, "the chevron reads as the affordance it is");
-  assert.match(panelStyles, /\.chat-run-status__collapse > svg \{[^}]*width: 13px;[^}]*height: 13px;[^}]*transform: rotate\(180deg\);/s, "the head's chevron is the pill's, pointing up as the close");
+  assert.match(panelStyles, /\.chat-run-status__collapse > svg \{[^}]*width: 13px;[^}]*height: 13px;[^}]*transform: rotate\(180deg\);/s, "the head's chevron is the pill's, pointing up as the mark of that close");
+  assert.match(panelStyles, /\.chat-run-status__head-close \{[^}]*cursor: pointer;/s, "the head's line is a control, so it reads as one");
+  assert.match(panelStyles, /\.chat-run-status__head-close:hover \{[^}]*background: var\(--bg-hover\);/s, "and answers a pointer in the panel's own tokens");
+  assert.match(panelStyles, /\.chat-run-status__head-close:focus-visible \{[^}]*outline: 2px solid var\(--ring\);/s, "while a keyboard finds it with a visible focus");
+  assert.doesNotMatch(panelStyles, /\.chat-run-status__collapse:(?:hover|focus-visible)/u, "the chevron is the close's mark, not a second control with an affordance of its own");
   // One painted card: Web Awesome's own shadow body is the box the morph moves, so it paints no surface of its own and
   // the panel carries the border and shadow that travel with the box.
   assert.match(
