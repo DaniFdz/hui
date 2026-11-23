@@ -2541,6 +2541,18 @@ function renderHeader(props: HomeProps, session: SessionView) {
   return html`
     <header class="transcript__head chat-pane__header" tabindex="-1" data-testid="chat-header" draggable=${props.paneMovable ? "true" : "false"}>
       <div class="chat-pane__header-leading">
+        ${props.mobileNavLayout ? html`<button
+          class="btn btn--ghost btn--icon chat-icon-btn chat-pane__nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-controls="primary-navigation-drawer"
+          aria-expanded="false"
+          @click=${(event: Event) => {
+            // Navigation leads the row and dismisses Run status in the same tap.
+            dismissRunStatusPanel(sessionControlId(props, "run-status"));
+            toggleNavigationDrawer(event);
+          }}
+        >${icons.menu}</button>` : nothing}
         ${renderPaneMoveHandle(props.paneMovable)}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
@@ -2600,18 +2612,6 @@ function renderHeader(props: HomeProps, session: SessionView) {
             >${icons.close}</button>
           ` : nothing}
         </div>
-        ${props.mobileNavLayout ? html`<button
-          class="btn btn--ghost btn--icon chat-icon-btn chat-pane__nav-toggle"
-          type="button"
-          aria-label="Open navigation"
-          aria-controls="primary-navigation-drawer"
-          aria-expanded="false"
-          @click=${(event: Event) => {
-            // Navigation stays rightmost and dismisses Run status in the same tap.
-            dismissRunStatusPanel(sessionControlId(props, "run-status"));
-            toggleNavigationDrawer(event);
-          }}
-        >${icons.menu}</button>` : nothing}
       </div>
     </header>
     ${renderDeleteConfirmation(props, session)}

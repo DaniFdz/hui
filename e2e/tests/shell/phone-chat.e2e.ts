@@ -1,5 +1,6 @@
-/** A phone's chat spends one header row: the Active panel chooser sits in the header in place of the title, and the
- * Run status plan is always open and its panel leaves navigation reachable (SHELL-047). */
+/** A phone's chat spends one header row: the navigation menu leads it, the Active panel chooser sits in the header in
+ * place of the title, and the Run status plan is always open and its panel settles on the actions group's corner,
+ * clear of that menu (SHELL-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
@@ -72,14 +73,20 @@ test(
     expect(panel).not.toBeNull();
     expect(Math.abs(panel!.y - actions!.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(panel!.x + panel!.width - actions!.x - actions!.width)).toBeLessThanOrEqual(1);
-    expect(panel!.x + panel!.width).toBeLessThanOrEqual(nav!.x);
+    // The menu leads the header, so the panel that settles on the actions group's right edge clears it.
+    expect(nav!.x + nav!.width).toBeLessThanOrEqual(panel!.x);
+    // The menu hugs the header's own left edge: the header's 12px padding, and nothing over it.
+    expect(Math.abs(nav!.x - (head!.x + 12))).toBeLessThanOrEqual(1);
     if ((await hui.viewportSize()).width === 390) expect(Math.abs(panel!.width - 318)).toBeLessThanOrEqual(1);
-    expect(pill!.x).toBeLessThan(nav!.x);
+    expect(nav!.x + nav!.width).toBeLessThanOrEqual(pill!.x);
+    expect(nav!.x + nav!.width).toBeLessThanOrEqual(actions!.x);
     expect(nav!.width).toBeGreaterThanOrEqual(24);
     expect(await hui.overflowsSideways()).toBe(false);
     // The tap that opens the drawer also dismisses the panel sitting over the header row.
     await screen.getByRole("button", "Open navigation").tap();
     await expect(popover).toBeHidden();
     await expect(screen.getByRole("button", "Close navigation").first()).toBeVisible();
+    // The menu it came from keeps the header on one row.
+    expect((await header.boundingBox())!.height).toBeLessThan(70);
   },
 );

@@ -381,7 +381,7 @@ function applyRunStatusPanel(trigger: HTMLElement, panelId: string, state: RunSt
 }
 
 /**
- * Pins the panel at the actions group's top-right, leaving the phone navigation toggle clear. Web Awesome hands
+ * Pins the panel at the actions group's top-right, clear of the phone's leading navigation toggle. Web Awesome hands
  * distance and skidding to floating-ui's main/cross axis offsets: overlap by the trigger's height, then travel right by
  * the gap to the group's fixed edge. Both are measured, not second copies of CSS dimensions.
  */

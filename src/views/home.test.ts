@@ -580,7 +580,7 @@ test("side work uses a keyed dot-only badge and the plan is always open", async 
   assert.match(css, /\.chat-run-status__activity-ping \{[^}]*position: absolute;/su);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chat-run-status__activity-ping \{ animation: none;/su);
   const actions = html.slice(html.indexOf('class="chat-pane__actions chat-pane__header-actions"'));
-  const controls = ['data-testid="run-status-trigger"', 'aria-label=Call Ada', 'bot-panel-toggle', 'bot-header-menu__trigger', 'aria-label="Continue without a prompt"', 'aria-label="Close session pane"', 'aria-label="Open navigation"'];
+  const controls = ['data-testid="run-status-trigger"', 'aria-label=Call Ada', 'bot-panel-toggle', 'bot-header-menu__trigger', 'aria-label="Continue without a prompt"', 'aria-label="Close session pane"'];
   let previous = -1;
   for (const control of controls) {
     const index = actions.indexOf(control);
@@ -588,9 +588,17 @@ test("side work uses a keyed dot-only badge and the plan is always open", async 
     previous = index;
   }
   const leading = html.slice(html.indexOf('class="chat-pane__header-leading"'), html.indexOf('class="chat-pane__header-trailing"'));
-  assert.doesNotMatch(leading, /Open navigation/u);
+  assert.match(leading, /class="chat-pane__header-leading">\s*<button class="btn btn--ghost btn--icon chat-icon-btn chat-pane__nav-toggle"/u, "navigation leads the header");
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  assert.match(source, /<\/div>\s*\$\{props\.mobileNavLayout \? html/u, "navigation follows the actions group");
+  const groupAt = source.indexOf('class="chat-pane__header-leading"');
+  const toggleAt = source.indexOf("chat-pane__nav-toggle", groupAt);
+  const handleAt = source.indexOf("renderPaneMoveHandle(props.paneMovable)", groupAt);
+  assert.ok(groupAt > 0 && toggleAt > groupAt && handleAt > toggleAt, "navigation leads the header");
+  const movable = await renderWorkerSession("idle", { mobileNavLayout: true, paneMovable: true });
+  const navigationAt = movable.indexOf('aria-label="Open navigation"');
+  const moveAt = movable.indexOf('aria-label="Move panel"');
+  assert.ok(navigationAt > 0 && moveAt > 0 && navigationAt < moveAt, "navigation comes before the pane handle");
+  assert.doesNotMatch(await renderWorkerSession("idle", { mobileNavLayout: false }), /Open navigation/u, "a wide window draws no navigation toggle");
 });
 
 test("Run status counts live child sessions while closed and draws capped session rows only while open", async () => {

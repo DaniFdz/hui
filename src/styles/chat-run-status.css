@@ -197,9 +197,10 @@
   color: var(--text);
 }
 
-/* Reserve 72px for the right-side navigation control and the header's outer air. The panel pins to the actions
-   group's right edge, just left of that control, so one tap can dismiss the panel and open the drawer. At 390px the
-   panel is 318px; wider phones and landscape take the 420px cap without covering navigation. */
+/* Reserve 72px for the phone's leading navigation toggle plus the header's outer air. The panel pins to the actions
+   group's right edge, so its left edge keeps that clear air from the toggle that leads the row, and one tap there can
+   dismiss the panel and open the drawer. At 390px the panel is 318px; wider phones and landscape take the 420px cap
+   without reaching the toggle. */
 @media (max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
   .chat-run-status__panel {
     width: min(420px, calc(100vw - 72px));
