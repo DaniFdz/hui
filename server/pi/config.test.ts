@@ -276,7 +276,8 @@ test("an expired catalog is served at once and replaced in the background", asyn
   assert.deepEqual(await first, { catalog: [{ provider: "test", id: "1", name: "1" }] });
   // Expired: the caller gets the cached catalog without waiting on the probe.
   assert.deepEqual(await read(), { catalog: [{ provider: "test", id: "1", name: "1" }] });
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The probe runs on its own from here: publishing its answer is the queue turn that follows, not a duration.
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(starts, 2);
   assert.deepEqual(await read(), { catalog: [{ provider: "test", id: "2", name: "2" }] });
 });

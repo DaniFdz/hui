@@ -66,6 +66,12 @@ function conversations(options: { status?: "idle" | "running" | "waiting"; failF
   return { delivered, sessions, readRegistry };
 }
 
+/** What each delivered event names: the watcher, its purpose and its state, in the order the conversation heard them. */
+function announced(delivered: Conversation[]): Array<[string, string, string]> {
+  const field = (text: string, name: string) => new RegExp(`^${name}: (.+)$`, "mu").exec(text)?.[1]?.trim() ?? "";
+  return delivered.map(({ text }) => [field(text, "id"), field(text, "purpose"), field(text, "state")]);
+}
+
 async function fixture(t: TestContext, options: Partial<WatcherServiceOptions> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-watchers-"));
   const changes: string[] = [];
@@ -205,20 +211,22 @@ test("an unanswered liveness check does not run a keep-running watcher's command
     logPath: join(logDir, "listener.log"), pid: 111_111, startedAt: new Date(Date.now() - 60_000).toISOString(), keepRunning: true,
   }] }));
   const launched: string[] = [];
+  let checks = 0;
   const { sessions, readRegistry } = conversations();
   const service = new WatcherService({
     sessions,
     readRegistry,
     file, logDir, pollMs: 10, settleMs: 0,
     launch: (script) => { launched.push(script); return 222_222; },
-    ownsProcess: async () => undefined,
+    ownsProcess: async () => { checks += 1; return undefined; },
     signalGroup: () => {},
   });
   t.onTestFinished(async () => { await service.dispose(); await rm(dir, { recursive: true, force: true }); });
   await service.initialize();
   assert.equal(service.list("alpha")[0]?.state, "dead");
-  // Several polls later nothing has started a second copy of the command.
-  await delay(200);
+  // Several polls later nothing has started a second copy of the command: every poll asks the liveness check again,
+  // so twenty of its questions are the window the old 200 ms delay stood for.
+  await waitFor(() => checks >= 20);
   assert.deepEqual(launched, []);
 });
 
@@ -570,7 +578,7 @@ test("after a gateway restart only the keep-running watchers that died start aga
 
 test("a watcher that ends tells its conversation once", async (t) => {
   const { service, delivered } = await fixture(t);
-  await service.start("alpha", { purpose: "Quick failure", command: "printf 'boom\\n'; exit 3" });
+  const first = await service.start("alpha", { purpose: "Quick failure", command: "printf 'boom\\n'; exit 3" });
   await waitFor(() => delivered.length > 0);
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0]!.sessionId, "alpha");
@@ -579,9 +587,14 @@ test("a watcher that ends tells its conversation once", async (t) => {
   assert.match(delivered[0]!.text, /state: failed/u);
   assert.match(delivered[0]!.text, /exit_code: 3/u);
   assert.match(delivered[0]!.text, /last_output: boom/u);
-  // One event per settle: later polls do not repeat it.
-  await delay(300);
-  assert.equal(delivered.length, 1);
+  // One event per settle: the second watcher's announcement is the proof polling kept going past the first, and it
+  // arrives after the first's own, which is not repeated.
+  const second = await service.start("alpha", { purpose: "Quick success", command: "printf 'later\\n'" });
+  await waitFor(() => delivered.length > 1);
+  assert.deepEqual(announced(delivered), [
+    [first.id, "Quick failure", "failed"],
+    [second.id, "Quick success", "done"],
+  ]);
 });
 
 test("a busy conversation is steered instead of prompted", async (t) => {
@@ -619,17 +632,24 @@ test("a settle from before this gateway started is announced again only when it 
   t.onTestFinished(async () => { await service.dispose(); await rm(dir, { recursive: true, force: true }); });
   await service.initialize();
   await waitFor(() => delivered.length > 0);
-  await delay(200);
   assert.equal(delivered.length, 1);
   assert.match(delivered[0]!.text, /id: found/u);
+  // Only the interrupted settle is announced, never the ones HUI already told or never saw end: a later settle is
+  // announced after it, and the list names exactly these two.
+  const later = await service.start("alpha", { purpose: "Later settle", command: "printf 'later\\n'" });
+  await waitFor(() => delivered.length > 1);
+  assert.deepEqual(announced(delivered), [["found", "found", "done"], [later.id, "Later settle", "done"]]);
 });
 
 test("an operator stop announces nothing", async (t) => {
   const { service, delivered } = await fixture(t);
   const watcher = await service.start("alpha", { purpose: "Stopped by hand", command: "sleep 30" });
   await service.stop("alpha", watcher.id);
-  await delay(300);
-  assert.deepEqual(delivered, []);
+  // An operator stop is not a settle: the next watcher's own settle is the only event the conversation ever hears.
+  const later = await service.start("alpha", { purpose: "Later settle", command: "printf 'later\\n'" });
+  await waitFor(() => delivered.length > 0);
+  assert.deepEqual(announced(delivered), [[later.id, "Later settle", "done"]]);
+  assert.equal(delivered[0]!.via, "prompt");
 });
 
 test("a keep-running watcher that starts again announces nothing", async (t) => {
@@ -648,8 +668,12 @@ test("a keep-running watcher that starts again announces nothing", async (t) => 
   t.onTestFinished(async () => { await service.dispose(); await rm(dir, { recursive: true, force: true }); });
   await service.initialize();
   await waitFor(() => service.list("alpha")[0]?.state === "running");
-  await delay(200);
-  assert.deepEqual(delivered, []);
+  // A keep-running watcher starting again is not a settle: the next watcher's own settle, read from the exit its
+  // wrapper would record, is the only event the conversation ever hears.
+  const later = await service.start("alpha", { purpose: "Later settle", command: "sleep 30" });
+  await writeFile(join(logDir, `${later.id}.exit`), "0\n");
+  await waitFor(() => delivered.length > 0);
+  assert.deepEqual(announced(delivered), [[later.id, "Later settle", "done"]]);
 });
 
 test("an event nobody could take yet is delivered on a later poll", async (t) => {

@@ -135,7 +135,7 @@ function pushBrowser(overrides: Partial<PushBrowser> = {}): PushBrowser {
   };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function power(lidOn: boolean): Power {
   const off = { state: "off" as const, detail: "" };

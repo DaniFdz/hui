@@ -106,17 +106,23 @@ test("a settled turn stores the card its conversation earned", async () => {
   });
 });
 
-test("a subagent session and a session that is gone get no card, and no model call", async () => {
+test("a subagent session and a session that is gone get no card and no model call, while a real one does", async () => {
   let calls = 0;
   const { refresher, saved } = refresherFor({
-    sessions: { child: { cwd: "/repo", parentId: "parent" } },
+    sessions: { child: { cwd: "/repo", parentId: "parent" }, real: { cwd: "/repo" } },
     run: async () => { calls += 1; return "Summary: Child work.\nPlan:\n- doing: Read"; },
   });
   refresher.settled("child", transcript);
   refresher.settled("deleted", transcript);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(calls, 0);
-  assert.deepEqual(saved, []);
+  // The refresh waiting behind both of them is the real session's: the model is asked exactly once, for it alone, and
+  // only its card is stored.
+  refresher.settled("real", transcript);
+  await waitFor("the real session's card", () => saved.length === 1);
+  assert.equal(calls, 1, "neither the subagent nor the gone session reached the utility model");
+  assert.deepEqual(saved, [{
+    id: "real",
+    card: { markdown: "Child work.", steps: [{ step: "Read", status: "in_progress" }] },
+  }]);
 });
 
 test("a slow call collapses the turns waiting behind it into the newest transcript", async () => {

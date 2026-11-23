@@ -13,6 +13,7 @@ import type { BotOwnSkill } from "./skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";
 import { readZip } from "./templates/zip.ts";
 import { hostsIn, NEEDS_MERGE_PROMPT, reviewChunks } from "./templates/review.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 const SOUL = [
   "# Who I am",
@@ -503,7 +504,8 @@ test("a name the picks remove whole travels as a plain one; a newer review repla
     },
   });
   const first = racing.review("ada");
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The second review may only start once the first's reviewer calls are in flight, where every one of them waits.
+  await waitFor("the first review's reviewer calls to start", () => calls >= 1);
   const second = await racing.review("ada");
   release();
   const late = await first;

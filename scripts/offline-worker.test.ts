@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 const source = await readFile(new URL("../public/offline-worker.js", import.meta.url), "utf8");
 const ORIGIN = "https://hui.test";
@@ -44,6 +44,8 @@ function worker(build: string, routes: (url: URL) => Route | undefined) {
   let windows: FakeWindow[] = [];
   let openDownloads = 0;
   let mostDownloads = 0;
+  let releaseDownloads = () => {};
+  let downloadGate: Promise<void> | undefined;
   const fetch = async (input: string | { url: string }, init?: { signal?: AbortSignal; integrity?: string }) => {
     const url = new URL(typeof input === "string" ? input : input.url, ORIGIN);
     requests.push(url.pathname);
@@ -53,7 +55,10 @@ function worker(build: string, routes: (url: URL) => Route | undefined) {
     if (route.delayMs) {
       openDownloads += 1;
       mostDownloads = Math.max(mostDownloads, openDownloads);
-      await new Promise((resolve) => setTimeout(resolve, route.delayMs));
+      // A held download is the test's gate, never a duration: it stays open until the test has seen the peak it
+      // wants to assert, and the install waits inside it.
+      downloadGate ??= new Promise<void>((resolve) => { releaseDownloads = resolve; });
+      await downloadGate;
       openDownloads -= 1;
     }
     if (init?.integrity && (route.status ?? 200) === 200) {
@@ -108,6 +113,8 @@ function worker(build: string, routes: (url: URL) => Route | undefined) {
     closed,
     windows(next: FakeWindow[]) { windows = next; return this; },
     mostDownloads: () => mostDownloads,
+    openDownloads: () => openDownloads,
+    releaseDownloads: () => releaseDownloads(),
     install: () => dispatch("install"),
     activate: () => dispatch("activate"),
     /** A push event whose body is the text a push service delivered: a fake parses it as the browser does. */
@@ -143,7 +150,11 @@ test("install fills one build cache with integrity and bounded downloads, and a 
   const good = worker("b1", (url) => url.pathname === "/offline-inventory.json"
     ? inventoryFor("b1", files)
     : url.pathname in files ? { body: files[url.pathname], delayMs: 5 } : undefined);
-  await good.install();
+  const installing = good.install();
+  // Every download the worker is allowed to spend is in flight before the test lets them finish.
+  await vi.waitFor(() => assert.ok(good.openDownloads() >= 3, "the worker's whole download budget is in flight"), { timeout: 5_000 });
+  good.releaseDownloads();
+  await installing;
   const cache = good.stores.get("hui-offline-b1");
   assert(cache);
   assert.equal(await (await cache.match("/index.html"))?.text(), files["/index.html"]);
