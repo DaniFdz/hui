@@ -6,8 +6,9 @@
  * `**` stay exactly as typed. A star may open inside a word (`a*b*` is emphasis in Markdown), an underscore may not
  * (`read_text_file` is a name), no run's content may start or end with whitespace, and no rule fires inside a code mark
  * or a code block. Block rules (heading, quote, bullet, ordered item, fence) fire only in a paragraph, so `# ` typed
- * inside a heading stays text instead of silently converting it. A literal draft (see `editor.ts`) has no rules: the
- * plugin's `enabled` check is off there, so its markers stay text.
+ * inside a heading stays text instead of silently converting it; a fence opens on the space after it here, or on the
+ * Enter that follows it (`keys.ts`' `openCodeFence`). A literal draft (see `editor.ts`) has no rules: the plugin's
+ * `enabled` check is off there, so its markers stay text.
  *
  * Undo is exact. The typed character is dispatched as its own ordinary edit first and the conversion second, marked
  * with `closeHistory`, so prosemirror-history keeps the literal markers as an event of their own: one undo brings
@@ -88,7 +89,7 @@ function rulesOf(schema: Schema): RuleTable {
     return rule;
   };
   const rules: InputRule[] = [
-    // A fence opens on the space after ``` or ```lang: a newline sends in prose, so a space is the fence's trigger.
+    // A fence opens on the space after ``` or ```lang, and on the Enter that follows it (`keys.ts`' `openCodeFence`).
     inParagraph(textblockTypeInputRule(/^```([A-Za-z0-9_+.#-]*)\s$/u, codeBlock, (match) => ({ language: match[1] ?? "" }))),
     inParagraph(textblockTypeInputRule(/^(#{1,6})\s$/u, heading, (match) => ({ level: (match[1] ?? "#").length }))),
     inParagraph(wrappingInputRule(/^\s*>\s$/u, blockquote)),

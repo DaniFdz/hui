@@ -393,6 +393,10 @@ test("composer keys run the menus first, then the editor's Enter policy, then th
   const prevented = keydown.indexOf("if (event.defaultPrevented) return true;");
   const policy = keydown.indexOf("enterPolicy(view.state)");
   assert.ok(menu > 0 && prevented > menu && policy > prevented, `${menu}, ${prevented}, ${policy}`);
+  // A paragraph that is only a fence opens a code block before Enter could send it or break it, and only in a rich draft.
+  const fence = keydown.indexOf("if (!this.#literal && openCodeFence(view.state, view.dispatch, view)) return true;");
+  const send = keydown.indexOf("const mode = this.#enterMode();");
+  assert.ok(fence > prevented && send > fence, `${fence}, ${send}`);
   // Shift+Enter is one hard break, Enter on a list item splits or ends it, and a fence takes a newline.
   assert.match(editor, /const hardBreak: Command = chainCommands\(codeBlockNewline, newline\);/u);
   assert.match(editor, /if \(event\.shiftKey\) return this\.#edit\(view, hardBreak\);/u);

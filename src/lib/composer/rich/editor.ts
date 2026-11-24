@@ -21,10 +21,10 @@
  *
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
  * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
- * newline in a fence) or the send `composerEnterMode` names, Shift+Enter always inserts one hard break, and Mod-Enter
- * always sends. Tab, Shift+Tab and the formatting chords are `keys.ts`'. The app re-reads its completion queries from
- * the caret, so a position it has already read is not reported again: the keyup of an Enter that took a suggestion must
- * not reopen the menu that choice just closed.
+ * newline in a fence) or the send `composerEnterMode` names, a paragraph that is only a fence opens a code block before
+ * either, Shift+Enter always inserts one hard break, and Mod-Enter always sends. Tab, Shift+Tab and the formatting chords
+ * are `keys.ts`'. The app re-reads its completion queries from the caret, so a position it has already read is not
+ * reported again: the keyup of an Enter that took a suggestion must not reopen the menu that choice just closed.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { history } from "prosemirror-history";
@@ -34,7 +34,7 @@ import { EditorState, TextSelection, type Command, type Plugin, type Transaction
 import { EditorView } from "prosemirror-view";
 import type { PromptMode } from "../../../api/sessions.ts";
 import { composerEnterMode } from "../state.ts";
-import { codeBlockNewline, enterKey, enterPolicy, newline, richKeymap } from "./keys.ts";
+import { codeBlockNewline, enterKey, enterPolicy, newline, openCodeFence, richKeymap } from "./keys.ts";
 import { literalDocument, literalInline, literalWire, parseMarkdown, serializeMarkdown, sourceMode } from "./markdown.ts";
 import { htmlSlice, plainTextSlice } from "./paste.ts";
 import { richInputRules } from "./rules.ts";
@@ -413,6 +413,8 @@ class ComposerEditorImpl implements ComposerEditor {
       this.#send(this.#enterMode(false, event.ctrlKey, event.metaKey));
       return true;
     }
+    // A fence opens the block Enter would otherwise send or break; a literal draft keeps its own markers.
+    if (!this.#literal && openCodeFence(view.state, view.dispatch, view)) return true;
     const mode = this.#enterMode();
     // A coarse pointer, or the modifier-Enter preference, keeps plain Enter an edit.
     if (mode === undefined) return false;

@@ -1878,9 +1878,10 @@ The composer is a rich editor in both places it appears (a chat and New Session)
 never a textarea with Markdown in it: in a rich draft no marker is visible, because
 typing one converts live (a literal draft, below, is the one exception).
 `**bold**`, `*italic*`, `~~strikethrough~~`, `` `code` ``, `# heading`, `> quote`,
-`- item`, `1. item` and a triple-backtick fence each become their node or mark the
-moment the run completes, while `2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*`
-and an unmatched `**` stay exactly as typed. The
+`- item` and `1. item` each become their node or mark the moment the run completes,
+and a triple-backtick fence becomes a code block carrying its language when Enter
+follows it (or the space after it), while `2 * 3 * 4`, `a * b`, `read_text_file`, a
+lone `*` and an unmatched `**` stay exactly as typed. The
 form submits the draft's canonical Markdown through a hidden field — the exact
 source an unedited draft was loaded with, the serializer's own spelling after a
 rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break) —
@@ -1900,9 +1901,18 @@ loads a draft the editor can represent in its place, as a send's clear does, so
 editing one never turns it into formatting.
 
 Enter sends in prose; inside a non-empty list item it splits the item, on an empty
-list item it ends the list, and inside a fence it adds a line. Shift+Enter always
-inserts one line break, Send and Cmd/Ctrl+Enter always send, and on a coarse
-pointer (or with the modifier-Enter preference) plain Enter stays a line break.
+list item it ends the list, and inside a fence it adds a line. In a paragraph that is
+only a fence (```` ``` ```` or ```` ```lang ````), Enter opens a code block carrying
+that language instead of sending, on a keyboard and on a phone alike, unless that
+paragraph cannot become one where it sits (a list item's first paragraph keeps its
+markers and Enter keeps its ordinary meaning). Inside that block Enter adds a line,
+ArrowDown at the block's end or Enter on a closing ```` ``` ```` line that a
+paragraph can follow leaves it for that paragraph, and where none can follow the line
+stays and Enter adds a line. Cmd/Ctrl+Shift+E turns a fence back into a paragraph,
+and none of this changes the Markdown the wire carries.
+Shift+Enter always inserts one line break, Send and Cmd/Ctrl+Enter always send, and
+on a coarse pointer (or with the modifier-Enter preference) plain Enter stays a line
+break.
 Tab and Shift+Tab change a list item's depth (three spaces per level) or indent
 a fence, and leave the editor outside both. Cmd/Ctrl+B, I and E toggle bold,
 italic and inline code, and Cmd/Ctrl+Shift+E fences the selection. Pasted plain
