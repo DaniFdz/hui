@@ -1903,10 +1903,13 @@ editing one never turns it into formatting.
 Enter sends in prose; inside a non-empty list item it splits the item, on an empty
 list item it ends the list, and inside a fence it adds a line. In a paragraph that is
 only a fence (```` ``` ```` or ```` ```lang ````), Enter opens a code block carrying
-that language instead of sending, on a keyboard and on a phone alike; inside that
-block Enter adds a line, ArrowDown at the block's end or Enter on a closing
-```` ``` ```` line leaves it for the paragraph after it, and Cmd/Ctrl+Shift+E turns a
-fence back into a paragraph. None of this changes the Markdown the wire carries.
+that language instead of sending, on a keyboard and on a phone alike, unless that
+paragraph cannot become one where it sits (a list item's first paragraph keeps its
+markers and Enter keeps its ordinary meaning). Inside that block Enter adds a line,
+ArrowDown at the block's end or Enter on a closing ```` ``` ```` line that a
+paragraph can follow leaves it for that paragraph, and where none can follow the line
+stays and Enter adds a line. Cmd/Ctrl+Shift+E turns a fence back into a paragraph,
+and none of this changes the Markdown the wire carries.
 Shift+Enter always inserts one line break, Send and Cmd/Ctrl+Enter always send, and
 on a coarse pointer (or with the modifier-Enter preference) plain Enter stays a line
 break.

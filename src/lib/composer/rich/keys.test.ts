@@ -213,6 +213,18 @@ test("ArrowDown at a fence's end leaves it for the paragraph after", () => {
   const stayed = run(midState, exitCodeBlockDown);
   assert.equal(stayed.ok, false, "mid-block the arrow still moves the caret");
   assert.equal(stayed.state, midState, "nothing was dispatched");
+
+  // A heading after the block is no paragraph to leave it for, so the caret stays and nothing is added around it.
+  const beforeHeading = docOf(codeBlock("x"), schemaNode(richSchema, "heading").create({ level: 2 }, richSchema.text("next")));
+  const endOfBlock = endOfCodeBlock(beforeHeading);
+  const noExitState = stateAt(beforeHeading, endOfBlock);
+  const noExit = run(noExitState, exitCodeBlockDown);
+  assert.equal(noExit.ok, false, "a heading after the block is no exit");
+  assert.equal(noExit.state, noExitState, "nothing was dispatched");
+  assert.equal(noExit.state.doc.childCount, 2, "nothing was added or removed around the block");
+  assert.equal(noExit.state.doc.lastChild?.type.name, "heading");
+  assert.deepEqual([noExit.state.selection.from, noExit.state.selection.to], [endOfBlock, endOfBlock], "the caret stayed put");
+
   const prose = docOf(paragraph(richSchema.text("plain")));
   assert.equal(run(stateAt(prose), exitCodeBlockDown).ok, false, "there is no fence to leave");
 });
