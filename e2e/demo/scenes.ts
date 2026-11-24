@@ -194,7 +194,8 @@ async function dismissNote(d: Director, text: string) {
 async function handoffState(d: Director) {
   return d.stage<{ panes: number; strip: { x: number; y: number; width: number; height: number } | null; done: { x: number; y: number; width: number; height: number } | null; top: string | null; activity: string; camera: string }>(`(() => {
     const doc = document.getElementById("app").contentDocument;
-    // The Work pane sits inside HUI's shadow roots; the panes are found the way the recorder finds its targets.
+    // HUI's elements draw into the light DOM, so the pane and its strip are plain descendants: the panes are found the
+    // way the recorder finds its targets, then queried directly.
     const panes = [];
     const walk = (root) => {
       for (const element of root.querySelectorAll("*")) {
@@ -203,19 +204,19 @@ async function handoffState(d: Director) {
       }
     };
     walk(doc);
-    const pane = panes.find((element) => element.shadowRoot?.querySelector(".hui-browser-handoff"));
+    const pane = panes.find((element) => element.querySelector(".hui-browser-activity"));
     const box = (element) => {
       if (!element) return null;
       const rect = element.getBoundingClientRect();
       return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
     };
-    const strip = box(pane?.shadowRoot.querySelector(".hui-browser-handoff"));
-    const done = box(pane?.shadowRoot.querySelector(".hui-browser-handoff__done"));
-    const hit = done ? pane.shadowRoot.elementFromPoint(done.x + done.width / 2, done.y + done.height / 2) : null;
+    const strip = box(pane?.querySelector(".hui-browser-handoff"));
+    const done = box(pane?.querySelector(".hui-browser-handoff__done"));
+    const hit = done ? pane.ownerDocument.elementFromPoint(done.x + done.width / 2, done.y + done.height / 2) : null;
     return {
       panes: panes.length, strip, done,
       top: hit ? [hit.tagName.toLowerCase(), ...[...hit.classList].map((name) => "." + name)].join("") : null,
-      activity: pane?.shadowRoot.querySelector(".hui-browser-activity__text")?.textContent?.trim() ?? "",
+      activity: pane?.querySelector(".hui-browser-activity__text")?.textContent?.trim() ?? "",
       camera: getComputedStyle(document.getElementById("camera")).transform,
     };
   })()`);
@@ -280,6 +281,7 @@ async function framePixels(d: Director): Promise<string> {
 
 /** Waits until the page repaints after the operator's input: the frame is the only view of it this page has. */
 async function frameRepainted(d: Director, before: string, timeout = 30_000) {
+  if (!before) throw new Error("The pane shows no live page frame, so a tap's repaint cannot be seen.");
   const deadline = Date.now() + timeout;
   while (await framePixels(d) === before) {
     if (Date.now() > deadline) throw new Error("The page did not repaint after the tap.");
@@ -929,7 +931,9 @@ export const scenes: Scene[] = [
       await d.caption("Started by a bot, with its brief");
       await d.zoom({ css: "[data-testid='chat-pane-creator']" }, 1.9);
       await d.pause(3_000);
-      // The chip leads back to the bot that started it, where its own line about the two sessions sits.
+      // The chip leads back to the bot that started it, where its own line about the two sessions sits. Its caption leaves
+      // with the session header it describes, before the picture becomes the bot's chat.
+      await d.caption();
       await d.click({ css: "[data-testid='chat-pane-creator']" });
       await centreInThread(d, { contains: "Two sessions are up" });
       await d.zoom();

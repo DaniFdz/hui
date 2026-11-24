@@ -88,7 +88,11 @@ const FIND = `(target) => {
 // whether that field, or something inside it, still holds the focus the keystrokes need.
 const FIELD = `(element) => {
   const active = element?.ownerDocument.activeElement;
-  const field = element?.isContentEditable || element?.value !== undefined ? element : active;
+  // The focus only counts when it is inside what typing aimed at, so an editor that already held it elsewhere cannot
+  // stand in for a field the click never reached.
+  const field = element?.isContentEditable || element?.value !== undefined
+    ? element
+    : element?.contains(active) ? active : undefined;
   return {
     editable: field?.isContentEditable === true,
     value: field?.value,
