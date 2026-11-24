@@ -1,8 +1,9 @@
 /**
  * The composer's keys: what Enter means in prose, a list item and a code block, that a paragraph holding only a fence
  * opens a code block with its language on Enter, that ArrowDown at a fence's end and Enter on a closing fence line leave
- * it, that Shift+Enter always hard-breaks, that Tab and Shift+Tab leave the editor alone outside a list, and that the
- * formatting chords, undo, redo and select-all act on the document. The Enter policy itself is documented in `keys.ts`.
+ * it where a paragraph can follow, that Shift+Enter always hard-breaks, that Tab and Shift+Tab leave the editor alone
+ * outside a list, and that the formatting chords, undo, redo and select-all act on the document. The Enter policy itself
+ * is documented in `keys.ts`.
  */
 import assert from "node:assert/strict";
 import { chainCommands } from "prosemirror-commands";
@@ -136,6 +137,11 @@ test("Enter on a fence opens a code block carrying its language", () => {
 
 test("Enter opens no fence that is not a paragraph's whole text", () => {
   const code = schemaMark(richSchema, "code").create();
+  const fenced = docOf(paragraph(richSchema.text("```")));
+  // The paragraph's text alone reads as the fence, but the hard break makes it more than the markers.
+  const broken = stateAt(docOf(paragraph(richSchema.text("```"), schemaNode(richSchema, "hard_break").create())));
+  // A pending code mark makes the next character code, as the input rule reads `state.storedMarks` too.
+  const pending = EditorState.create({ doc: fenced, selection: TextSelection.atEnd(fenced), storedMarks: [code] });
   const cases: readonly [label: string, state: EditorState][] = [
     ["mid-paragraph", stateAt(docOf(paragraph(richSchema.text("a```"))))],
     ["in a heading", stateAt(docOf(schemaNode(richSchema, "heading").create({ level: 2 }, richSchema.text("```"))))],
@@ -144,10 +150,28 @@ test("Enter opens no fence that is not a paragraph's whole text", () => {
     ["with the caret before the paragraph's end", stateAt(docOf(paragraph(richSchema.text("```"))), 1)],
     ["with a selection", stateAt(docOf(paragraph(richSchema.text("```"))), 1, 4)],
     ["with text after the fence", stateAt(docOf(paragraph(richSchema.text("``` more"))))],
+    ["with a hard break after the fence", broken],
+    ["under a pending code mark", pending],
   ];
   for (const [label, state] of cases) {
     assert.equal(openCodeFence(state, () => assert.fail(`${label} dispatched`)), false, label);
   }
+  assert.equal(broken.doc.firstChild?.childCount, 2, "the break is a second child of the fence's paragraph");
+  assert.equal(broken.doc.firstChild?.textContent, "```", "and its text alone would have read as the fence");
+  assert.notEqual(pending.storedMarks, null, "the code mark is pending where the paragraph is fenced");
+
+  // A list item's first paragraph cannot become a code block, so the markers stay text and Enter splits the item.
+  const item = docOf(bulletList(listItem(paragraph(richSchema.text("```")))));
+  const inItem = stateAt(item);
+  assert.equal(openCodeFence(inItem, () => assert.fail("a list item's fence dispatched")), false, "a list item's first paragraph stays one");
+  const split = run(inItem, enterKey);
+  assert.equal(split.ok, true);
+  assert.equal(split.state.doc.firstChild?.childCount, 2, "the item was split as any other list item");
+  const first = split.state.doc.firstChild?.firstChild;
+  assert.equal(first?.type.name, "list_item");
+  assert.equal(first?.firstChild?.type.name, "paragraph", "the fence stays the paragraph it was");
+  assert.equal(first?.firstChild?.textContent, "```", "the fence text survives");
+  assert.equal(serializeMarkdown(split.state.doc), "- \\`\\`\\`\n- ", "the draft writes the markers as literal text");
 });
 
 test("one undo restores the typed fence, and the next removes it", () => {
@@ -222,6 +246,20 @@ test("Enter on a closing fence line leaves the block", () => {
   const textLine = run(stateAt(lastLine, endOfCodeBlock(lastLine)), enterKey);
   assert.equal(textLine.state.doc.childCount, 1, "a last line that is not a fence is an ordinary newline");
   assert.equal(textLine.state.doc.textContent, "let a = 1;\nafter\n");
+});
+
+test("Enter on a closing fence line adds a line when no paragraph can follow", () => {
+  const doc = docOf(codeBlock("a\n```"), schemaNode(richSchema, "heading").create({ level: 2 }, richSchema.text("next")));
+  const state = stateAt(doc, endOfCodeBlock(doc));
+  assert.equal(closeCodeFence(state, () => assert.fail("a fence with no exit dispatched")), false, "a heading after the block is no exit");
+  const result = run(state, enterKey);
+  assert.equal(result.ok, true);
+  assert.equal(result.state.doc.childCount, 2, "nothing was added or removed around the block");
+  assert.equal(result.state.doc.firstChild?.type.name, "code_block");
+  assert.equal(result.state.doc.firstChild?.textContent, "a\n```\n", "the closing line stays and Enter adds a line after it");
+  assert.equal(result.state.doc.lastChild?.type.name, "heading");
+  assert.equal(result.state.selection.$from.parent.type.name, "code_block", "the caret stays inside the block");
+  assert.equal(result.state.selection.$from.parentOffset, result.state.selection.$from.parent.content.size);
 });
 
 test("Shift+Enter keeps a newline on a closing fence line", () => {

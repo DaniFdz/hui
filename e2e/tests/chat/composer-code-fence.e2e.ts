@@ -2,8 +2,8 @@
  * A fence starts and ends on the Enter key in the rich composer (CHAT-095). Typing ```ts and pressing Enter opens a
  * code block with that language instead of sending the draft, and the block takes its lines on Enter; ArrowDown at the
  * block's end and Enter on a closing ``` line both leave it for the paragraph after, which the draft writes one blank
- * line below the fence. Nothing here sends with plain Enter: the phone treats Enter as a line break, so the send is
- * always the Send button.
+ * line below the fence in the draft. Nothing here sends with plain Enter: the phone treats Enter as a line break, so the
+ * send is always the Send button.
  */
 import { expect, type Locator, type Role } from "e2e";
 import { test } from "../../fixtures/hui.ts";

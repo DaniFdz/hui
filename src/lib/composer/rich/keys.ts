@@ -9,13 +9,15 @@
  * - in a non-empty list item it splits the item, so a list grows without leaving it;
  * - on an empty list item it lifts the item out and ends the list;
  * - in a code block it inserts a newline, because a fence's lines are content, and on a last line that is only
- *   ```` ``` ```` it drops that line and leaves the block instead;
+ *   ```` ``` ```` it drops that line and leaves the block, where a paragraph can follow it; elsewhere that line stays
+ *   and Enter adds a line after it;
  * - everywhere else it reports `false`, and the caller sends.
  * Shift+Enter always inserts a hard break. The Send button and Mod-Enter always send, whatever the cursor sits in.
  *
  * A fence is left from the keyboard too: ArrowDown at the end of a code block's content (`exitCodeBlockDown`) or Enter
  * on its closing fence line (`closeCodeFence`) moves the caret to the paragraph after it, adding one when the block ends
- * its container. Cmd/Ctrl+Shift+E still turns a fence back into a paragraph.
+ * its container. Enter leaves the block only where a paragraph can follow it; otherwise it adds a line to the block.
+ * Cmd/Ctrl+Shift+E still turns a fence back into a paragraph.
  *
  * Tab sinks a list item and Shift+Tab lifts it, both returning `false` outside a list so Tab still moves focus out of
  * the editor; inside a code block Tab indents by two spaces (the dialect's list indent) instead. Cmd/Ctrl+B, I and E
@@ -97,7 +99,8 @@ type OpeningFence = { start: number; end: number; language: string };
 /**
  * The fence a paragraph holds whole, when the caret ends it: ```` ``` ```` or ```` ```lang ````, with one optional
  * trailing space and no code mark under the caret. A longer run, a heading, a fence with anything else around it and a
- * fence inside an inline code span are all just text.
+ * fence inside an inline code span are all just text, and so is a fence whose paragraph cannot become a code block
+ * where it sits: a list item's first paragraph must stay one.
  */
 function openingFence(state: EditorState): OpeningFence | undefined {
   const { selection } = state;
@@ -105,9 +108,17 @@ function openingFence(state: EditorState): OpeningFence | undefined {
   const { $from } = selection;
   if ($from.parent.type !== schemaNode(state.schema, "paragraph")) return undefined;
   if ($from.parentOffset !== $from.parent.content.size) return undefined;
-  if ($from.marks().some((mark) => mark.type.spec.code)) return undefined;
+  // One text node, so a hard break after the markers is not read as part of a fence's paragraph.
+  if ($from.parent.childCount !== 1) return undefined;
+  const pendingCode = state.storedMarks?.some((mark) => mark.type.spec.code) ?? false;
+  if (pendingCode || $from.marks().some((mark) => mark.type.spec.code)) return undefined;
   const match = /^```([A-Za-z0-9_+.#-]*) ?$/u.exec($from.parent.textContent);
   if (!match) return undefined;
+  // The check the input rule makes before it converts (`textblockTypeInputRule`): where the paragraph cannot be replaced
+  // by a code block, the markers stay text and Enter keeps its ordinary meaning.
+  const container = $from.node($from.depth - 1);
+  const index = $from.index($from.depth - 1);
+  if (!container.canReplaceWith(index, index + 1, schemaNode(state.schema, "code_block"))) return undefined;
   return { start: $from.start(), end: $from.end(), language: match[1] ?? "" };
 }
 
@@ -174,7 +185,8 @@ const CLOSING_FENCE = "```";
 /**
  * Enter on a code block's last line when that line is only ```` ``` ````: the line and the newline before it go, and the
  * caret leaves the block as ArrowDown does. A block holding nothing but that line becomes the paragraph itself, with the
- * caret inside it. A fence line with any line after it is an ordinary newline, so only a closing fence ends a block.
+ * caret inside it. A fence line with any line after it is an ordinary newline, so only a closing fence ends a block, and
+ * only where a paragraph can follow it: with nowhere to go the line stays and Enter adds a line after it.
  */
 export const closeCodeFence: Command = (state, dispatch) => {
   const { selection } = state;
@@ -184,26 +196,26 @@ export const closeCodeFence: Command = (state, dispatch) => {
   if (!parent.type.spec.code) return false;
   if ($from.parentOffset !== parent.content.size) return false;
   const text = parent.textContent;
-  const wholeBlock = text === CLOSING_FENCE;
-  if (!wholeBlock && !text.endsWith(`\n${CLOSING_FENCE}`)) return false;
-  if (!dispatch) return true;
-  const start = $from.start();
-  if (wholeBlock) {
+  if (text === CLOSING_FENCE) {
     // Nothing but the fence was in the block, so the block itself becomes the paragraph the caret stays in.
+    if (!dispatch) return true;
+    const start = $from.start();
     const tr = state.tr.delete(start, $from.end()).setBlockType(start, start, schemaNode(state.schema, "paragraph"));
     tr.setSelection(TextSelection.create(tr.doc, start)).scrollIntoView();
     dispatch(tr);
     return true;
   }
+  if (!text.endsWith(`\n${CLOSING_FENCE}`)) return false;
   // The exit is read before the line goes: the structure is unchanged, and everything after that line moves up by it.
+  // Nowhere to go is no closing fence, so nothing is deleted and Enter is an ordinary newline in the block.
   const exit = codeBlockExit(state);
+  if (!exit) return false;
+  if (!dispatch) return true;
   const shift = CLOSING_FENCE.length + 1;
+  const after = exit.after - shift;
   const tr = state.tr.delete($from.end() - shift, $from.end());
-  if (exit) {
-    const after = exit.after - shift;
-    if (exit.insert) tr.insert(after, schemaNode(state.schema, "paragraph").create());
-    tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
-  }
+  if (exit.insert) tr.insert(after, schemaNode(state.schema, "paragraph").create());
+  tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
   dispatch(tr);
   return true;
 };
