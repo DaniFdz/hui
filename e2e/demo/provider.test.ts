@@ -65,3 +65,50 @@ test("a bot answers the agent that tagged it at the return address its tag carri
   assert.equal(answer.tools[0]?.name, "message_bot");
   assert.equal(answer.tools[0]?.input.to, "agent:demo-1");
 });
+
+// The bots clip: a chief opens two storefront sessions, one per brief, and each answers its own brief.
+test("a chief's request starts two storefront sessions with a title and a brief each", async () => {
+  const answer = await reply("Start the orders CSV export and the flaky checkout test fix");
+  assert.deepEqual(answer.tools.map((tool) => [tool.name, tool.input.group, tool.input.title]), [
+    ["create_session", "Storefront", "Orders CSV export"],
+    ["create_session", "Storefront", "Flaky checkout test"],
+  ]);
+  const briefs = answer.tools.map((tool) => String(tool.input.prompt));
+  assert.match(briefs[0]!, /Add the CSV export button to the orders page/u);
+  assert.match(briefs[1]!, /Fix the flaky checkout e2e test/u);
+});
+
+test("each session a chief started answers its own brief", async () => {
+  const exported = await reply("[from @chief-of-staff-storefront] Add the CSV export button to the orders page. Read src/orders/orders-page.js.");
+  assert.deepEqual(exported.tools, []);
+  assert.match(exported.text, /toCsv/u);
+  const fixed = await reply("[from @chief-of-staff-storefront] Fix the flaky checkout e2e test: it clicks Pay before the totals request settles.");
+  assert.deepEqual(fixed.tools, []);
+  assert.match(fixed.text, /passed ten runs/u);
+});
+
+// The phone clip: the agent opens the checkout at phone size, then reads the page the operator paid on.
+test("a checkout prompt opens the page and reads its total", async () => {
+  const opened = await reply("Pay for the storefront order on staging");
+  assert.equal(opened.tools[0]?.name, "browser");
+  assert.equal(opened.tools[0]?.input.action, "open");
+  assert.match(String(opened.tools[0]?.input.url), /\/demo\/checkout$/u);
+  const resized = await reply([{ type: "tool_result", tool_use_id: opened.tools[0]!.id, content: "Opened http://127.0.0.1:1/demo/checkout" }]);
+  assert.deepEqual([resized.tools[0]?.name, resized.tools[0]?.input.action, resized.tools[0]?.input.width, resized.tools[0]?.input.height], ["browser", "resize", 390, 844]);
+  const read = await reply([{ type: "tool_result", tool_use_id: resized.tools[0]!.id, content: "The viewport of tab t1 is now 390×844." }]);
+  assert.deepEqual([read.tools[0]?.name, read.tools[0]?.input.action, read.tools[0]?.input.selector], ["browser", "text", ".total"]);
+  const asked = await reply([{ type: "tool_result", tool_use_id: read.tools[0]!.id, content: "HUI_PAGE_CONTENT nonce=abc\n$240.00\nHUI_PAGE_CONTENT nonce=abc" }]);
+  assert.deepEqual(asked.tools, []);
+  assert.match(asked.text, /\$240\.00/u, "the total the page really shows");
+  assert.match(asked.text, /take control of the page/u, "and the takeover it asks for");
+});
+
+test("the payment question answers from the page, and says so when it cannot", async () => {
+  const read = await reply("Did the payment go through?");
+  assert.deepEqual([read.tools[0]?.name, read.tools[0]?.input.action], ["browser", "text"]);
+  const paid = await reply([{ type: "tool_result", tool_use_id: read.tools[0]!.id, content: "HUI_PAGE_CONTENT nonce=abc\nOrder #A-1042\nPayment confirmed. $240.00 charged to the card ending 4242.\nHUI_PAGE_CONTENT nonce=abc" }]);
+  assert.match(paid.text, /Payment confirmed\. \$240\.00 charged to the card ending 4242\./u);
+  const unpaid = await reply([{ type: "tool_result", tool_use_id: read.tools[0]!.id, content: "HUI_PAGE_CONTENT nonce=abc\nOrder #A-1042\n$240.00\nHUI_PAGE_CONTENT nonce=abc" }]);
+  assert.match(unpaid.text, /does not say the payment went through/u);
+  assert.doesNotMatch(unpaid.text, /Payment confirmed/u, "a page without the line is never reported as paid");
+});
