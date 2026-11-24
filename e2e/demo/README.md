@@ -7,7 +7,7 @@ node e2e/demo/record.ts                 # every clip, then overview.mp4
 node e2e/demo/record.ts kanban bots     # only these clips, and their overview
 node e2e/demo/record.ts --out ~/Movies/hui-demo
 node e2e/demo/record.ts bots --keep     # keep frames, logs and the demo HUI's folders
-node e2e/demo/record.ts --voice mlx-audio/af_heart --music ~/Music/bed.mp3 --accept-vscode-license   # all, narrated
+node e2e/demo/record.ts --accept-vscode-license   # every clip, including the VS Code one
 ```
 
 Filming a release's video is a procedure of its own:
@@ -31,23 +31,15 @@ Videos never go into Git.
   `pointer: coarse` / `hover: none`, as a phone browser over Tailscale would.
 - Demo terminals run a plain zsh with a short prompt, not your own shell setup.
 
-## Narration and music
+## Captions
 
-`--voice <model>/<voice>` narrates each clip through
-[VoiceStudio](https://github.com/debpalash/VoiceStudio)'s OpenAI-style
-`/v1/audio/speech`, at `VOICESTUDIO_URL` (default `http://127.0.0.1:3900`).
-`mlx-audio/af_heart` is Kokoro 82M (Apache-2.0) on Apple Silicon, a warm female
-voice; VoiceStudio's default OmniVoice weights are non-commercial. The lines are
-each scene's `narration`; `director.say(key)` starts one once the previous line
-ends, so the clip waits for the narrator. Lines are synthesized before
-recording and cached in `<out>/.voice`. Names read letter by letter are spaced ("H U I", "V S Code"); check new ones by
-transcribing the clip.
+Clips carry no audio stream at all. A caption is a few words plus one line, and
+the picture tells the rest. Nothing speaks for a beat, so a silent beat must end
+with an explicit hold: a `pause` of at least two seconds, or a `cut` that lands
+on the framed picture. `say` and `quiet` do nothing without a voice.
 
-`--music <file>` lays any audio file under the voice, about 15 LU quieter and
-ducked while she speaks; the overview gets one continuous bed. Use a track
-whose license allows it in videos (the published videos use Mixkit's
-"Atoms in Peace" by Alejandro Magaña, under the Mixkit Stock Music Free
-License), and keep it out of Git.
+The `--voice <model>/<voice>` and `--music <file>` flags still exist as unused
+optional paths, not as part of a clip.
 
 ## How it works
 
