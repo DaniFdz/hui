@@ -1130,6 +1130,17 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "The shared test sets a desktop browser to 1440×900 as well as 390×844, and the wide layout is a phone's own limit; the fix is the shared stylesheet, so a phone's wrapped page scrolls the same card by touch, which this test does not prove.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
+  {
+    id: "CHAT-095",
+    title: "Start and leave a code block from the composer keyboard",
+    behaviour:
+      "In the rich composer a paragraph that is only a fence — a bare ``` or a ``` with a language — becomes a fenced code block carrying that language when Enter follows it, exactly as the space after it already does: the markers go, the caret sits inside the empty block, and nothing is sent, on a keyboard and on a phone alike. Enter inside the block adds a line. ArrowDown at the end of the block's content leaves it for the paragraph after it, adding one when the block ends the draft, and Enter on a last line that is only ``` removes that line, and the newline before it, to leave the block the same way; a block holding nothing else becomes that paragraph. The hidden field carries the canonical Markdown: an empty fence is its fence line twice, a block with lines is its fence, its lines and its closing fence, and a paragraph after it is written one blank line below.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;
