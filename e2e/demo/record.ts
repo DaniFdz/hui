@@ -5,6 +5,9 @@
  * framed stage page in headless Chrome with a synthetic cursor, captions and
  * zoom, and encodes the screencast to MP4 with ffmpeg. See README.md here.
  *
+ * Clips are silent by default: captions and picture carry the story, with no narration and no music. `--voice` and
+ * `--music` remain as optional paths for a clip that wants them.
+ *
  *   node e2e/demo/record.ts [scene ...] [--out <dir>] [--voice <model>/<voice>] [--music <file>] [--accept-vscode-license] [--keep]
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -67,8 +70,9 @@ const FIND = `(target) => {
     (!target.css || element.matches(target.css)) &&
     (!target.label || norm(element.getAttribute("aria-label")) === target.label) &&
     (!target.placeholder || element.getAttribute("placeholder") === target.placeholder) &&
-    // A field's value is its state, not its text: a composer seeded from a share has no text content.
-    (!target.value || String(element.value ?? "").includes(target.value)) &&
+    // A control's value is its state, while a rich composer has no value at all and holds its draft as text: a composer
+    // seeded from a share matches by the text it shows.
+    (!target.value || norm(String(element.value ?? element.textContent ?? "")).includes(norm(target.value))) &&
     (!target.text || text(element) === target.text) &&
     (!target.contains || text(element).includes(target.contains)) && visible(element));
   if (!target.css) found = found.filter((element) => !found.some((other) => other !== element && element.contains(other)));
@@ -78,6 +82,21 @@ const FIND = `(target) => {
   const box = element.getBoundingClientRect(), { dx, dy } = place.get(element);
   return { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height };
 }`;
+
+// Runs on the stage: the field typing aims at — a control's value, or a contenteditable's rendered text, which is the
+// only thing to compare there because its input rules rewrite the source as it is typed (`**`, `- `, a fence) — and
+// whether that field, or something inside it, still holds the focus the keystrokes need.
+const FIELD = `(element) => {
+  const active = element?.ownerDocument.activeElement;
+  const field = element?.isContentEditable || element?.value !== undefined ? element : active;
+  return {
+    editable: field?.isContentEditable === true,
+    value: field?.value,
+    text: field?.isContentEditable ? field.innerText ?? field.textContent ?? "" : undefined,
+    focused: Boolean(field) && (field === active || field.contains(active)),
+  };
+}`;
+type Field = { editable: boolean; value?: string; text?: string; focused: boolean };
 
 export class Director {
   readonly #cdp: CdpConnection;
@@ -176,14 +195,19 @@ export class Director {
   /** Types like a person, one character at a time, into the field the cursor clicked. Focus is set too: after a click in
    * a widget's frame, Chrome keeps sending text there. A terminal clears its input as it goes, so it is not checked. */
   async type(text: string, options: { terminal?: boolean } = {}) {
-    if (!options.terminal) await this.stage("window.found?.focus()");
+    // The before state and the focus in one round trip; the field is read the same way once the text is in.
+    const before = options.terminal ? undefined : await this.stage<Field>(`(() => { const element = window.found; element?.focus(); return (${FIELD})(element); })()`);
     for (const character of text) {
       await this.send("Input.insertText", { text: character });
       await sleep(26 + (character === " " ? 24 : Math.random() * 20));
     }
     if (options.terminal) return;
-    const typed = await this.stage<boolean>(`Boolean(document.getElementById("app").contentDocument.activeElement?.value?.endsWith(${JSON.stringify(text)}))`);
-    if (!typed) throw new Error(`Typing "${text}" did not reach the field.`);
+    const after = await this.stage<Field>(`(${FIELD})(window.found)`);
+    // A control proves itself with its value. A contenteditable can only prove that the keystrokes reached it: it kept
+    // the focus, and its draft is not the one it held before. The typed source never appears there as typed, so it is
+    // not what the check looks for.
+    const typed = before?.editable ? after.editable && after.focused && after.text !== before.text : Boolean(after.value?.endsWith(text));
+    if (!typed) throw new Error(`Typing "${text}" did not reach the editor.`);
   }
 
   /** On a phone, scrolls the content under a target by (deltaX, deltaY): the finger drags the other way. */
@@ -369,8 +393,8 @@ async function startChrome(profile: string) {
   return { child, cdp };
 }
 
-/** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264, with the narration and music when
- * there are any. The voice alone also goes to `.voice/<clip>.wav` for the overview. */
+/** Encodes screencast frames (shown until the next one arrives) to 30 fps H.264. The clip is silent unless `--voice` or
+ * `--music` asked for audio; a voice alone also goes to `.voice/<clip>.wav` for the overview. */
 async function encode(frames: { file: string; t: number }[], end: number, list: string, output: string, spoken: { file: string; at: number }[]) {
   // Frames arrive in delivery order, which a busy renderer can invert: a picture captured earlier may land after a later
   // one. They are held in capture order, so the clip never shows a stale frame last (a cleared caption, a half zoom).
