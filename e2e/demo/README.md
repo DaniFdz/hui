@@ -35,8 +35,9 @@ Videos never go into Git.
 
 Clips carry no audio stream at all. A caption is a few words plus one line, and
 the picture tells the rest. Nothing speaks for a beat, so a silent beat must end
-with an explicit hold: a `pause` of at least two seconds, or a `cut` that lands
-on the framed picture. `say` and `quiet` do nothing without a voice.
+with an explicit hold: a `pause` of at least 3000 ms, which is about two seconds
+on screen because `pause` sleeps its input times `PACE` (0.7), or a `cut` that
+lands on the framed picture. `say` and `quiet` do nothing without a voice.
 
 The `--voice <model>/<voice>` and `--music <file>` flags still exist as unused
 optional paths, not as part of a clip.

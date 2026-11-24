@@ -62,9 +62,10 @@ iterate (`node e2e/demo/record.ts <scene>`); a failure saves
   across the whole clip. Check that the zoom frames its subject, captions do not
   cover what is being shown, nothing private appears (repositories live in
   `/tmp/acme-*`, the address bar says localhost) and every step happened.
-- Read the captions in the sheet: every caption in order, each over the picture
-  it describes, not covering the subject, and each beat on screen long enough to
-  read.
+- Read the captions in the sheets: one sheet covers eight seconds at `fps=0.5, tile=2x2`, so
+take one sheet per eight seconds of a clip (`-ss <t>` for each) until the whole
+clip is covered. Every caption in order, each over the picture it describes, not
+covering the subject, and each beat on screen long enough to read.
 - `ffprobe` each file: it has no audio stream (`-an`), its picture holds on its
   last frame, wide and with no caption, and its size fits GitHub's limit: videos
   up to 100 MB on the owner's paid plan (10 MB on a free one). Look at a frame at
