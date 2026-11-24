@@ -233,7 +233,8 @@ await writeFile(join(CONFIG_DIR, "backlog.json"), JSON.stringify({ version: 1, j
   task("Document the release checklist", "docs", "Docs", "Releases depend on one person remembering the steps.", "Write the checklist in docs/releasing.md."),
 ] }));
 await writeFile(join(CONFIG_DIR, "settings.json"), JSON.stringify({
-  profileName: "Dana", models: { primary: "hui-e2e/fixture", fallback: "", utility: "hui-e2e/fixture" },
+  // The gateway's own name, so the sidebar footer names the demo's machine instead of this host's hostname.
+  name: "Studio", profileName: "Dana", models: { primary: "hui-e2e/fixture", fallback: "", utility: "hui-e2e/fixture" },
 }));
 // Acme's Datadog org, read through the fake pup the launcher sets up, for the Datadog card in the chat.
 await writeFile(join(CONFIG_DIR, "datadog.json"), JSON.stringify({ version: 1, orgs: [{ name: "acme", site: "app.datadoghq.com" }] }));
