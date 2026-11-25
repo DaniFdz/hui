@@ -28,8 +28,8 @@ test("a session on PI's worker streams thinking, tools and replies, answers an e
   await send.tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Reasoning"));
-  await transcript.getByText("Reasoning").tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await transcript.getByText(trail).tap();
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 
   // A tool call runs there too, and its row names the read.
