@@ -4019,9 +4019,9 @@ machine, or a run that failed and left the session idle), **Working** (a turn st
 **Recent** (everything else, a failed worktree creation included, since that is not a status). A session sits in one
 lane and is counted once; the section's header counts the lanes it has (*1 needs you · 1 working · 7 recent*) and a
 bot that started nothing says so in one calm line. Each row shows a status dot, the session's title and how long ago it
-last moved; its link is `/sessions/<id>?open=app`, and a plain click or Enter opens that chat in the app, while a
-new-tab or new-window click (and Ctrl, ⌘, Shift or a middle click) keeps the link. The queue draws its first eight rows
-and **Show N more** draws the rest in place, per bot and never remembered.
+last moved; its link is `/sessions/<id>`, and a plain click or Enter opens that chat in the app, while a new-tab or
+new-window click (and Ctrl, ⌘, Shift or a middle click) keeps the bare link. The queue draws its first eight rows and
+**Show N more** draws the rest in place, per bot and never remembered.
 
 ### A bot's roster row counts and lists the work it started (2026-11-25)
 

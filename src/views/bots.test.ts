@@ -438,8 +438,8 @@ test("the overview draws Work first among what the bot does on its own: its coun
   assert.equal(page.match(/class="bot-overview__row bot-work__row"/gu)?.length, 8, "eight rows across the queue");
   assert.match(page, />Show 1 more</u);
   assert.match(page, /aria-expanded=false/u);
-  assert.match(page, /href=\/sessions\/s-run\?open=app data-work-tone=busy/u, "a live turn's dot is busy");
-  assert.match(page, /href=\/sessions\/s-wait\?open=app data-work-tone=question/u, "a waiting row's dot asks for an answer");
+  assert.match(page, /href=\/sessions\/s-run data-work-tone=busy/u, "a live turn's dot is busy");
+  assert.match(page, /href=\/sessions\/s-wait data-work-tone=question/u, "a waiting row's dot asks for an answer");
   assert.ok(page.includes(`datetime=${recent}>2m</time>`), "a row says how long ago it last moved");
 
   const expanded = markup(renderBotPanel({ ...props, work: { ...props.work, expanded: true } }));
@@ -457,7 +457,7 @@ test("a bot that started nothing says so in one calm hint", () => {
 test("a Work row draws an unreachable machine in the warn tone, not the muted dot of a finished one", () => {
   const away = startedSession("s-away", "Lost the box", { status: "disconnected", worker: { id: "w1", name: "Box" } as SessionView["worker"] });
   const page = markup(renderBotPanel(overviewProps({ queue: botWorkQueue([away]), expanded: false, onToggle: () => {} })));
-  assert.match(page, /href=\/sessions\/s-away\?open=app data-work-tone=away/u);
+  assert.match(page, /href=\/sessions\/s-away data-work-tone=away/u);
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   assert.match(css, /\.bot-work__link\[data-work-tone="away"\] \.bot-work__dot \{ background: var\(--warn\); \}/u, "styled beside question, error and busy");
 });

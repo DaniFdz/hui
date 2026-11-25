@@ -637,7 +637,7 @@ function workDotTone(row: WorkRow): string {
 function renderWorkRow(props: BotPanelProps, row: WorkRow, now: number) {
   const { session } = row;
   return html`<li class="bot-overview__row bot-work__row" data-lane=${row.lane}>
-    <a class="bot-work__link" href=${`${navigationPath({ kind: "session", id: session.id })}?open=app`} data-work-tone=${workDotTone(row)}
+    <a class="bot-work__link" href=${navigationPath({ kind: "session", id: session.id })} data-work-tone=${workDotTone(row)}
       @click=${(event: MouseEvent) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();

@@ -64,7 +64,7 @@ test("a bot's panel queues the sessions it started and its roster row counts and
     await expect.poll(async () => (await lane("Working").boundingBox())!.y).toBeLessThan((await lane("Recent").boundingBox())!.y);
     const rows = (locator: typeof panel) => locator.getByRole("link", { name: /^Work /u });
     await expect(rows(panel)).toHaveCount(8);
-    await expect(panel.getByRole("link", { name: /^Work waiting/u })).toHaveAttribute("href", `/sessions/${waiting.id}?open=app`);
+    await expect(panel.getByRole("link", { name: /^Work waiting/u })).toHaveAttribute("href", `/sessions/${waiting.id}`);
     // Each row's dot takes the tone the sidebar's own status glyph gives it: a question or a live turn.
     await expect(panel.getByRole("link", { name: /^Work waiting/u })).toHaveAttribute("data-work-tone", "question");
     await expect(panel.getByRole("link", { name: /^Work running/u })).toHaveAttribute("data-work-tone", "busy");
