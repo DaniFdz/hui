@@ -14,6 +14,7 @@ import type { Node } from "prosemirror-model";
 import { EditorState, TextSelection, type Command } from "prosemirror-state";
 import { test } from "vitest";
 import {
+  blockKindOf,
   closeCodeFence,
   codeBlockNewline,
   enterKey,
@@ -22,7 +23,10 @@ import {
   exitBlockDown,
   exitCodeBlockDown,
   fenceSelection,
+  formatState,
   indentCodeBlock,
+  makeNote,
+  markActive,
   newline,
   openCodeFence,
   openNote,
@@ -30,9 +34,14 @@ import {
   selectAll,
   shiftTabInList,
   tabInList,
+  toggleBulletList,
+  toggleCodeBlock,
   toggleEmphasis,
   toggleInlineCode,
+  toggleQuote,
+  toggleStrike,
   toggleStrong,
+  toPlainParagraph,
 } from "./keys.ts";
 import { serializeMarkdown } from "./markdown.ts";
 import { richSchema, schemaMark, schemaNode } from "./schema.ts";
@@ -761,4 +770,177 @@ test("select all, undo and redo act on the document", () => {
   const redone = run(undone.state, redo);
   assert.equal(redone.ok, true);
   assert.equal(redone.state.doc.textContent, "xabc");
+});
+
+test("the strip's mark toggles and the state they report over a range and at a caret", () => {
+  const selected = stateAt(docOf(paragraph(richSchema.text("ab"))), 1, 3);
+  const cases = [
+    [toggleStrong, "strong", "**ab**"],
+    [toggleEmphasis, "em", "*ab*"],
+    [toggleStrike, "s", "~~ab~~"],
+    [toggleInlineCode, "code", "`ab`"],
+  ] as const;
+  for (const [command, mark, markdown] of cases) {
+    const on = run(selected, command);
+    assert.equal(on.ok, true, mark);
+    assert.deepEqual(inlineShape(on.state.doc), [{ text: "ab", marks: [mark] }], `${mark} covers the selection`);
+    assert.equal(serializeMarkdown(on.state.doc), markdown, `${mark} writes its Markdown`);
+    assert.equal(markActive(selected, mark), false, `${mark} is not what the selection carried`);
+    assert.equal(markActive(on.state, mark), true, `${mark} is what the whole selection carries now`);
+    const off = run(on.state, command);
+    assert.deepEqual(inlineShape(off.state.doc), [{ text: "ab", marks: [] }], `${mark} toggles off`);
+  }
+
+  // At a caret the mark is the one the next typed character would carry, which is what the button must show.
+  const caret = stateAt(docOf(paragraph(richSchema.text("ab"))), 2);
+  for (const [, mark] of cases) assert.equal(markActive(caret, mark), false, mark);
+  const pending = run(caret, toggleStrong).state;
+  assert.equal(markActive(pending, "strong"), true, "a caret toggled bold types bold");
+  // Half a marked run is not the whole selection: the button offers to finish the job rather than claiming it is done.
+  const strong = schemaMark(richSchema, "strong").create();
+  const half = docOf(paragraph(richSchema.text("bo"), richSchema.text("ld", [strong])));
+  assert.equal(markActive(stateAt(half, 1, 5), "strong"), false, "only half the range is bold");
+  assert.equal(markActive(stateAt(half, 3, 5), "strong"), true, "a range wholly inside the mark is bold");
+});
+
+test("the strip's block actions change the blocks and their wire, and take them back", () => {
+  const prose = () => stateAt(docOf(paragraph(richSchema.text("note this"))));
+
+  const quoted = run(prose(), toggleQuote);
+  assert.equal(quoted.ok, true);
+  assert.equal(blockKindOf(quoted.state), "quote");
+  assert.equal(serializeMarkdown(quoted.state.doc), "> note this", "Quote wraps the selection");
+  const requoted = run(quoted.state, toggleQuote);
+  assert.equal(requoted.ok, true);
+  assert.equal(requoted.state.doc.firstChild?.type.name, "paragraph", "and presses again to take the quote away");
+  assert.equal(serializeMarkdown(requoted.state.doc), "note this");
+
+  const noted = run(run(prose(), toggleQuote).state, makeNote);
+  assert.equal(noted.ok, true);
+  assert.equal(noted.state.doc.firstChild?.type.name, "note", "Note turns the quote around the selection into the note");
+  assert.equal(noted.state.doc.firstChild?.attrs["kind"], "note");
+  assert.equal(serializeMarkdown(noted.state.doc), "> [!NOTE]\n> note this");
+  assert.equal(blockKindOf(noted.state), "note");
+  assert.equal(run(noted.state, makeNote).ok, false, "a note is what Text takes away, not a second note");
+
+  const fromProse = run(prose(), makeNote);
+  assert.equal(fromProse.ok, true);
+  assert.equal(serializeMarkdown(fromProse.state.doc), "> [!NOTE]\n> note this", "a paragraph becomes a note's body");
+
+  const itemised = run(prose(), toggleBulletList);
+  assert.equal(itemised.ok, true);
+  assert.equal(blockKindOf(itemised.state), "list");
+  assert.equal(serializeMarkdown(itemised.state.doc), "- note this");
+  const unlisted = run(itemised.state, toggleBulletList);
+  assert.equal(unlisted.ok, true);
+  assert.equal(unlisted.state.doc.firstChild?.type.name, "paragraph", "a second press takes the list away");
+  assert.equal(serializeMarkdown(unlisted.state.doc), "note this");
+
+  const fenced = run(prose(), toggleCodeBlock);
+  assert.equal(fenced.ok, true);
+  assert.equal(blockKindOf(fenced.state), "code");
+  assert.equal(serializeMarkdown(fenced.state.doc), "```\nnote this\n```");
+  const unfenced = run(fenced.state, toggleCodeBlock);
+  assert.equal(unfenced.state.doc.firstChild?.type.name, "paragraph", "a second press unfences the block");
+
+  const titled = stateAt(docOf(schemaNode(richSchema, "heading").create({ level: 2 }, richSchema.text("Title"))));
+  assert.equal(blockKindOf(titled), "heading");
+  const plain = run(titled, toPlainParagraph);
+  assert.equal(plain.ok, true);
+  assert.equal(plain.state.doc.firstChild?.type.name, "paragraph", "Text flattens a heading");
+  assert.equal(serializeMarkdown(plain.state.doc), "Title");
+
+  // Text is what takes every block away at once: the note goes, and the list inside it with it.
+  const nested = stateAt(docOf(note("note", bulletList(listItem(paragraph(richSchema.text("item")))))));
+  const flattened = run(nested, toPlainParagraph);
+  assert.equal(flattened.ok, true);
+  assert.equal(flattened.state.doc.firstChild?.type.name, "paragraph", "the note and the list are gone");
+  assert.equal(serializeMarkdown(flattened.state.doc), "item");
+  assert.equal(blockKindOf(flattened.state), "paragraph");
+});
+
+test("what the strip's block actions write over a range is the Markdown of the blocks", () => {
+  const twoParagraphs = () => stateAt(docOf(paragraph(richSchema.text("one")), paragraph(richSchema.text("two"))), 1, 9);
+
+  const quoted = run(twoParagraphs(), toggleQuote);
+  assert.equal(quoted.ok, true);
+  assert.equal(serializeMarkdown(quoted.state.doc), "> one\n>\n> two", "both paragraphs went into one quote");
+  const noted = run(twoParagraphs(), makeNote);
+  assert.equal(noted.ok, true);
+  assert.equal(serializeMarkdown(noted.state.doc), "> [!NOTE]\n> one\n>\n> two", "and into one note");
+  const listed = run(twoParagraphs(), toggleBulletList);
+  assert.equal(listed.ok, true);
+  assert.equal(serializeMarkdown(listed.state.doc), "- one\n- two", "the list gets one item per paragraph");
+  const fenced = run(twoParagraphs(), toggleCodeBlock);
+  assert.equal(fenced.ok, true);
+  assert.equal(serializeMarkdown(fenced.state.doc), "```\none\n```\n\n```\ntwo\n```", "Code block fences each selected block");
+});
+
+test("one undo takes a strip action back, and the typing before it stays", () => {
+  const base = EditorState.create({ doc: docOf(paragraph()), plugins: [history()] });
+  const written = typed(base, "quoted");
+  const quoted = run(written, toggleQuote);
+  assert.equal(quoted.ok, true);
+  assert.equal(serializeMarkdown(quoted.state.doc), "> quoted");
+  const undone = run(quoted.state, undo);
+  assert.equal(undone.ok, true);
+  assert.equal(undone.state.doc.firstChild?.type.name, "paragraph", "the quote is one undo, not one per step");
+  assert.equal(serializeMarkdown(undone.state.doc), "quoted", "and the typing under it is still there");
+  const retyped = run(undone.state, undo);
+  assert.equal(retyped.ok, true);
+  assert.equal(retyped.state.doc.textContent, "", "the typing itself is the next undo");
+
+  // A mark action is one undo too, over whatever the selection covers.
+  const marking = EditorState.create({ doc: docOf(paragraph(richSchema.text("quoted"))), plugins: [history()] });
+  const range = marking.apply(marking.tr.setSelection(TextSelection.create(marking.doc, 1, 7)));
+  const bolded = run(range, toggleStrong);
+  assert.equal(bolded.ok, true);
+  assert.equal(serializeMarkdown(bolded.state.doc), "**quoted**");
+  assert.deepEqual(inlineShape(run(bolded.state, undo).state.doc), [{ text: "quoted", marks: [] }], "one undo takes the mark off");
+});
+
+test("each action's pressed and disabled state is what the selection allows", () => {
+  const prose = stateAt(docOf(paragraph(richSchema.text("abc"))), 1, 4);
+  const state = formatState(prose);
+  assert.deepEqual({ pressed: state.text.pressed, disabled: state.text.disabled }, { pressed: true, disabled: true },
+    "a plain paragraph is what Text names, and there is no block to take away");
+  assert.deepEqual({ pressed: state.quote.pressed, disabled: state.quote.disabled }, { pressed: false, disabled: false });
+  assert.equal(state.bold.disabled, false, "a mark can always be added to a range");
+  assert.equal(state.cut.disabled, false, "a selection can be cut");
+  assert.equal(state.paste.disabled, false, "the clipboard items follow the selection, and the toolbar answers for Paste");
+
+  const caret = formatState(stateAt(docOf(paragraph(richSchema.text("abc")))));
+  assert.equal(caret.cut.disabled, true, "a caret has nothing to cut");
+  assert.equal(caret.copy.disabled, true);
+  assert.equal(caret.bold.disabled, false, "typing bold at a caret is still an edit");
+
+  const insideNote = formatState(stateAt(docOf(note("tip", paragraph(richSchema.text("x"))))));
+  assert.deepEqual({ pressed: insideNote.note.pressed, disabled: insideNote.note.disabled }, { pressed: true, disabled: true },
+    "a note is already the block the selection sits in");
+  assert.equal(insideNote.text.disabled, false, "and Text is what takes it away");
+
+  const insideList = formatState(stateAt(docOf(bulletList(listItem(paragraph(richSchema.text("x")))))));
+  assert.equal(insideList["bullet-list"].pressed, true);
+  assert.equal(insideList.quote.pressed, false);
+  assert.equal(blockKindOf(stateAt(docOf(bulletList(listItem(paragraph(richSchema.text("x"))))))), "list");
+  assert.equal(blockKindOf(stateAt(docOf(codeBlock("x")))), "code");
+  assert.equal(blockKindOf(stateAt(docOf(paragraph(richSchema.text("x"))))), "paragraph");
+});
+
+test("an action that takes several steps is still one transaction and one undo", () => {
+  // A note inside a quote: `Text` lifts both containers, which is two transforms folded into the one transaction the
+  // strip's single action may dispatch.
+  const nested = docOf(blockquote(note("note", paragraph(richSchema.text("deep")))));
+  const base = EditorState.create({ doc: nested, plugins: [history()] });
+  const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, 3)));
+  const flattened = run(state, toPlainParagraph);
+  assert.equal(flattened.ok, true);
+  assert.equal(flattened.state.doc.childCount, 1, "the quote and the note are both gone");
+  assert.equal(flattened.state.doc.firstChild?.type.name, "paragraph");
+  assert.equal(serializeMarkdown(flattened.state.doc), "deep", "and the wire is the prose that was inside them");
+  const undone = run(flattened.state, undo);
+  assert.equal(undone.ok, true, "one undo");
+  assert.equal(undone.state.doc.firstChild?.type.name, "blockquote", "restores the quote");
+  assert.equal(undone.state.doc.firstChild?.firstChild?.type.name, "note", "and the note inside it");
+  assert.equal(serializeMarkdown(undone.state.doc), "> > [!NOTE]\n> > deep", "with the wire it had");
 });

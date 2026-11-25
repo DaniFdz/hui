@@ -36,12 +36,21 @@
  * toggle strong, emphasis and inline code, Cmd/Ctrl+Shift+E fences the selection, and undo/redo/select-all are
  * prosemirror-history's and prosemirror-commands' own. In a literal draft (see `editor.ts`) the formatting chords are
  * consumed and change nothing (`richKeymap`'s `formatting`).
+ *
+ * The selection toolbar's actions are commands here too (`COMPOSER_ACTIONS`): the inline toggles add or remove one mark,
+ * and the block ones move the selected blocks into a quote, a note, a bullet list or a fence and back out again — `Text`
+ * takes every one of those away. Each block action is a `sequence` of the steps it may need, so it is one transaction and
+ * one undo, and the strip's disabled state is a dry run of the same command. `blockKindOf` and `markActive` are the
+ * pressed state it reads: over a range they ask whether the whole selection carries the block or the mark, and at a caret
+ * they answer what the next typed character would be.
  */
-import { chainCommands, lift, selectAll, setBlockType, splitBlock, toggleMark } from "prosemirror-commands";
+import { chainCommands, lift, selectAll, setBlockType, splitBlock, toggleMark, wrapIn } from "prosemirror-commands";
 import { closeHistory, redo, undo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
-import { liftListItem, sinkListItem, splitListItem } from "prosemirror-schema-list";
+import { NodeRange, type ResolvedPos } from "prosemirror-model";
+import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
 import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from "prosemirror-state";
+import { liftTarget, Mapping } from "prosemirror-transform";
 import type { AlertType } from "../../markdown/parser.ts";
 import { noteFromMarker } from "./rules.ts";
 import { schemaMark, schemaNode } from "./schema.ts";
@@ -500,6 +509,258 @@ export const fenceSelection: Command = (state, dispatch, view) => {
   if ($from.parent.type.spec.code) return setBlockType(paragraph)(state, dispatch, view);
   return setBlockType(code, { language: "" })(state, dispatch, view);
 };
+
+/**
+ * Runs commands in order as the steps of one transaction: each sees the document the ones before it made, and the
+ * operator's undo takes the whole action back at once. A command that does not apply is skipped, so a block action can be
+ * written as the changes it may need; a command that dispatches several transactions (a lift out of each container) is
+ * folded into the same one.
+ */
+export function sequence(...commands: readonly Command[]): Command {
+  return (state, dispatch) => {
+    let current = state;
+    const built: Transaction[] = [];
+    for (const command of commands) {
+      command(current, (transaction) => {
+        built.push(transaction);
+        current = current.apply(transaction);
+      });
+    }
+    if (built.length === 0) return false;
+    if (!dispatch) return true;
+    const combined = state.tr;
+    for (const transaction of built) for (const step of transaction.steps) combined.step(step);
+    // The last selection is resolved against the document the last step made, which is this one's content but not this
+    // Node; an empty mapping puts it back on the transaction's own document.
+    const last = built[built.length - 1]!;
+    combined.setSelection(last.selection.map(combined.doc, new Mapping())).scrollIntoView();
+    dispatch(closeHistory(combined));
+    return true;
+  };
+}
+
+/** The outermost depth at which an ancestor of `$from` carries one of these node names, when there is one. */
+function outerDepth($from: ResolvedPos, names: ReadonlySet<string>): number | undefined {
+  for (let depth = 1; depth <= $from.depth; depth += 1) {
+    if (names.has($from.node(depth).type.name)) return depth;
+  }
+  return undefined;
+}
+
+/** A quote, and nothing else: what the quote toggle moves the selection in and out of. */
+const QUOTE_NAMES: ReadonlySet<string> = new Set(["blockquote"]);
+
+/** A bullet or ordered list, the block the bullet-list toggle wraps and lifts. */
+const LIST_NAMES: ReadonlySet<string> = new Set(["bullet_list", "ordered_list"]);
+
+/** The block a block action changes around the selection (see `blockKindOf`). */
+export type BlockKind = "paragraph" | "heading" | "quote" | "note" | "list" | "code";
+
+/**
+ * The block the block actions change: the fence or the heading the caret's own textblock is, else the outermost quote,
+ * note or list holding the selection, else a plain paragraph. Every block toggle branches on it and every block button
+ * reads its `aria-pressed` from it, so the button an operator sees pressed is the one their next press undoes.
+ */
+export function blockKindOf(state: EditorState): BlockKind {
+  const { $from } = state.selection;
+  if ($from.parent.type.spec.code) return "code";
+  if ($from.parent.type === schemaNode(state.schema, "heading")) return "heading";
+  for (let depth = 1; depth <= $from.depth; depth += 1) {
+    const name = $from.node(depth).type.name;
+    if (QUOTE_NAMES.has(name)) return "quote";
+    if (name === "note") return "note";
+    if (LIST_NAMES.has(name)) return "list";
+  }
+  return "paragraph";
+}
+
+/**
+ * Whether the whole selection carries the mark `name`. At a caret it is the mark the next typed character would carry,
+ * which is what makes the strip's button show what typing there means.
+ */
+export function markActive(state: EditorState, name: string): boolean {
+  const type = schemaMark(state.schema, name);
+  const { from, to, empty, $from } = state.selection;
+  if (empty) return Boolean(type.isInSet(state.storedMarks ?? $from.marks()));
+  let carries = false;
+  let all = true;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (!all) return false;
+    // A hard break is inline but holds no text, so it carries no mark and is not part of "the whole selection".
+    if (!node.isText) return true;
+    if (type.isInSet(node.marks)) carries = true;
+    else all = false;
+    return false;
+  });
+  return all && carries;
+}
+
+/** The transaction that takes the block at `depth` out of its container: a lift where it can move up, and otherwise the
+ * container replaced by the blocks it held, which is the only thing a quote at the top of the document allows. */
+function unwrapAt(state: EditorState, depth: number): Transaction {
+  const { $from } = state.selection;
+  const from = $from.before(depth);
+  const to = $from.after(depth);
+  const range = new NodeRange(state.doc.resolve(from), state.doc.resolve(to), depth - 1);
+  const target = liftTarget(range);
+  if (target !== null) {
+    const lifted = state.tr.lift(range, target);
+    if (lifted.docChanged) return lifted.scrollIntoView();
+  }
+  const transaction = state.tr.replaceWith(from, to, $from.node(depth).content).scrollIntoView();
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(from + 1, transaction.doc.content.size))));
+  return transaction;
+}
+
+/** Lifts the selection's blocks out of every container of these names, outermost first. */
+function unwrapBlocks(names: ReadonlySet<string>): Command {
+  return (state, dispatch) => {
+    let current = state;
+    let changed = false;
+    // Four levels is more nesting than the dialect can express around one caret, and the loop ends when none is left.
+    for (let level = 0; level < 4; level += 1) {
+      const depth = outerDepth(current.selection.$from, names);
+      if (depth === undefined) break;
+      const transaction = unwrapAt(current, depth);
+      current = current.apply(transaction);
+      changed = changed || transaction.docChanged;
+      dispatch?.(transaction);
+    }
+    return changed;
+  };
+}
+
+/** Wraps the selected blocks in a block node of `name`. */
+function wrapBlocks(name: string, attrs?: Record<string, unknown>): Command {
+  return (state, dispatch, view) => wrapIn(schemaNode(state.schema, name), attrs)(state, dispatch, view);
+}
+
+/** Wraps the selected blocks in list items. */
+const wrapList: Command = (state, dispatch, view) => wrapInList(schemaNode(state.schema, "bullet_list"))(state, dispatch, view);
+
+/** Lifts the selection's list items out of their list, back to plain blocks. */
+const liftList: Command = (state, dispatch, view) => (
+  outerDepth(state.selection.$from, LIST_NAMES) === undefined
+    ? false
+    : liftListItem(schemaNode(state.schema, "list_item"))(state, dispatch, view)
+);
+
+/** The selected textblocks become plain paragraphs, whatever they were. */
+const paragraphBlocks: Command = (state, dispatch, view) => setBlockType(schemaNode(state.schema, "paragraph"))(state, dispatch, view);
+
+/** The outermost quote around the selection becomes a note of that kind, keeping the blocks it holds. */
+const quoteToNote: Command = (state, dispatch) => {
+  const depth = outerDepth(state.selection.$from, QUOTE_NAMES);
+  if (depth === undefined) return false;
+  const { $from } = state.selection;
+  const note = schemaNode(state.schema, "note");
+  const index = $from.index(depth - 1);
+  if (!$from.node(depth - 1).canReplaceWith(index, index + 1, note)) return false;
+  if (dispatch) dispatch(state.tr.setNodeMarkup($from.before(depth), note, { kind: "note" }));
+  return true;
+};
+
+/** Strikethrough: `~~the selection~~`, as `<s>` carries it. */
+export const toggleStrike: Command = sequence((state, dispatch, view) => toggleMark(schemaMark(state.schema, "s"))(state, dispatch, view));
+
+/** Quote: the selected blocks go into a quote, or the quote around them goes and they stay prose. */
+export const toggleQuote: Command = (state, dispatch) => (
+  blockKindOf(state) === "quote" ? sequence(unwrapBlocks(QUOTE_NAMES))(state, dispatch) : sequence(wrapBlocks("blockquote"))(state, dispatch)
+);
+
+/** Note: a quote around the selection becomes the note, and any other block is wrapped in one. */
+export const makeNote: Command = (state, dispatch) => {
+  const kind = blockKindOf(state);
+  // A note is not a toggle: `Text` is what takes one away, so pressing Note inside one changes nothing.
+  if (kind === "note") return false;
+  if (kind === "quote") return sequence(quoteToNote)(state, dispatch);
+  return sequence(wrapBlocks("note", { kind: "note" }))(state, dispatch);
+};
+
+/** Bullet list: the selected blocks become list items, or the list around them goes. */
+export const toggleBulletList: Command = (state, dispatch) => (
+  blockKindOf(state) === "list" ? sequence(liftList)(state, dispatch) : sequence(wrapList)(state, dispatch)
+);
+
+/** Code block: the selected blocks become a fence, or the fence the caret sits in goes back to a paragraph. */
+export const toggleCodeBlock: Command = sequence(fenceSelection);
+
+/** Text: the selected blocks lose the quote, note, list, fence or heading around them and are plain paragraphs. */
+export const toPlainParagraph: Command = sequence(unwrapBlocks(CONTAINER_EXITS), liftList, paragraphBlocks);
+
+/** The actions the selection toolbar draws, in the order it draws them. */
+export type ComposerActionId =
+  | "bold"
+  | "italic"
+  | "strike"
+  | "inline-code"
+  | "quote"
+  | "note"
+  | "bullet-list"
+  | "code-block"
+  | "text"
+  | "cut"
+  | "copy"
+  | "paste";
+
+/** One button of the toolbar: what it says, what it runs and what makes it look pressed or unavailable. */
+export type ComposerAction = {
+  id: ComposerActionId;
+  /** The button's accessible name, and the whole of what it says. */
+  label: string;
+  /** The group the button is drawn in: the toolbar separates the groups. */
+  group: "mark" | "block" | "clipboard";
+  /** The command the button runs. Absent for the clipboard items, which the editor runs itself. */
+  command?: Command;
+  /** Whether the selection already carries the mark or the block: the button's `aria-pressed`. */
+  pressed?: (state: EditorState) => boolean;
+  /** Whether the action can act on the selection at all: the button's `disabled`. A dry run of `command` by default. */
+  enabled?: (state: EditorState) => boolean;
+};
+
+/** Whether there is a selection to act on: what the clipboard items are available for. */
+const hasSelection = (state: EditorState): boolean => !state.selection.empty;
+
+/**
+ * The toolbar's actions, which the strip draws and the editor runs: one row the buttons, the commands and the pressed
+ * states come from, so a button can never run something other than what it shows.
+ */
+export const COMPOSER_ACTIONS: readonly ComposerAction[] = [
+  { id: "bold", label: "Bold", group: "mark", command: toggleStrong, pressed: (state) => markActive(state, "strong") },
+  { id: "italic", label: "Italic", group: "mark", command: toggleEmphasis, pressed: (state) => markActive(state, "em") },
+  { id: "strike", label: "Strikethrough", group: "mark", command: toggleStrike, pressed: (state) => markActive(state, "s") },
+  { id: "inline-code", label: "Inline code", group: "mark", command: toggleInlineCode, pressed: (state) => markActive(state, "code") },
+  { id: "quote", label: "Quote", group: "block", command: toggleQuote, pressed: (state) => blockKindOf(state) === "quote" },
+  { id: "note", label: "Note", group: "block", command: makeNote, pressed: (state) => blockKindOf(state) === "note" },
+  { id: "bullet-list", label: "Bullet list", group: "block", command: toggleBulletList, pressed: (state) => blockKindOf(state) === "list" },
+  { id: "code-block", label: "Code block", group: "block", command: toggleCodeBlock, pressed: (state) => blockKindOf(state) === "code" },
+  { id: "text", label: "Text", group: "block", command: toPlainParagraph, pressed: (state) => blockKindOf(state) === "paragraph" },
+  { id: "cut", label: "Cut", group: "clipboard", enabled: hasSelection },
+  { id: "copy", label: "Copy", group: "clipboard", enabled: hasSelection },
+  { id: "paste", label: "Paste", group: "clipboard", enabled: hasSelection },
+];
+
+/** One action's state on screen: whether the selection carries it, and whether it can act on the selection at all. */
+export type ActionState = { pressed: boolean; disabled: boolean };
+
+/** Every action's state, keyed by its id: what the toolbar's buttons show. */
+export type FormatState = Readonly<Record<ComposerActionId, ActionState>>;
+
+/**
+ * What the toolbar shows for this selection: `aria-pressed` from the mark or block the action names, and the disabled
+ * state from a dry run of the command itself — the same check the key makes, so a button is never offered for an edit
+ * the document cannot take. The clipboard items carry no command; the toolbar answers for their availability.
+ */
+export function formatState(state: EditorState): FormatState {
+  const entries = COMPOSER_ACTIONS.map((action) => [
+    action.id,
+    {
+      pressed: action.pressed?.(state) ?? false,
+      disabled: !(action.enabled?.(state) ?? action.command?.(state, undefined) ?? hasSelection(state)),
+    },
+  ] as const);
+  return Object.fromEntries(entries) as FormatState;
+}
 
 export { redo, selectAll, undo };
 

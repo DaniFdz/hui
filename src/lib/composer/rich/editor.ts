@@ -28,20 +28,39 @@
  * and the formatting chords are `keys.ts`'. The app re-reads its completion queries from the caret, so a position it has
  * already read is not reported again: the keyup of an Enter that took a suggestion must not reopen the menu that choice
  * just closed.
+ *
+ * A secondary click over a selection — or the keyboard's ContextMenu key, Shift+F10 — opens the selection toolbar
+ * (`toolbar.ts`) instead of the browser menu, on a fine pointer only: a phone keeps its own long-press menu, which is
+ * where its cut, copy and paste live. The strip is the editor's, not the view's: it acts on the selection the editor
+ * holds, an action of its own keeps it open over the result (`#toolbarAction`), and anything else that moves the caret,
+ * scrolls, presses outside it or empties the selection closes it.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
-import { history } from "prosemirror-history";
+import { closeHistory, history } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection, type Command, type Plugin, type Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import type { PromptMode } from "../../../api/sessions.ts";
 import { composerEnterMode } from "../state.ts";
-import { codeBlockNewline, enterKey, enterPolicy, newline, openCodeFence, openNote, richKeymap } from "./keys.ts";
+import {
+  COMPOSER_ACTIONS,
+  codeBlockNewline,
+  enterKey,
+  enterPolicy,
+  formatState,
+  newline,
+  openCodeFence,
+  openNote,
+  richKeymap,
+  type ComposerActionId,
+  type FormatState,
+} from "./keys.ts";
 import { literalDocument, literalInline, literalWire, parseMarkdown, serializeMarkdown, sourceMode } from "./markdown.ts";
 import { htmlSlice, plainTextSlice } from "./paste.ts";
 import { richInputRules } from "./rules.ts";
 import { richSchema, schemaNode } from "./schema.ts";
+import { ComposerToolbar, type ToolbarAnchor } from "./toolbar.ts";
 
 /** The composer as the controller and the view's own glue see it. */
 export type ComposerControl = {
@@ -58,6 +77,14 @@ export type ComposerControl = {
   editable(): boolean;
   /** Whether a key or focus event came from this composer. */
   isTarget(target: Node | null): boolean;
+  /** Runs one selection-toolbar action (`COMPOSER_ACTIONS`) as a single transaction. */
+  run?(action: ComposerActionId): void;
+  /** What the toolbar shows for the selection: each action's pressed and disabled state. */
+  formatState?(): FormatState;
+  /** The selection's box in viewport coordinates, or `undefined` when it is empty: where the toolbar is anchored. */
+  selectionRect?(): ToolbarAnchor | undefined;
+  /** Inserts plain text the way a plain-text paste does, so its lines become paragraphs and breaks. */
+  pasteText?(text: string): void;
 };
 
 /** Everything one render hands the editor. A changed `markdown` reloads the draft; anything else patches in place. */
@@ -130,6 +157,12 @@ function coarsePointer(): boolean {
   return window.matchMedia?.("(pointer: coarse)").matches === true || navigator.maxTouchPoints > 0;
 }
 
+/** A mouse or a trackpad: the pointer that gets a formatting toolbar instead of the platform's own menu. */
+function finePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(pointer: fine)").matches === true;
+}
+
 /** An empty draft: one paragraph, which is what a cleared composer shows. */
 function emptyDocument(): ProseMirrorNode {
   return schemaNode(richSchema, "doc").create(null, schemaNode(richSchema, "paragraph").create());
@@ -185,10 +218,15 @@ class ComposerEditorImpl implements ComposerEditor {
     caretAtEnd: () => this.caretAtEnd(),
     editable: () => !this.#options.locked,
     isTarget: (target) => this.#isTarget(target),
+    run: (action) => this.#run(action),
+    formatState: () => this.#formatState(),
+    selectionRect: () => this.#selectionRect(),
+    pasteText: (text) => this.#pasteText(text),
   };
   readonly #host: HTMLElement;
   readonly #view: EditorView;
   readonly #hidden: HTMLInputElement;
+  readonly #toolbar: ComposerToolbar;
   readonly #plugins: readonly Plugin[];
   readonly #events = new AbortController();
   #options: ComposerEditorOptions;
@@ -200,6 +238,13 @@ class ComposerEditorImpl implements ComposerEditor {
   #applied: readonly string[] = [];
   /** The selection the app last read, so a key or click that moved nothing asks for no read of its own. */
   #reported: string | null = null;
+  /** The selection the open toolbar belongs to: a caret that moves away from it is not the strip's any more. */
+  #toolbarSelection: EditorState["selection"] | undefined;
+  /** Whether the transaction being dispatched is the toolbar's own, which re-anchors it instead of closing it. */
+  #toolbarAction = false;
+  /** Set while an action's own `scrollIntoView` is still settling: that scroll is the action's, not the operator's. */
+  #ownScroll = false;
+  #ownScrollFrame: number | null = null;
   #scrollObserver: ResizeObserver | undefined;
   #scrollFrame: number | null = null;
 
@@ -207,6 +252,14 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#host = host;
     this.#options = options;
     this.#locked = options.locked;
+    this.#toolbar = new ComposerToolbar({
+      run: (action) => this.#run(action),
+      insertText: (text) => this.#pasteText(text),
+      focusEditor: () => this.focus(),
+      closed: () => {
+        this.#toolbarSelection = undefined;
+      },
+    });
     this.#plugins = [
       history(),
       richInputRules(richSchema, () => !this.#literal),
@@ -230,6 +283,10 @@ class ComposerEditorImpl implements ComposerEditor {
           this.#options.onBlur?.(event as FocusEvent);
           return false;
         },
+        // A secondary click over a selection is the strip's, and only on a fine pointer: a phone keeps its own menu.
+        contextmenu: (_view, event) => this.#contextMenu(event as MouseEvent),
+        // The keyboard's own menu key arrives before the keymaps, so the strip answers it rather than the document.
+        keydown: (_view, event) => this.#menuKey(event as KeyboardEvent),
       },
       attributes: () => this.#attributes(),
     });
@@ -286,6 +343,10 @@ class ComposerEditorImpl implements ComposerEditor {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#events.abort();
+    this.#toolbar.destroy();
+    this.#toolbarSelection = undefined;
+    if (this.#ownScrollFrame !== null) cancelAnimationFrame(this.#ownScrollFrame);
+    this.#ownScrollFrame = null;
     this.#scrollObserver?.disconnect();
     this.#scrollObserver = undefined;
     if (this.#scrollFrame !== null) cancelAnimationFrame(this.#scrollFrame);
@@ -306,6 +367,7 @@ class ComposerEditorImpl implements ComposerEditor {
     // A transaction is a change the app has not read yet, whether it moved the caret or rewrote the text under it.
     if (!transaction.docChanged) {
       this.#reportSelection(true);
+      this.#followSelection();
       return;
     }
     // A rich edit's wire is the serializer's own Markdown; a literal draft's is the text its document shows.
@@ -314,6 +376,21 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#measureScroll();
     this.#options.onChange(this.#hidden.value);
     this.#reportSelection(true);
+    this.#followSelection();
+  }
+
+  /**
+   * The toolbar follows the selection it was opened on: an action of its own re-anchors it over the result and keeps it
+   * open, and any other transaction — a keystroke, a click, a paste — closes it, because the selection it shows is not
+   * the selection any more. A collapsed selection has nothing to format: the strip goes with it.
+   */
+  #followSelection(): void {
+    if (this.#toolbarSelection === undefined) return;
+    if (this.#toolbarAction) {
+      this.#anchorToolbar();
+      return;
+    }
+    this.#closeToolbar();
   }
 
   /**
@@ -331,6 +408,8 @@ class ComposerEditorImpl implements ComposerEditor {
 
   /** Loads a document as a fresh state, and says whether it is a literal draft. The app's last read no longer applies. */
   #load(doc: ProseMirrorNode, literal: boolean): void {
+    // A loaded draft is a new document: the strip over the old selection has nowhere to be.
+    this.#closeToolbar();
     this.#literal = literal;
     this.#view.updateState(this.#state(doc));
     this.#reported = null;
@@ -386,6 +465,130 @@ class ComposerEditorImpl implements ComposerEditor {
     return target !== null && this.#view.dom.contains(target);
   }
 
+  /**
+   * The selection's box in viewport coordinates: the union of where it starts and where it ends, which is what the strip
+   * is anchored to. `undefined` for a caret, which has nothing to format and keeps the platform's own menu.
+   */
+  #selectionRect(): ToolbarAnchor | undefined {
+    const { selection } = this.#view.state;
+    if (selection.empty) return undefined;
+    const start = this.#view.coordsAtPos(selection.from, 1);
+    const end = this.#view.coordsAtPos(selection.to, -1);
+    return {
+      left: Math.min(start.left, end.left),
+      right: Math.max(start.right, end.right),
+      top: Math.min(start.top, end.top),
+      bottom: Math.max(start.bottom, end.bottom),
+    };
+  }
+
+  /** What the strip shows for the selection. A literal draft takes no formatting, so only its clipboard items act. */
+  #formatState(): FormatState {
+    const state = formatState(this.#view.state);
+    if (!this.#literal) return state;
+    const entries = COMPOSER_ACTIONS.map((action) => [action.id, {
+      pressed: false,
+      disabled: action.group === "clipboard" ? state[action.id].disabled : true,
+    }] as const);
+    return Object.fromEntries(entries) as FormatState;
+  }
+
+  /**
+   * Runs one action of the strip as a single transaction, so its wire and the app's change callback follow at once and
+   * one undo takes it back. Its own transaction keeps the strip open (`#followSelection`).
+   */
+  #run(action: ComposerActionId): void {
+    if (this.#destroyed) return;
+    const item = COMPOSER_ACTIONS.find((candidate) => candidate.id === action);
+    // A literal draft's text is its wire: a mark or a block change has no spelling in it, so nothing formats it.
+    if (!item?.command || this.#literal) return;
+    this.#toolbarAction = true;
+    // An action scrolls its result into view, and that scroll is not the operator scrolling the strip away.
+    this.#ownScroll = true;
+    if (this.#ownScrollFrame !== null) cancelAnimationFrame(this.#ownScrollFrame);
+    this.#ownScrollFrame = requestAnimationFrame(() => {
+      this.#ownScroll = false;
+      this.#ownScrollFrame = null;
+    });
+    try {
+      item.command(this.#view.state, (transaction) => this.#dispatch(closeHistory(transaction)));
+    } finally {
+      this.#toolbarAction = false;
+    }
+  }
+
+  /** Plain text from the strip's Paste, through the paste mapping: its lines become paragraphs and breaks. */
+  #pasteText(text: string): void {
+    if (this.#destroyed || text === "") return;
+    const slice = this.#literal
+      ? new Slice(Fragment.from(literalInline(text)), 0, 0)
+      : plainTextSlice(richSchema, text);
+    if (slice.size === 0) return;
+    this.#view.dispatch(this.#view.state.tr.replaceSelection(slice).scrollIntoView());
+    this.#view.focus();
+  }
+
+  /** Opens the strip over the selection, or leaves the platform's menu alone when there is nothing to format. */
+  #openToolbar(focus: boolean): boolean {
+    const rect = this.#selectionRect();
+    if (!rect) return false;
+    this.#toolbarSelection = this.#view.state.selection;
+    this.#toolbar.open(rect, this.#formatState(), { focus });
+    return true;
+  }
+
+  /** Re-places the open strip over the selection its own action left. */
+  #anchorToolbar(): void {
+    if (!this.#openToolbar(false)) this.#closeToolbar();
+  }
+
+  #closeToolbar(): void {
+    this.#toolbarSelection = undefined;
+    this.#toolbar.close();
+  }
+
+  /** Whether the caret is on the selection the open strip belongs to. */
+  #sameSelection(): boolean {
+    const captured = this.#toolbarSelection;
+    if (!captured) return true;
+    const { selection } = this.#view.state;
+    return !selection.empty && selection.eq(captured);
+  }
+
+  /** Closes the strip once its selection is not the selection any more: a caret that moved, or one that went away. */
+  #selectionMoved(): void {
+    if (this.#toolbarSelection === undefined) return;
+    if (!this.#sameSelection()) this.#closeToolbar();
+  }
+
+  /**
+   * A secondary click over a selection opens the strip instead of the browser menu, and only on a fine pointer: a phone
+   * keeps its own long-press menu, which is where cut, copy and paste are there. An empty selection falls through too,
+   * because the platform's menu is what pastes into a caret.
+   */
+  #contextMenu(event: MouseEvent): boolean {
+    if (!finePointer()) return false;
+    if (!this.#openToolbar(false)) return false;
+    event.preventDefault();
+    return true;
+  }
+
+  /** The keyboard's menu key: the same strip, with focus moved onto it, because a key press has no pointer to aim. */
+  #menuKey(event: KeyboardEvent): boolean {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
+    if (!finePointer()) return false;
+    if (!this.#openToolbar(true)) return false;
+    event.preventDefault();
+    return true;
+  }
+
+  /** Escape closes the strip while the caret stays in the editor; the strip's own Escape returns focus here. */
+  #escape(): boolean {
+    if (this.#toolbarSelection === undefined) return false;
+    this.#closeToolbar();
+    return true;
+  }
+
   /** What Enter means right now, from the operator's device, preference and the running turn. */
   #enterMode(shiftKey = false, ctrlKey = false, metaKey = false): PromptMode | "newline" | undefined {
     return composerEnterMode({
@@ -408,6 +611,7 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#options.onBeforeKeyDown(event);
     if (event.defaultPrevented) return true;
     if (view.composing || event.isComposing) return false;
+    if (event.key === "Escape" && this.#escape()) return true;
     // Every other key, the formatting chords included, is the keymap's: a literal draft's chords are consumed there.
     if (event.key !== "Enter" || event.altKey) return false;
     // Shift+Enter is always one hard break, and Mod-Enter always sends, whatever the cursor sits in.
@@ -491,8 +695,24 @@ class ComposerEditorImpl implements ComposerEditor {
     const signal = this.#events.signal;
     for (const type of ["click", "select", "keyup"] as const) {
       // A caret this browser moved without a transaction (a click, an arrow key) still has to re-read the completions.
-      this.#view.dom.addEventListener(type, () => this.#reportSelection(), { signal });
+      this.#view.dom.addEventListener(type, () => {
+        this.#reportSelection();
+        this.#selectionMoved();
+      }, { signal });
     }
+    // The strip is drawn outside this element, so its own listeners are the document's, and each one asks first whether
+    // the strip is showing: a closed strip follows nothing.
+    document.addEventListener("selectionchange", () => this.#selectionMoved(), { signal });
+    document.addEventListener("pointerdown", (event) => {
+      if (this.#toolbarSelection === undefined) return;
+      const target = event.target;
+      if (target instanceof Node && this.#toolbar.element().contains(target)) return;
+      this.#closeToolbar();
+    }, { capture: true, signal });
+    document.addEventListener("scroll", () => {
+      if (this.#toolbarSelection === undefined || this.#ownScroll) return;
+      this.#closeToolbar();
+    }, { capture: true, passive: true, signal });
   }
 
   /** The surface's identity: the combobox attributes and the id it carries, and the lock the editor applies to it. */
