@@ -2,6 +2,9 @@
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const release = { version: "99.0.0", tag: "v99.0.0", url: "https://example.com/hui/v99.0.0" };
 const check = { currentVersion: "0.1.5", canInstall: true, message: "A new HUI release is ready to install.", status: "available", latest: release };
 
@@ -110,8 +113,8 @@ test("Reload HUI comes back on the same session with its transcript, tool result
   await screen.getByRole("button", "Reload HUI").tap();
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${update.id}`);
   await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible({ timeout: 120_000 });
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
-  if (!(await read().isVisible())) await transcript.getByText("Used 1 tool").tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  if (!(await read().isVisible())) await transcript.getByText(trail).tap();
   await expect(read()).toBeVisible();
   await expect(message()).toHaveValue("/update");
   await expect(banner).toBeHidden();

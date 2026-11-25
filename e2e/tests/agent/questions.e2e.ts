@@ -2,6 +2,9 @@
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 type Question = { header: string; question: string; multiSelect?: boolean; options: { label: string; description: string; preview?: string; previewHtml?: string }[] };
 
 const ask = (...calls: Question[][]) =>
@@ -355,7 +358,7 @@ test("a call the card can't show opens no card and fails back to the agent with 
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
 
-  const groups = transcript.getByText("Used 1 tool");
+  const groups = transcript.getByText(trail);
   await expect(groups).toHaveCount(5);
 
   await hui.reload();

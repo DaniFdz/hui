@@ -290,7 +290,7 @@ const cases: UseCase[] = [
     id: "CHAT-023",
     title: "Expand a turn's folded activity",
     behaviour:
-      'Thinking and tool calls between messages fold into one disclosure per stretch, labelled from what it holds ("Ran 1 command", "Ran 3 commands, edited 1 file", Reasoning, or the running tool\'s name while live). Expanding it shows the reasoning text and each tool card in order, and the choice holds while the chat is open.',
+      'The thinking, tool calls and errors between two messages fold into one disclosure, never two. Its collapsed header times the stretch: "Working for 12s · 1 read" while the turn runs and "Worked for 1m 12s · 1 read, 2 runs" once it settles, a stretch that measured neither end keeping the count wording ("Used 1 tool · 1 read") and reasoning alone reading Reasoning or Thinking…, and a failed call marking it "failed" while still collapsed. Expanding it shows the reasoning text and each tool card in order in one scrolled body, and the choice holds while the chat is open.',
     spec: [
       "SPEC.md#behaviour",
       "SPEC.md#every-assistant-message-stays-in-sight-2026-10-19",
@@ -310,7 +310,7 @@ const cases: UseCase[] = [
     id: "CHAT-024",
     title: "Keep every assistant message in sight",
     behaviour:
-      'A message the agent writes in the middle of its turn, before more tool calls, keeps its own row with working links once the turn ends, live and after a reload; only the activity between messages folds ("Ran 1 command").',
+      'A message the agent writes in the middle of its turn, before more tool calls, keeps its own row with working links once the turn ends, live and after a reload; only the activity between messages folds ("Worked for 4s · 1 run").',
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
@@ -1162,6 +1162,17 @@ const cases: UseCase[] = [
     journeys: ["chat-composer"],
     web: "required",
     phone: { excluded: "A secondary click is the web's: a phone's long press keeps the platform's own menu, which is where its Cut, Copy and Paste live, so the strip is never drawn there and this gesture cannot be made on a touch screen.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-composer-selections-formatting-2026-11-25" },
+  },
+  {
+    id: "CHAT-099",
+    title: "Watch a turn's activity clock and open its chips",
+    behaviour:
+      'While a turn runs, its activity trail\'s header counts up on its own — "Working for 3s · 1 run" becomes "Working for 4s · 1 run" a second later, with no reload — and once it settles it freezes as "Worked for 12s · 1 run". A call that failed marks the same collapsed header "failed" beside the clock, so the failure is read without opening anything. Opened, the trail lists the reasoning and each call in order, and a call that named a file, printed a GitHub pull request or issue link, or named a session carries those as chips: the file opens in Files with its full path, the link reads "PR #580" or "Issue #12" and opens in a new tab, and the session chip opens that chat. A call that proved none of them draws no chips.',
+    spec: ["SPEC.md#behaviour"],
+    surfaces: ["row:activity", "item:thinking", "item:tool", "tool:read", "tool:edit", "tool:bash"],
+    journeys: ["chat-composer", "message-metadata"],
+    web: "required",
+    phone: "backlog",
   },
 ];
 

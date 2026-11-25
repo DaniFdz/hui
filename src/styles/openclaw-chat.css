@@ -1802,38 +1802,146 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
-/* One card for a turn's tool calls (src/views/chat/tool-call-group.ts): a mark stack and a live "Using N tools"
- * header over one row per call. Rows are 40px so a long run stays scannable; only the row's own body opens. */
-.tool-call-group {
+/* One trail for a turn's activity (src/lib/activity-trail.ts, src/views/home.ts): one disclosure whose summary carries
+the turn's clock, what its calls did and a failed mark, and whose opened body lists the reasoning and every call in
+order. The header is one line that ellipsises; the body scrolls the stretch, and an opened call keeps its own card cap
+below. */
+.chat-activity-trail {
   width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
-.tool-call-group__disclosure {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--panel-strong) 55%, transparent);
-  overflow: hidden;
-}
-
-.tool-call-group__head {
+.chat-activity-trail__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 9px 12px 9px 13px;
-  list-style: none;
-  color: var(--muted);
-  font-size: calc(var(--control-ui-text-sm) + 1.5px);
-  cursor: pointer;
-  appearance: none;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 0;
 }
 
-.tool-call-group__head::-webkit-details-marker { display: none; }
-.tool-call-group__head:hover { background: color-mix(in srgb, var(--panel-hover) 55%, transparent); }
-.tool-call-group__disclosure:focus-within > .tool-call-group__head { outline: none; }
-.tool-call-group__head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-activity-trail__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text) 88%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A failed call is named in the collapsed header, never only inside the fold: the mark carries the danger colour and
+the count stays whole, so the label's ellipsis never eats it. */
+.chat-activity-trail__failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--danger);
+  font-size: calc(var(--control-ui-text-xs) + 1px);
+  white-space: nowrap;
+}
+
+.chat-activity-trail__failed-mark {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-activity-trail__failed-mark svg {
+  width: 13px;
+  height: 13px;
+}
+
+.chat-activity-trail__head .tool-call-group__marks {
+  flex: none;
+  padding-left: 0;
+}
+
+/* The chips a call's own data proves: its file, its pull requests and issues, and the sessions it named. They wrap inside
+the opened row only, so nothing grows the header. */
+.tool-call-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px 41px;
+}
+
+/* An opened call inside a trail keeps the cap it always had: the trail scrolls the stretch, and a call taller than its
+   own card still scrolls inside the card it owns (`views/chat/tool-call-group.ts`). */
+.chat-activity-group__body .tool-call-row .chat-tool-msg-body {
+  max-height: min(520px, 60vh);
+  overflow-y: auto;
+}
+
+.tool-call-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-strong) 55%, transparent);
+  color: var(--muted);
+  font-size: calc(var(--control-ui-text-xs) + 1px);
+  line-height: 1.6;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+a.tool-call-chip {
+  color: var(--link);
+}
+
+a.tool-call-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--link-hover, var(--link));
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+a.tool-call-chip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tool-call-chip--file hui-file-ref {
+  color: inherit;
+}
+
+/* A session chip already draws its own pill; the trail keeps that pill and only stops it outgrowing the row. */
+.tool-call-chip--session {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.tool-call-chip--session a.session-ref {
+  max-width: min(22rem, 100%);
+}
+
+@media (max-width: 460px) {
+  .tool-call-row__chips { padding: 0 10px 8px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-activity-trail__label--live {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--text) 62%, transparent) 0%, var(--text-strong) 40%, color-mix(in srgb, var(--text) 62%, transparent) 70%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: tool-call-shimmer 1.6s ease-in-out infinite;
+  }
+}
+
+/* The rows of a turn's tool calls (src/views/chat/tool-call-group.ts), drawn inside the trail its marks head: one row
+ * per call. Rows are 40px so a long run stays scannable; only the row's own body opens. */
+.tool-call-group {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
 
 .tool-call-group__marks { display: flex; align-items: center; padding-left: 4px; }
 
@@ -1852,12 +1960,7 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 
 .tool-call-group__mark svg { width: 12px; height: 12px; }
 .tool-call-group__mark--more { color: var(--muted); font-family: var(--mono); font-size: 9px; }
-.tool-call-group__label { color: color-mix(in srgb, var(--text) 88%, transparent); }
-.tool-call-group__chevron { display: grid; place-items: center; margin-left: auto; width: 14px; height: 14px; color: var(--muted); transition: transform 180ms var(--ease-out, cubic-bezier(.32,.72,0,1)); }
-.tool-call-group__chevron svg { width: 14px; height: 14px; }
-.tool-call-group__disclosure[open] > .tool-call-group__head .tool-call-group__chevron { transform: rotate(180deg); }
 
-.tool-call-group__spin,
 .tool-call-row__spin {
   width: 11px;
   height: 11px;
@@ -1929,15 +2032,12 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tool-call-group__spin,
   .tool-call-row__spin { animation: none; }
-  .tool-call-group__chevron,
   .tool-call-row__chevron svg { transition: none; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .tool-call-row__title--live,
-  .tool-call-group__label--live {
+  .tool-call-row__title--live {
     background: linear-gradient(90deg, color-mix(in srgb, var(--text) 62%, transparent) 0%, var(--text-strong) 40%, color-mix(in srgb, var(--text) 62%, transparent) 70%);
     background-size: 220% 100%;
     -webkit-background-clip: text;
@@ -1974,7 +2074,6 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 
 /* A long command or an unwrapped output must scroll inside its well, never widen the card or the page. */
 .tool-call-group,
-.tool-call-group__disclosure,
 .tool-call-group__rows,
 .tool-call-row,
 .tool-call-row__toggle,
@@ -1989,19 +2088,7 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row .chat-tool-term__out { overflow-x: auto; }
 .tool-call-row .chat-tool-card__block-content { max-width: 100%; overflow-x: auto; }
 
-/* The card reads as one elevated panel: a clearer frame, larger type and taller rows than a dense log row. */
-.tool-call-group__disclosure {
-  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--panel-strong) 62%, transparent);
-}
-
-.tool-call-group__head {
-  min-height: 46px;
-  padding: 10px 14px;
-  font-size: calc(var(--control-ui-text-sm) + 2px);
-}
-
+/* The rows read as one elevated panel: larger type and taller rows than a dense log row. */
 .tool-call-group__rows { padding: 5px 0 8px; }
 
 .tool-call-row__toggle {

@@ -383,3 +383,24 @@ test("streamed text, thinking and tool output redraw the conversation once per a
   stream.onEvent({ type: "tool_start", id: "t2", name: "bash" });
   assert.equal(updates(), before + 2, "a new tool row redraws at once");
 });
+
+test("the activity trail's clock starts with the live turn and is dropped the moment it settles", async () => {
+  // A settled turn announces itself to the page; the controller keeps no clock of its own past that.
+  vi.stubGlobal("window", { ...globalThis, dispatchEvent: () => true, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("idle");
+  await settle();
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined, "an idle conversation holds no start");
+  const stream = fake.streams[0]!.handlers;
+  stream.onEvent({ type: "turn_start" });
+  assert.equal(controller.streaming, true);
+  assert.equal(typeof controller.turnStartedAt, "number", "a live turn stamps its start");
+  // A settled event explains the next status but unlocks nothing on its own: the clock stops with the status frame.
+  stream.onEvent({ type: "settled" });
+  assert.equal(typeof controller.turnStartedAt, "number");
+  stream.onStatus("idle");
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined, "a settled turn keeps no clock");
+});

@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const call = (name: string, input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
@@ -18,7 +21,7 @@ test("a custom tool icon file replaces the built-in mark for its CLI", { tags: [
   await hui.prompt(session, call("bash", { command: "git --version" }));
   const transcript = screen.getByTestId("transcript");
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+  await hui.scrollTo(transcript, transcript.getByText(trail));
   const mark = transcript.getByTestId("tool-mark-icon");
   await expect(mark).toBeVisible();
   await expect(mark).toHaveAttribute("src", /\/__hui\/tool-icons\/git-e2e\.svg$/u);

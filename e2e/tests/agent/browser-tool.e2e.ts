@@ -4,6 +4,9 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import { openWork } from "../work/work-views.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const call = (name: string, input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
@@ -19,11 +22,12 @@ test("an agent browses in HUI's headless browser with real input and reports wha
 
   // Every one of the five calls is a browser activity row of its own: the open names its host, each act says a page
   // element was touched, and the read and the screenshot say the browser was used.
-  await hui.scrollTo(transcript, transcript.getByText("Used 5 tools"));
-  await transcript.getByText("Used 5 tools").tap();
-  await expect(transcript.getByRole("button", /^Opened 127\.0\.0\.1 Done$/u)).toBeVisible();
-  await expect(transcript.getByRole("button", /^Acted on the page Done$/u)).toHaveCount(2);
-  await expect(transcript.getByRole("button", /^Used the browser Done$/u)).toHaveCount(2);
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await transcript.getByText(trail).tap();
+  // A settled row adds the duration it measured to its meta, so its name is "Opened 127.0.0.1 2s Done".
+  await expect(transcript.getByRole("button", /^Opened 127\.0\.0\.1(?: .+)? Done$/u)).toBeVisible();
+  await expect(transcript.getByRole("button", /^Acted on the page(?: .+)? Done$/u)).toHaveCount(2);
+  await expect(transcript.getByRole("button", /^Used the browser(?: .+)? Done$/u)).toHaveCount(2);
 
   // No window on the host: the view reports the mode the call ran in, in the pane beside a wide chat and in the
   // destination a phone shows one view at a time from.
@@ -62,7 +66,7 @@ test("the chat's Browser preview follows the browse live, keeps its last frame a
   await hui.prompt(session, "E2E_BROWSER_SLOW");
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
   await expect(frame).toHaveCount(1);
-  const [card, activity] = [(await frame.boundingBox())!, (await transcript.getByText("Used 5 tools").last().boundingBox())!];
+  const [card, activity] = [(await frame.boundingBox())!, (await transcript.getByText(trail).last().boundingBox())!];
   expect(card.y).toBeGreaterThan(activity.y);
 });
 
@@ -84,6 +88,7 @@ test("after a reload the preview draws one fresh frame without streaming, and no
   await hui.prompt(session, call("browser", { action: "close" }));
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 60_000 });
   await hui.reload();
-  await expect(transcript.getByText("Used 5 tools")).toBeVisible();
+  // Two turns folded their activity, so the newest trail is the close call's.
+  await expect(transcript.getByText(trail).last()).toBeVisible();
   await expect(frame).toHaveCount(0);
 });

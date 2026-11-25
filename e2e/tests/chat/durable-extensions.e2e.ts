@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const echo = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "fixture_echo", input: { text: "from the model" } })).toString("base64url")}`;
 
 test("a Durable session runs its PI extensions' tools, commands, notices and dialogs, and keeps the turn after a reload", { tags: ["CHAT-063"] }, async ({ screen, hui }) => {
@@ -22,8 +25,8 @@ test("a Durable session runs its PI extensions' tools, commands, notices and dia
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("tool answered: Extension tool executed: from the model")).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
-  await transcript.getByText("Used 1 tool").tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await transcript.getByText(trail).tap();
   await expect(transcript.getByRole("button", /^Used fixture echo/u)).toBeVisible();
 
   // Its commands are the menu's Plugin actions.
@@ -48,7 +51,7 @@ test("a Durable session runs its PI extensions' tools, commands, notices and dia
   // What the extension's tool produced is still there after a reload.
   await hui.reload();
   await expect(transcript.getByText("tool answered: Extension tool executed: from the model")).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
-  await transcript.getByText("Used 1 tool").tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await transcript.getByText(trail).tap();
   await expect(transcript.getByRole("button", /^Used fixture echo/u)).toBeVisible();
 });

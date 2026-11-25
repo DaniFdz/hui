@@ -943,18 +943,112 @@ test("New Session exposes real model and effort controls without a permission fi
   assert.doesNotMatch(source, /<select[^>]*new-session-page__runtime/);
 });
 
-test("run details stay collapsed until the user asks to inspect them", () => {
+test("one activity disclosure holds a stretch, closed until the user asks to inspect it", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
   assert.match(source, /const expansionId = `\$\{props\.session\?\.id/);
-  // Reasoning keeps its own fold: opening the tools must not unfold the thinking with them.
-  assert.match(source, /const reasoningId = `\$\{expansionId\}:reasoning`/);
-  assert.match(source, /\.open=\$\{reasoningOpen\}/);
-  assert.match(source, /props\.onActivityExpanded\(reasoningId, details\.open\)/);
-  assert.match(source, /const groupOpen = open;/);
+  // One fold per stretch: the reasoning and the calls it shares a row with open together, under the row's own key.
+  assert.doesNotMatch(source, /:reasoning/u);
+  assert.match(source, /<details class="chat-activity-group chat-activity-trail" \.open=\$\{open\}/);
+  assert.match(source, /props\.onActivityExpanded\(expansionId, \(event\.currentTarget as HTMLDetailsElement\)\.open\)/);
   assert.doesNotMatch(source, /\?open=\$\{props\.streaming/);
   assert.match(styles, /\.chat-activity-group:not\(\[open\]\) \.chat-activity-group__body\s*\{\s*display: none;/);
+  // A closed trail is its summary alone; every item waits for the open.
+  assert.match(source, /\$\{open \? html`<div class="chat-activity-group__body">/);
+});
+
+test("an activity trail's header times the turn, counts what it did, and names a failed call while closed", async () => {
+  const call = (id: string, name: string, at: number, extra: Record<string, unknown> = {}) =>
+    ({ kind: "tool", id, name, status: "succeeded", metrics: { completedAt: at }, ...extra });
+  // One stretch from 1s to 185s: 3m 04s of work, whose calls count in the header's fixed order.
+  const measured = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "plan", metrics: { timestamp: 1_000, completedAt: 2_000 } },
+    call("b1", "bash", 185_000),
+    call("e1", "edit", 185_000),
+    call("r1", "read", 185_000),
+    call("x1", "mystery", 185_000, { failed: true }),
+    { kind: "message", id: "a", role: "assistant", text: "Done" },
+  ] });
+  assert.match(measured, /<span class=chat-activity-group__label chat-activity-trail__label>Worked for 3m 04s · 1 edit, 1 read, 1 run, 1 other call<\/span>/u);
+  assert.match(measured, /class="chat-activity-group chat-activity-trail" .open=false @toggle=/u);
+  // A failure is named where the closed header is read, never only inside the fold.
+  assert.match(measured, /chat-activity-trail__failed"><span class="chat-activity-trail__failed-mark" aria-hidden="true">[\s\S]*?<\/span>failed<\/span>/u);
+  // The header draws no row until it opens.
+  assert.doesNotMatch(measured, /class="tool-call-row"/u);
+
+  const twoFailed = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    call("a1", "read", 9_000, { failed: true }),
+    call("a2", "edit", 9_000, { status: "failed" }),
+  ] });
+  assert.match(twoFailed, /<\/span>2 failed<\/span>/u, "each failed call is counted");
+
+  // A call set that never reported a start keeps the count wording instead of inventing a clock.
+  const unmeasured = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "tool", id: "t1", name: "read", status: "succeeded", args: { path: "a.ts" } },
+  ] });
+  assert.match(unmeasured, />Used 1 tool · 1 read<\/span>/u);
+
+  // Reasoning alone keeps its own words, live and settled.
+  const reasoning = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "plan" },
+  ] });
+  assert.match(reasoning, />Reasoning<\/span>/u);
+  const thinking = await renderWorkerSession("running", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "plan" },
+  ], streaming: true });
+  assert.match(thinking, />Thinking…<\/span>/u);
+
+  // A live turn counts from the turn's own start while none of its calls has reported a timestamp.
+  const live = await renderWorkerSession("running", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "tool", id: "t1", name: "bash", status: "running", args: { command: "sleep 5" } },
+  ], streaming: true, turnStartedAt: Date.now() - 5_000 });
+  assert.match(live, /<span class=chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live>Working for \d+s · 1 run<\/span>/u);
+});
+
+test("an opened trail lists reasoning and calls in order, with each call's duration and proven chips", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "Inspecting the fixture." },
+    { kind: "tool", id: "t1", name: "read", status: "succeeded", args: { path: "/repo/fixture.txt" }, output: "a\nb\nc\n", metrics: { completedAt: 20_000, durationMs: 12_000 } },
+    { kind: "tool", id: "t2", name: "bash", status: "succeeded", args: { command: "gh pr view 580" }, output: "https://github.com/DaniFdz/HUI/pull/580 session:8f14e45f-ceea-467a-9b1d-000000000001", metrics: { completedAt: 21_000, durationMs: 1_000 } },
+    { kind: "tool", id: "t3", name: "bash", status: "running", args: { command: "echo later" }, metrics: { durationMs: 0 } },
+    { kind: "message", id: "a", role: "assistant", text: "Done" },
+  ];
+  const html = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:th"]) });
+  const body = html.slice(html.indexOf('class="chat-activity-group__body"'));
+  // The reasoning keeps its transcript place, before the calls it was written above.
+  assert.ok(body.indexOf("Inspecting the fixture.") < body.indexOf("Read fixture.txt"));
+  // A settled call's own measurement joins whatever its output proved; a running one shows none.
+  assert.match(body, /<span class="tool-call-row__meta">3 lines · 12s<\/span>/u);
+  assert.equal(body.split("tool-call-row__meta").length - 1, 2, "only the two settled calls carry a meta, the running one has none");
+  assert.doesNotMatch(body, /· 0s/u, "a running call reports no duration");
+  // The chips follow the row's data: the file it read, the pull request it printed and the session it named.
+  assert.match(body, /<div class="tool-call-row__chips"><span class="tool-call-chip tool-call-chip--file"><hui-file-ref data-path=\/repo\/fixture\.txt>\/repo\/fixture\.txt<\/hui-file-ref><\/span>/u);
+  assert.match(body, /<a class="tool-call-chip tool-call-chip--pr" href=https:\/\/github\.com\/DaniFdz\/HUI\/pull\/580 target="_blank" rel="noopener">PR #580<\/a>/u);
+  assert.match(body, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001>session:8f14e45f-ceea-467a-9b1d-000000000001<\/hui-session-ref>/u);
+  // A row nobody proved a reference for draws no chips line at all.
+  assert.equal(body.split("tool-call-row__chips").length - 1, 2);
+});
+
+test("an opened call still draws its own body, and a closed trail draws none", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "tool", id: "t1", name: "bash", status: "succeeded", args: { command: "echo hi" }, output: "hi" },
+  ];
+  const closed = await renderWorkerSession("idle", { transcript });
+  assert.doesNotMatch(closed, /chat-activity-group__body/u);
+  const trailOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:t1"]) });
+  assert.match(trailOpen, /<span class=tool-call-row__title>Ran echo hi<\/span>/u);
+  assert.doesNotMatch(trailOpen, /class="chat-tool-msg-body"/u, "the call's own body waits for its row");
+  const rowOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:t1", "s:tool:1:t1"]) });
+  assert.match(rowOpen, /class="chat-tool-msg-body"/u);
 });
 
 test("thinking renders as plain intermediate text without a reasoning label", () => {
@@ -1517,7 +1611,7 @@ test("a long conversation renders its latest rows and offers the earlier ones; a
   assert.doesNotMatch(latest, /Step 0</u);
   assert.match(latest, /Done 59</u);
   assert.match(latest, /class="chat-history-boundary__action" @click=>Show earlier messages</u);
-  assert.match(latest, /<span class=tool-call-group__label>Used 1 tool<\/span>/u);
+  assert.match(latest, /<span class=chat-activity-group__label chat-activity-trail__label>Used 1 tool · 1 run<\/span>/u);
   assert.doesNotMatch(latest, /tool-call-row/u, "a folded group renders no call rows");
   const all = await renderWorkerSession("idle", { transcript, transcriptWindowStart: 0 });
   assert.match(all, /Step 0</u);

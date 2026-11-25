@@ -1,9 +1,9 @@
 /**
  * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript (with who sent
- * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot),
- * composer and its pickers, queue, the pending question at the transcript's end, session header and bot identity. All state
- * arrives in props and changes leave through callbacks; the app element owns that state, and the chat projection decides
- * the transcript's rows.
+ * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot), each
+ * stretch's one activity trail with the words `lib/activity-trail.ts` gives it, composer and its pickers, queue, the
+ * pending question at the transcript's end, session header and bot identity. All state arrives in props and changes
+ * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { contextBreakdown } from "../lib/context-breakdown.ts";
@@ -69,14 +69,15 @@ import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
 import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
-import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
+import { attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
+import { activityTrail } from "../lib/activity-trail.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { stickyPrompt } from "./chat/sticky-prompt.ts";
 import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
-import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
+import { renderToolCallRows, renderToolMarks, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
@@ -350,6 +351,9 @@ export type HomeProps = {
   copiedId: string;
   /** Activity disclosures explicitly opened by the user. Runs are collapsed by default. */
   expandedActivityIds: ReadonlySet<string>;
+  /** When the open conversation's live turn began, so its activity trail can count from there while no call has reported
+   * a timestamp yet; absent while no turn runs. */
+  turnStartedAt?: number;
   transcriptWindowStart?: number;
   showScrollToBottom: boolean;
   /** Models the session can switch to; empty when the tool cannot list any. */
@@ -1104,6 +1108,35 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
   </details>`;
 }
 
+/** What an open trail draws: its items in transcript order, the tool calls through the rows of `tool-call-group.ts` and
+ * the reasoning and errors through the card they had. The body is the trail's one scroll region. */
+function renderActivityTrailItems(props: HomeProps, items: readonly ChatActivity[]): TemplateResult {
+  const parts: TemplateResult[] = [];
+  let tools: ToolCallItem[] = [];
+  const flushTools = () => {
+    if (!tools.length) return;
+    parts.push(renderToolCallRows(tools, {
+      expansionId: (item) => `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`,
+      expandedIds: props.expandedActivityIds,
+      onRowToggle: (id, next) => props.onActivityExpanded(id, next),
+      onCopy: (text, key) => void props.onCopy(text, key),
+      marks: props.chatPreferences.toolMarks,
+      icons: props.chatPreferences.toolIcons,
+    }));
+    tools = [];
+  };
+  for (const item of items) {
+    if (item.kind === "tool") {
+      tools.push(item);
+      continue;
+    }
+    flushTools();
+    parts.push(html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`);
+  }
+  flushTools();
+  return html`${parts}`;
+}
+
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
   const reveal = item.path
@@ -1386,42 +1419,24 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
-      // Reasoning above the card keeps its own fold: opening the tools must not unfold the thinking with them.
-      const reasoningId = `${expansionId}:reasoning`;
-      const reasoningOpen = props.expandedActivityIds.has(reasoningId);
-      // Tools read as one card of their own (tool-call-group.ts); reasoning and errors that share the row keep the
-      // fold they had, above it.
+      const trail = activityTrail(row.items, {
+        streaming: props.streaming,
+        ...(props.turnStartedAt !== undefined ? { turnStartedAt: props.turnStartedAt } : {}),
+      });
       const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
-      const others = row.items.filter((item) => item.kind !== "tool");
-      // Folded until the person opens it: a live turn no longer forces the card open.
-      const groupOpen = open;
+      // Folded until the person opens it: a live turn no longer forces the trail open.
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
-          ${others.length ? html`<details
-            class="chat-activity-group"
-            .open=${reasoningOpen}
-            @toggle=${(event: Event) => {
-              const details = event.currentTarget as HTMLDetailsElement;
-              props.onActivityExpanded(reasoningId, details.open);
-            }}
-          >
-            <summary class="chat-inline-disclosure chat-activity-group__summary">
-              <span class="chat-activity-group__icon">${chevronDownIcon}</span>
-              <span class="chat-activity-group__label">${activityLabel(others, props.streaming)}</span>
+          <details class="chat-activity-group chat-activity-trail" .open=${open}
+            @toggle=${(event: Event) => props.onActivityExpanded(expansionId, (event.currentTarget as HTMLDetailsElement).open)}>
+            <summary class="chat-inline-disclosure chat-activity-group__summary chat-activity-trail__head" data-testid="activity-trail">
+              <span class="chat-activity-group__icon" aria-hidden="true">${chevronDownIcon}</span>
+              <span class=${props.streaming ? "chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live" : "chat-activity-group__label chat-activity-trail__label"}>${trail.label}</span>
+              ${trail.failed ? html`<span class="chat-activity-trail__failed"><span class="chat-activity-trail__failed-mark" aria-hidden="true">${icons.alertTriangle}</span>${trail.failed === 1 ? "failed" : `${trail.failed} failed`}</span>` : nothing}
+              ${tools.length ? renderToolMarks(tools, { marks: props.chatPreferences.toolMarks, icons: props.chatPreferences.toolIcons }) : nothing}
             </summary>
-            ${reasoningOpen ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
-          </details>` : nothing}
-          ${tools.length ? renderToolCallGroup(tools, {
-            id: row.id,
-            expanded: groupOpen,
-            onToggle: (next) => props.onActivityExpanded(expansionId, next),
-            expansionId: (item) => `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`,
-            expandedIds: props.expandedActivityIds,
-            onRowToggle: (id, next) => props.onActivityExpanded(id, next),
-            onCopy: (text, key) => void props.onCopy(text, key),
-            marks: props.chatPreferences.toolMarks,
-            icons: props.chatPreferences.toolIcons,
-          }) : nothing}
+            ${open ? html`<div class="chat-activity-group__body">${renderActivityTrailItems(props, row.items)}</div>` : nothing}
+          </details>
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
       </div>`;

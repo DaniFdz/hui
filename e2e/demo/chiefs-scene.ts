@@ -147,33 +147,33 @@ async function settledChat(d: Director, quietMs = 2_500, timeout = 120_000) {
   }
 }
 
-/** Opens the chief's tool card, the one card HUI folds a turn's calls into: a call's row is drawn only while it is
- * open. A settling turn can re-render the row under a new id, which folds the card again, so the open is repeated until
- * the third row is drawn rather than trusted from one click. */
+/** Opens the chief's activity trail, the one disclosure HUI folds a turn's calls into: a call's row is drawn only while
+ * it is open. A settling turn can re-render the row under a new id, which folds the trail again, so the open is repeated
+ * until the third row is drawn rather than trusted from one click. */
 async function showCalls(d: Director, timeout = 45_000) {
   const deadline = Date.now() + timeout;
   for (;;) {
     if (await d.find({ css: ".tool-call-row", nth: 2 })) return;
-    const open = await d.stage<boolean>(`Boolean(document.getElementById("app").contentDocument?.querySelector(".tool-call-group__disclosure")?.open)`);
+    const open = await d.stage<boolean>(`Boolean(document.getElementById("app").contentDocument?.querySelector(".chat-activity-trail")?.open)`);
     if (!open) {
       // The transcript can move under the cursor while it glides: click where the head is now, then let the loop check
-      // that the card opened instead of blocking on a click that missed.
-      const head = await d.find({ css: ".tool-call-group__head", last: true });
+      // that the trail opened instead of blocking on a click that missed.
+      const head = await d.find({ css: ".chat-activity-trail__head", last: true });
       if (head) await d.click({ x: head.x + head.width / 2, y: head.y + head.height / 2 });
     }
-    if (Date.now() > deadline) throw new Error("The chief's tool card never listed its three rows.");
+    if (Date.now() > deadline) throw new Error("The chief's activity trail never listed its three rows.");
     await sleep(300);
   }
 }
 
-/** Waits until the card's three rows have all answered and its header says so: the completed rows the clip reads. A
+/** Waits until the trail's three rows have all answered and its header says so: the completed rows the clip reads. A
  * settled call's row carries `data-status="succeeded"`; `running` is the spinner and `failed` the alert. */
 async function callsDone(d: Director, timeout = 60_000) {
   const deadline = Date.now() + timeout;
   for (;;) {
     await showCalls(d);
     if (await d.find({ css: `.tool-call-row[data-status="succeeded"]`, nth: 2 })
-      && await d.find({ css: ".tool-call-group__label", contains: "Used 3 tools" })) return;
+      && await d.find({ css: ".chat-activity-trail__label", contains: "Worked for" })) return;
     if (Date.now() > deadline) throw new Error("The chief's three calls did not draw as completed rows.");
     await sleep(400);
   }

@@ -1,4 +1,6 @@
-/** A turn's activity folds between the messages the agent writes, labelled from what it holds, and opens in order (CHAT-023, CHAT-024). */
+/** A turn's activity folds between the messages the agent writes, one trail per stretch, and opens in order (CHAT-023,
+ * CHAT-024). Its header reads the trail's own wording on today's page and the count wording an older iOS build of the
+ * same page shows, so the disclosure is found on every target. */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -10,6 +12,9 @@ const inOrder = async (...items: Locator[]) => {
   }
   expect(tops).toEqual([...tops].sort((a, b) => a - b));
 };
+
+/** The activity trail's summary, in today's wording and in the count wording an older iOS build draws. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
 
 const call = (verb: "CALL" | "HOLD", calls: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_${verb}:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
@@ -29,14 +34,14 @@ test("a message written mid-turn keeps its own row with its links, live and afte
     await hui.expectLinkTo(transcript, "service dashboard", "https://example.com/dashboard/checkout");
     await hui.expectLinkTo(transcript, "error logs", "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
-    await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+    await hui.scrollTo(transcript, transcript.getByText(trail));
     const read = transcript.getByRole("button", /^Read fixture\.txt/u);
-    if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").tap();
+    if (!(await read.isVisible())) await transcript.getByText(trail).tap();
     await expect(read).toBeVisible();
   }
 });
 
-test("each stretch of activity folds under a label from what it holds and opens in order", { tags: ["CHAT-023"] }, async ({ screen, hui }) => {
+test("each stretch of activity folds under one trail that opens in order", { tags: ["CHAT-023"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
@@ -45,9 +50,12 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await hui.open(`/sessions/${session.id}`);
   await expect(idle).toBeVisible();
 
+  // Reasoning alone keeps its own words, and one stretch is one disclosure, never two.
   await message.fill("E2E_THINKING");
   await send.tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
+  await expect(idle).toBeVisible();
+  await expect(transcript.getByText(trail)).toHaveCount(1);
   await hui.scrollTo(transcript, transcript.getByText("Reasoning"));
   await transcript.getByText("Reasoning").tap();
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
@@ -55,20 +63,20 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await message.fill(call("HOLD", [{ name: "fixture_echo", input: { text: "live" } }]));
   await send.tap();
   await hui.provider.held();
-  await expect(transcript.getByText("Using 1 tool")).toBeVisible();
+  await expect(transcript.getByText(/^Using 1 tool · 1 other call$/u)).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
+  await expect(transcript.getByText(/^Worked for \d+s · 1 other call$/u)).toBeVisible();
 
   await message.fill("E2E_RICH");
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
-  const reasoning = transcript.getByText("Reasoning").last();
-  await hui.scrollTo(transcript, reasoning);
-  await reasoning.tap();
+  // The reasoning and the call it shares a row with open together, from the one summary.
+  await hui.scrollTo(transcript, transcript.getByText(/^Worked for \d+s · 1 read$/u).last());
+  const reasoning = transcript.getByText(/^Worked for \d+s · 1 read$/u).last();
   const read = transcript.getByRole("button", /^Read fixture\.txt/u);
-  if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
+  if (!(await read.isVisible())) await reasoning.tap();
   await inOrder(transcript.getByText("Inspecting the fixture."), read);
 
   await message.fill(call("CALL", [
@@ -78,9 +86,10 @@ test("each stretch of activity folds under a label from what it holds and opens 
   ]));
   await send.tap();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 3 tools"));
+  const calls = transcript.getByText(/^Worked for \d+s · 1 edit, 1 read, 1 run$/u).last();
+  await hui.scrollTo(transcript, calls);
   const ranEcho = transcript.getByRole("button", /^Ran echo folded/u);
-  if (!(await ranEcho.isVisible())) await transcript.getByText("Used 3 tools").tap();
+  if (!(await ranEcho.isVisible())) await calls.tap();
   await inOrder(transcript.getByRole("button", /^Read fixture\.txt/u).last(), ranEcho, transcript.getByRole("button", /^Edited missing\.txt/u));
   await hui.scrollTo(transcript, transcript.getByText("Weighing the fixture."));
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();

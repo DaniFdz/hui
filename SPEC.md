@@ -560,6 +560,21 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   is on screen; **Scroll to latest** goes back to the latest 50. A folded
   activity draws its items when it is opened. This keeps a long session or a
   bot's chat quick to open on a phone.
+- The activity between two messages is one disclosure, never two. Its collapsed
+  header times the stretch — **Working for 3m 04s …** while the turn runs, from
+  its earliest measured timestamp or, until one of its items reports one, from the
+  turn's own start, and **Worked for 1m 12s …** once it settles, from the earliest
+  measured start to the latest measured completion; a stretch that reported
+  neither end keeps the count wording (**Used 5 tools …**) rather than inventing a
+  clock, and reasoning alone reads **Reasoning** / **Thinking…**. The header then
+  counts what the calls did, in one fixed order and singular or plural with zero
+  kinds left out: edits, writes, reads, searches, runs, fetches, browser steps and
+  other calls. A failed call, or an error the stretch holds, marks the collapsed
+  header with a danger mark and **failed** (or **N failed**), so a failure is never
+  hidden in a fold. Opened, it lists the reasoning and every call in transcript
+  order in its one scroll region; a settled call's row carries its own measured
+  duration beside its result size, and the file, pull-request, issue and session
+  references its own arguments and output prove, and nothing else.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not

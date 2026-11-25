@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 test("a reply streams, its tool card opens, and Stop ends the next run", { tags: ["CHAT-001", "CHAT-025", "CHAT-004", "smoke"] }, async ({ app, screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
@@ -26,19 +29,18 @@ test("a reply streams, its tool card opens, and Stop ends the next run", { tags:
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(status("Idle")).toBeVisible();
-  await expect(transcript.getByText("Used 1 tool")).toBeVisible();
+  await expect(transcript.getByText(trail)).toBeVisible();
   // A live activity row may already be open; only fold it open when the row is not there yet.
   const readRow = transcript.getByRole("button", /Read fixture\.txt/u);
-  if (!(await readRow.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await readRow.isVisible())) await transcript.getByText(trail).tap();
   await readRow.tap();
   await expect(readRow.getByLabel("Done")).toBeVisible();
-  // Reasoning keeps its own fold now: opening the tool card must not unfold it.
-  await expect(transcript.getByText("Inspecting the fixture.")).toBeHidden();
-  await transcript.getByText("Reasoning").last().tap();
+  // One trail per stretch: the reasoning opens with the call it shares that stretch with.
   await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
   await expect(transcript.getByText(/^from .+\/fixture\.txt$/u)).toBeVisible();
   await expect(transcript.getByText("Real SDK browser fixture", { exact: false })).toBeVisible();
-  await expect(transcript.getByText("Completed")).toBeVisible();
+  // The card's own outcome, not a footer's model metrics, which also read "Completed in …".
+  await expect(screen.getByTestId("tool-call-body").getByText(/^Completed(?: in .*)?$/u)).toBeVisible();
   await app.screenshot("tool-card-open");
 
   await message.fill("E2E_ABORT");

@@ -4,6 +4,9 @@ import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { hideBotPanel, panelOverview } from "./bot-panel.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 type Catalog = { skills: { name: string; enabled: boolean; source: string }[]; disabledSkills: { name: string }[] };
 const catalog = async (hui: Hui, id: string): Promise<Catalog> => hui.api<Catalog>("GET", `/__hui/bots/${id}/catalog`);
 const calling = (name: string) => `E2E_CALL:${Buffer.from(JSON.stringify({ name: "load_skill", input: { name } })).toString("base64url")}`;
@@ -32,9 +35,9 @@ test("with read and bash off a bot loads a skill it needs from its chat, and a s
 
   await message.fill(calling(skill.name));
   await send.tap();
-  await expect(transcript.getByText("Used 1 tool")).toBeVisible();
+  await expect(transcript.getByText(trail)).toBeVisible();
   await expect(transcript.getByText("Used load skill")).toHaveCount(0);
-  await transcript.getByText("Used 1 tool").tap();
+  await transcript.getByText(trail).tap();
   await expect(transcript.getByRole("button", /Used load skill/u)).toBeVisible();
   const answer = transcript.getByText(/^tool answered: /u);
   await expect(answer).toBeVisible();

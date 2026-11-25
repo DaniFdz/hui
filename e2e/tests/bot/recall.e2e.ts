@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const makeBot = async (hui: Hui, name: string) =>
   (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
 
@@ -21,7 +24,7 @@ test("a bot searches its whole chat for something said earlier, and its chat sho
   await message.fill("E2E_SEARCH please");
   await screen.getByRole("button", "Send message").tap();
   await expect(idle).toBeVisible();
-  const group = transcript.getByText("Used 4 tools");
+  const group = transcript.getByText(trail);
   await hui.scrollTo(transcript, group);
   await group.tap();
 

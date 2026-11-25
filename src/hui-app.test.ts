@@ -962,3 +962,52 @@ test("the main app's bot roster redraws for its clock every 30 seconds", () => {
     vi.useRealTimers();
   }
 });
+
+test("a live turn's activity clock redraws once a second and stops the moment the turn settles", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("document", { querySelector: () => null, hidden: false, title: "", addEventListener: () => {}, removeEventListener: () => {} });
+  const app = shell() as Shell & { firstUpdated: () => void; requestUpdate: () => void; disconnectedCallback: () => void };
+  app.embeddedPane = true;
+  app.renderRoot = { querySelector: () => null };
+  const stub = (target: unknown, ...names: string[]) => { for (const name of names) (target as Record<string, unknown>)[name] = async () => {}; };
+  stub(app, "refreshSessions", "loadLaunchPreferences", "flushPendingLaunch");
+  stub(app["control"], "refreshPower", "loadPreviews");
+  stub(app["launcher"], "loadWorkers");
+  stub(app.composer, "switchDraft", "refreshDraftIndicators");
+  // Every interval the page creates, in the order it asks for them, behind the fake clock the test advances.
+  const delays: number[] = [];
+  const realSetInterval = globalThis.setInterval;
+  globalThis.setInterval = ((handler: () => void, ms?: number) => {
+    delays.push(ms ?? 0);
+    return realSetInterval(handler, ms);
+  }) as typeof setInterval;
+  let redraws = 0;
+  app.requestUpdate = () => { redraws += 1; };
+  try {
+    app.firstUpdated();
+    // No turn is live: the 3 s poll is the only interval, so three seconds draw nothing and no clock exists.
+    assert.deepEqual(delays, [3_000]);
+    vi.advanceTimersByTime(3_000);
+    assert.equal(redraws, 0);
+
+    app.conversation.streaming = true;
+    app.updated(new Map());
+    assert.deepEqual(delays, [3_000, 1_000], "one 1 s clock joins the live turn");
+    redraws = 0;
+    vi.advanceTimersByTime(3_000);
+    assert.equal(redraws, 3, "the clock redraws once per second, no more");
+
+    app.conversation.streaming = false;
+    app.updated(new Map());
+    redraws = 0;
+    vi.advanceTimersByTime(10_000);
+    assert.equal(redraws, 0, "a settled turn keeps no clock");
+    assert.equal(delays.length, 2, "settling created no further interval");
+  } finally {
+    globalThis.setInterval = realSetInterval;
+    app.conversation.streaming = false;
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});

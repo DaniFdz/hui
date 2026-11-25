@@ -60,6 +60,8 @@ export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
     return {
       ...row,
       key: rowKey,
+      // A client that draws its own rows keeps the count wording; the web folds each stretch into `activity-trail.ts`'s
+      // one disclosure instead, with its clock, its counts and its failed mark.
       label: activityLabel(row.items, false),
       liveLabel: activityLabel(row.items, true),
       answers: questionnaireSummary(row.items) ?? null,
