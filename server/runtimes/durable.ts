@@ -34,7 +34,7 @@ import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
 import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
-import { RuntimeTimings } from "./transcript-metrics.ts";
+import { RuntimeTimings, timingEvent } from "./transcript-metrics.ts";
 import { ModelRequestTimer } from "./model-timing.ts";
 import { disabledSkillNotice } from "./skill-policy-extension.mjs";
 import type {
@@ -810,6 +810,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   async #onEvent(event: AgentEvent): Promise<void> {
+    // Measured before the handler, as PI's worker measures every raw event it reads: Durable's own events carry the
+    // same measurements under its commit shapes.
+    this.#timings.observe(timingEvent(event));
     await this.#handle(event);
     if (!this.#disposed) this.#extensions?.observe(event);
   }

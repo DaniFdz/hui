@@ -1,6 +1,7 @@
 /** A finished tool card shows how long the call itself took, worded like the timings on a message's footer (CHAT-033).
- * The duration is the gateway's own measurement of the tool, which PI's worker reports per call and a call it did not
- * time leaves absent, so this runs on the PI worker (`tool: "pi"`) the repository keeps as its fallback. */
+ * The duration is the gateway's own measurement of the tool, which Durable and PI's worker both report per call and a
+ * call neither timed leaves absent: the read runs on a new session's Durable runtime, the command on the PI worker
+ * (`tool: "pi"`) the repository keeps as its fallback. */
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -12,7 +13,7 @@ const duration = /^(?:Completed|failed) in \d+ (?:ms|s|m \d+s)$/u;
 test("a finished read card shows how long the read took", { tags: ["CHAT-033"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const transcript = screen.getByTestId("transcript");
-  const session = await hui.createSession({ title: "Tool card durations", cwd: repository.path, tool: "pi" });
+  const session = await hui.createSession({ title: "Tool card durations", cwd: repository.path });
 
   await hui.open(`/sessions/${session.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();

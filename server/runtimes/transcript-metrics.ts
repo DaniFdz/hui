@@ -1,4 +1,5 @@
-/** Optional transcript measurements, never inferred from neighbouring messages: sanitizing and runtime timings. */
+/** Optional transcript measurements, never inferred from neighbouring messages: sanitizing them, and what each
+ * runtime's own events carry. */
 import type { TranscriptMetrics } from "../api/sessions.ts";
 
 export type { TranscriptMetrics };
@@ -15,6 +16,35 @@ export function sanitizeMetrics(value: unknown): TranscriptMetrics {
     if (number !== undefined && (!(key === "timestamp" || key === "completedAt") || number <= 8.64e15)) result[key] = number;
   }
   return result;
+}
+
+/** The fields `RuntimeTimings` reads from a runtime's own event. */
+export type TimingEvent = {
+  readonly type?: unknown;
+  readonly message?: unknown;
+  readonly toolCallId?: unknown;
+  /** Durable commits entries, so its `message_end` carries the entry whose first model message is the answer. */
+  readonly entry?: { readonly model?: readonly unknown[] };
+};
+
+/** What `RuntimeTimings` reads from `event`, which for Durable's commit events is not what PI's raw events carry:
+ * Durable's `message_end` holds the committed entry (`entry.model[0]` is the message PI reports on its own) and its
+ * tool events carry only a call ID, keyed on the answer that declared it. Anything else measures nothing, and an odd
+ * shape is an event without measurements rather than a reason to fail the stream. */
+export function timingEvent(event: TimingEvent): Record<string, unknown> {
+  if (!event || typeof event !== "object") return {};
+  const type = typeof event.type === "string" ? event.type : undefined;
+  if (type === "message_end") {
+    const model = event.entry?.model;
+    return { type, message: Array.isArray(model) ? model[0] : undefined };
+  }
+  if (
+    type === "message_start" || type === "tool_execution_start" || type === "tool_execution_update" ||
+    type === "tool_execution_end"
+  ) {
+    return { type, message: event.message, toolCallId: event.toolCallId };
+  }
+  return {};
 }
 
 /** Measurements survive browser reconnects, but not a runtime restart. PI owns persistence. */

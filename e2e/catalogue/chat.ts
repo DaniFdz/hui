@@ -406,7 +406,7 @@ const cases: UseCase[] = [
     id: "CHAT-033",
     title: "See when a message was sent and what it cost",
     behaviour:
-      'Each message footer shows a relative time ("just now", then "1m ago") whose tooltip gives the exact completion or creation time. A finished model call shows output tokens and duration, with a disclosure for input, cache tokens and reported cost, once per call; tool cards show their own duration, and missing values stay absent. Live timings survive a reconnect but not a runtime restart.',
+      'Each message footer shows a relative time ("just now", then "1m ago") whose tooltip gives the exact completion or creation time. A finished model call shows output tokens and duration, with a disclosure for input, cache tokens and reported cost, once per call; tool cards show their own duration, measured per call by both Durable and PI\'s worker, and a call that reports no timing shows none. Live timings survive a reconnect but not a runtime restart.',
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
