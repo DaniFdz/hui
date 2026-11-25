@@ -45,9 +45,9 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await message.fill("E2E_COMMAND_RUNNING");
   await send.tap();
   await hui.provider.held();
-  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await hui.scrollTo(transcript, transcript.getByText(trail).last());
   const live = transcript.getByRole("button", /^Running curl --silent/u);
-  if (!(await live.isVisible())) await transcript.getByText(trail).tap();
+  if (!(await live.isVisible())) await transcript.getByText(trail).last().tap();
   await hui.scrollTo(transcript, live);
   await live.tap();
   await expect(transcript.getByText("Running", { exact: true })).toBeVisible();
