@@ -7,13 +7,14 @@
  *
  * A note is the transcript's alert callout: `> [!NOTE]` and its four other kinds are the only state the wire carries, and
  * the title is presentation from the transcript's own label map (`../markdown/parser.ts`), never document content. The
- * element it draws is the one the transcript renders (`aside.markdown-alert`), so the composer shows the same callout.
+ * element it draws is the one the transcript renders (`aside.markdown-alert`), so the composer shows the same callout —
+ * and a pasted one reads back that way: only the callout's body arrives as content, so the title it draws is drawn once.
  *
  * Images, horizontal rules, tables, task lists and math have no node here on purpose. They are not unrenderable by the
  * transcript, but the composer cannot edit them as rich content, so `sourceMode` loads a draft holding one as literal
  * text instead of dropping or corrupting it.
  */
-import { Schema, type DOMOutputSpec, type MarkSpec, type MarkType, type NodeSpec, type NodeType } from "prosemirror-model";
+import { DOMParser, Schema, type DOMOutputSpec, type MarkSpec, type MarkType, type NodeSpec, type NodeType } from "prosemirror-model";
 import { bulletList, listItem, orderedList } from "prosemirror-schema-list";
 import { ALERT_LABELS, type AlertType } from "../../markdown/parser.ts";
 
@@ -55,6 +56,14 @@ function pastedAlertKind(dom: HTMLElement): AlertType {
 }
 
 /**
+ * The element a pasted callout's content sits in: the body the transcript renders. A callout pasted without one keeps
+ * what the aside itself holds, so a paste never loses text to a missing wrapper.
+ */
+function pastedAlertBody(dom: HTMLElement): HTMLElement {
+  return dom.querySelector<HTMLElement>("div.markdown-alert__body") ?? dom;
+}
+
+/**
  * A GitHub alert, `> [!NOTE]` and its four other kinds (`markdown.ts` parses and writes them). Its `toDOM` is the
  * transcript's own callout, so the composer draws the title, the tone and the body the chat draws; the title comes from
  * the label map and is never content.
@@ -64,7 +73,14 @@ const note: NodeSpec = {
   content: "block+",
   group: "block",
   defining: true,
-  parseDOM: [{ tag: "aside.markdown-alert", getAttrs: (dom) => ({ kind: pastedAlertKind(dom as HTMLElement) }) }],
+  // Only the body is content: the title element is the one `toDOM` draws from `kind`, so parsing it would leave a
+  // pasted callout labelled twice. `getContent` replaces the default child walk rather than stripping text, so a body of
+  // several blocks keeps all of them.
+  parseDOM: [{
+    tag: "aside.markdown-alert",
+    getAttrs: (dom) => ({ kind: pastedAlertKind(dom as HTMLElement) }),
+    getContent: (dom, schema) => DOMParser.fromSchema(schema).parse(pastedAlertBody(dom as HTMLElement)).content,
+  }],
   toDOM: (node): DOMOutputSpec => {
     const kind = String(node.attrs.kind) as AlertType;
     const label = ALERT_LABELS[kind] ?? ALERT_LABELS.note;

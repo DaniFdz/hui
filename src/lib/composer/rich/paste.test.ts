@@ -15,6 +15,11 @@ function documentOf(slice: ReturnType<typeof plainTextSlice>): Node {
   return schemaNode(richSchema, "doc").create(null, slice.content);
 }
 
+/** A `toJSON` result as plain objects: a node's `attrs` carry a null prototype, which a deep comparison would refuse. */
+function plainJson(doc: Node): unknown {
+  return JSON.parse(JSON.stringify(doc.toJSON()));
+}
+
 test("a plain-text paste keeps its line structure", () => {
   assert.deepEqual(plainTextLines("a\nb\n\nc"), [["a", "b"], ["c"]]);
   assert.deepEqual(plainTextLines("a\r\nb\r\n\r\nc"), [["a", "b"], ["c"]]);
@@ -289,11 +294,14 @@ test("a pasted callout becomes a note of its kind, and a plain aside stays ordin
   const slice = htmlSlice(richSchema, html, TEST_DOM);
   assert.ok(slice, "a DOM maps the pasted callout");
   const doc = documentOf(slice);
-  const note = doc.child(0);
-  assert.equal(note.type.name, "note", "aside.markdown-alert is the note's parseDOM selector");
-  assert.equal(note.attrs["kind"], "warning", "the kind is the markdown-alert--… class");
-  assert.equal(note.childCount, 2, "the title element's own text arrives as a first paragraph, then the body");
-  assert.equal(note.child(1).textContent, "Check it", "its body arrives as the note's content");
+  assert.deepEqual(plainJson(doc), {
+    type: "doc",
+    content: [{
+      type: "note",
+      attrs: { kind: "warning" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Check it" }] }],
+    }],
+  }, "aside.markdown-alert is the note's parseDOM selector, the kind is the markdown-alert--… class, and the title it draws is never content beside it");
 
   const plain = documentOf(htmlSlice(richSchema, "<aside>plain</aside>", TEST_DOM)!);
   const plainTypes: string[] = [];
@@ -303,6 +311,36 @@ test("a pasted callout becomes a note of its kind, and a plain aside stays ordin
   assert.equal(plain.child(0).type.name, "paragraph", "a bare aside has no rule, so its text becomes a paragraph");
   assert.equal(plain.textContent, "plain");
   assert.equal(plainTypes.includes("note"), false, "it does not become a note");
+});
+
+test("a callout's body keeps every block, and one without a body keeps what the aside holds", () => {
+  const html = '<aside class="markdown-alert markdown-alert--tip">'
+    + '<div class="markdown-alert__title">Tip</div>'
+    + '<div class="markdown-alert__body"><p>First</p><ul><li>one</li></ul></div>'
+    + "</aside>";
+  const doc = documentOf(htmlSlice(richSchema, html, TEST_DOM)!);
+  assert.deepEqual(plainJson(doc), {
+    type: "doc",
+    content: [{
+      type: "note",
+      attrs: { kind: "tip" },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "First" }] },
+        { type: "bullet_list", attrs: { tight: true }, content: [{ type: "list_item", content: [{ type: "paragraph", content: [{ type: "text", text: "one" }] }] }] },
+      ],
+    }],
+  }, "the body's second block is content too, and the title is still not");
+  assert.equal(serializeMarkdown(doc), "> [!TIP]\n> First\n>\n> - one", "the note writes back as one callout of that kind");
+
+  const noBody = documentOf(htmlSlice(richSchema, '<aside class="markdown-alert markdown-alert--note">Everything</aside>', TEST_DOM)!);
+  assert.deepEqual(plainJson(noBody), {
+    type: "doc",
+    content: [{
+      type: "note",
+      attrs: { kind: "note" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Everything" }] }],
+    }],
+  }, "a callout with no markdown-alert__body keeps whatever the aside holds");
 });
 
 test("the test DOM answers the schema's selector shapes and refuses any other", () => {
