@@ -1011,3 +1011,58 @@ test("a live turn's activity clock redraws once a second and stops the moment th
     vi.useRealTimers();
   }
 });
+
+test("a live turn's clock exists only while its chat is on screen, and returns once", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("document", { querySelector: () => null, hidden: false, title: "", addEventListener: () => {}, removeEventListener: () => {} });
+  const app = shell() as Shell & { firstUpdated: () => void; requestUpdate: () => void };
+  app.embeddedPane = true;
+  app.renderRoot = { querySelector: () => null };
+  const stub = (target: unknown, ...names: string[]) => { for (const name of names) (target as Record<string, unknown>)[name] = async () => {}; };
+  stub(app, "refreshSessions", "loadLaunchPreferences", "flushPendingLaunch");
+  stub(app["control"], "refreshPower", "loadPreviews");
+  stub(app["launcher"], "loadWorkers");
+  stub(app.composer, "switchDraft", "refreshDraftIndicators");
+  const realSetInterval = globalThis.setInterval;
+  let clocks = 0;
+  globalThis.setInterval = ((handler: () => void, ms?: number) => {
+    if (ms === 1_000) clocks += 1;
+    return realSetInterval(handler, ms);
+  }) as typeof setInterval;
+  let redraws = 0;
+  app.requestUpdate = () => { redraws += 1; };
+  // The route the shell is drawing: Bots, Kanban, Sessions and Settings own no chat, so they own no clock.
+  const nav = app as unknown as { view: string };
+  try {
+    app.firstUpdated();
+    app.conversation.streaming = true;
+    nav.view = "home";
+    app.updated(new Map());
+    assert.equal(clocks, 1, "the chat on screen starts one clock");
+    redraws = 0;
+    vi.advanceTimersByTime(2_000);
+    assert.equal(redraws, 2);
+
+    // Leaving the chat stops it: ten seconds away draw nothing at all.
+    nav.view = "bot";
+    app.updated(new Map());
+    redraws = 0;
+    vi.advanceTimersByTime(10_000);
+    assert.equal(redraws, 0, "no clock runs for a chat that is not on screen");
+
+    // Coming back to the chat while the same turn still runs brings back exactly one clock, never a second.
+    nav.view = "home";
+    app.updated(new Map());
+    app.updated(new Map());
+    assert.equal(clocks, 2, "the returning chat reuses its one clock");
+    redraws = 0;
+    vi.advanceTimersByTime(3_000);
+    assert.equal(redraws, 3, "and draws once per second, not twice");
+  } finally {
+    globalThis.setInterval = realSetInterval;
+    app.conversation.streaming = false;
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});

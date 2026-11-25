@@ -78,10 +78,17 @@ test("a settled span needs both ends, so half a measurement reads as a count ins
   assert.equal(activityTrail(settled, { streaming: false, now: Date.now() }).label, "Worked for 8s · 1 read");
 });
 
-test("reasoning alone keeps its words, live and settled", () => {
+test("reasoning alone keeps its words only when nothing measured a span for it", () => {
   assert.equal(activityTrail([thinking()], { streaming: false }).label, "Reasoning");
   assert.equal(activityTrail([thinking()], { streaming: true, now: 5_000 }).label, "Thinking…");
-  assert.equal(activityTrail([thinking({ timestamp: 1_000, completedAt: 9_000 })], { streaming: false }).label, "Reasoning");
+  // A span with both ends is work the turn spent, and there is nothing for a count to say: it reads the clock alone.
+  assert.equal(activityTrail([thinking({ timestamp: 1_000, completedAt: 9_000 })], { streaming: false }).label, "Worked for 8s");
+  assert.equal(activityTrail([thinking({ timestamp: 1_000 })], { streaming: true, now: 13_000 }).label, "Working for 12s");
+  assert.equal(activityTrail([thinking({ timestamp: 1_000 })], { streaming: true, now: 13_000, turnStartedAt: 11_000 }).label,
+    "Working for 12s", "the reasoning's own start wins over the turn's");
+  // A turn this page watched begin is measured too, so live reasoning counts from it rather than saying nothing.
+  assert.equal(activityTrail([thinking()], { streaming: true, now: 17_000, turnStartedAt: 12_000 }).label, "Working for 5s");
+  assert.equal(activityTrail([thinking({ completedAt: 9_000 })], { streaming: false }).label, "Reasoning", "half a span is no span");
 });
 
 test("a failed call or an error is counted in the collapsed header", () => {

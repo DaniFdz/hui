@@ -75,8 +75,9 @@ export class ConversationController implements ReactiveController {
   /** Why the selected session's open request failed; its view offers a retry. */
   openError = "";
   streaming = false;
-  /** When the live turn of the open conversation started, for its activity trail's clock: absent while nothing runs, so
-   * a settled or idle row never reads the wall clock. */
+  /** When a turn this page watched begin started, for its activity trail's clock: absent while nothing runs, and for a
+   * session that was already running when it opened, so a settled, idle or merely reopened row never reads the wall
+   * clock. */
   turnStartedAt: number | undefined;
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
   dismissedRunErrors: ReadonlySet<string> = new Set();
@@ -122,12 +123,23 @@ export class ConversationController implements ReactiveController {
     host.addController(this);
   }
 
-  /** The one place the composer lock and its trail clock move together: a turn that starts stamps its start, and a turn
-   * that settles (or a conversation that clears or disconnects) drops it. */
-  #setStreaming(next: boolean): void {
-    if (next === this.streaming) return;
+  /** The one place the composer lock and its trail clock move together: the lock follows every frame that declares it,
+   * and the clock is dropped the moment the turn settles. Nothing starts a clock here: a status frame or an open of a
+   * session that was already running says a turn is live, never when it began, so its trail measures what it can instead
+   * of counting from this page's load. Only `started` — a turn this page watched begin — stamps one. */
+  #setStreaming(next: boolean, started = false): void {
     this.streaming = next;
-    this.turnStartedAt = next ? Date.now() : undefined;
+    if (!next) {
+      this.turnStartedAt = undefined;
+      return;
+    }
+    if (started && this.turnStartedAt === undefined) this.turnStartedAt = Date.now();
+  }
+
+  /** The composer's way in: it reports the lock a submission settles on, and whether that submission starts a turn.
+   * A send that starts one stamps the trail's clock once; a refused send drops it again through the same call. */
+  setStreaming(next: boolean, options: { started?: boolean } = {}): void {
+    this.#setStreaming(next, options.started === true);
   }
 
   hostConnected(): void {
@@ -160,6 +172,9 @@ export class ConversationController implements ReactiveController {
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = false;
+    // No conversation is on screen: its lock and the clock that belongs to it go with it, so nothing off screen keeps
+    // redrawing for a turn it no longer owns.
+    this.#setStreaming(false);
     this.#host.requestUpdate();
   }
 
@@ -476,7 +491,8 @@ export class ConversationController implements ReactiveController {
         this.transcript = reduceTranscript(this.transcript, event);
         break;
       case "turn_start":
-        this.#setStreaming(streamingAfterEvent(this.streaming, event.type));
+        // The one frame that reports a turn beginning on this page: it stamps the trail's clock.
+        this.#setStreaming(streamingAfterEvent(this.streaming, event.type), true);
         if (this.compaction?.status !== "running") this.compaction = undefined;
         break;
       case "compaction_start":

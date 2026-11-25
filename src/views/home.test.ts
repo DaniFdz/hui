@@ -950,7 +950,7 @@ test("one activity disclosure holds a stretch, closed until the user asks to ins
   assert.match(source, /const expansionId = `\$\{props\.session\?\.id/);
   // One fold per stretch: the reasoning and the calls it shares a row with open together, under the row's own key.
   assert.doesNotMatch(source, /:reasoning/u);
-  assert.match(source, /<details class="chat-activity-group chat-activity-trail" \.open=\$\{open\}/);
+  assert.match(source, /<details class="chat-activity-group chat-activity-trail" \.open=\$\{open\} data-testid="activity-trail-group"/);
   assert.match(source, /props\.onActivityExpanded\(expansionId, \(event\.currentTarget as HTMLDetailsElement\)\.open\)/);
   assert.doesNotMatch(source, /\?open=\$\{props\.streaming/);
   assert.match(styles, /\.chat-activity-group:not\(\[open\]\) \.chat-activity-group__body\s*\{\s*display: none;/);
@@ -972,7 +972,7 @@ test("an activity trail's header times the turn, counts what it did, and names a
     { kind: "message", id: "a", role: "assistant", text: "Done" },
   ] });
   assert.match(measured, /<span class=chat-activity-group__label chat-activity-trail__label>Worked for 3m 04s · 1 edit, 1 read, 1 run, 1 other call<\/span>/u);
-  assert.match(measured, /class="chat-activity-group chat-activity-trail" .open=false @toggle=/u);
+  assert.match(measured, /class="chat-activity-group chat-activity-trail" .open=false data-testid="activity-trail-group" @toggle=/u);
   // A failure is named where the closed header is read, never only inside the fold.
   assert.match(measured, /chat-activity-trail__failed"><span class="chat-activity-trail__failed-mark" aria-hidden="true">[\s\S]*?<\/span>failed<\/span>/u);
   // The header draws no row until it opens.
@@ -992,7 +992,7 @@ test("an activity trail's header times the turn, counts what it did, and names a
   ] });
   assert.match(unmeasured, />Used 1 tool · 1 read<\/span>/u);
 
-  // Reasoning alone keeps its own words, live and settled.
+  // Reasoning alone keeps its own words, live and settled, until it measured a span of its own.
   const reasoning = await renderWorkerSession("idle", { transcript: [
     { kind: "message", id: "u", role: "user", text: "go" },
     { kind: "thinking", id: "th", text: "plan" },
@@ -1003,6 +1003,17 @@ test("an activity trail's header times the turn, counts what it did, and names a
     { kind: "thinking", id: "th", text: "plan" },
   ], streaming: true });
   assert.match(thinking, />Thinking…<\/span>/u);
+  // With both ends measured it reads the clock alone: there is no count for reasoning to give.
+  const measuredReasoning = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "plan", metrics: { timestamp: 1_000, completedAt: 13_000 } },
+  ] });
+  assert.match(measuredReasoning, /<span class=chat-activity-group__label chat-activity-trail__label>Worked for 12s<\/span>/u);
+  const thinkingLive = await renderWorkerSession("running", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "plan", metrics: { timestamp: Date.now() - 4_000 } },
+  ], streaming: true });
+  assert.match(thinkingLive, /chat-activity-trail__label--live>Working for \d+s<\/span>/u);
 
   // A live turn counts from the turn's own start while none of its calls has reported a timestamp.
   const live = await renderWorkerSession("running", { transcript: [
@@ -1010,6 +1021,33 @@ test("an activity trail's header times the turn, counts what it did, and names a
     { kind: "tool", id: "t1", name: "bash", status: "running", args: { command: "sleep 5" } },
   ], streaming: true, turnStartedAt: Date.now() - 5_000 });
   assert.match(live, /<span class=chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live>Working for \d+s · 1 run<\/span>/u);
+});
+
+test("only the running turn's latest stretch is live: an earlier stretch stays settled and never counts", async () => {
+  // A turn that splits around a message: its first stretch reported both ends of every item, its second is still
+  // working. The earlier row must stay a settled receipt and must never animate or count the later turn's wall clock.
+  const html = await renderWorkerSession("running", { streaming: true, turnStartedAt: Date.now() - 5_000, transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th1", text: "plan", metrics: { timestamp: 1_000, completedAt: 2_000 } },
+    { kind: "tool", id: "t1", name: "bash", status: "succeeded", metrics: { timestamp: 1_000, completedAt: 13_000 } },
+    { kind: "message", id: "a1", role: "assistant", text: "Halfway there." },
+    { kind: "tool", id: "t2", name: "bash", status: "running", args: { command: "sleep 5" } },
+  ] });
+  const trails = [...html.matchAll(/<span class=(chat-activity-group__label chat-activity-trail__label[^>]*)>([^<]*)<\/span>/gu)];
+  assert.equal(trails.length, 2, "one trail per stretch, never one fold for both");
+  assert.equal(trails[0]?.[1], "chat-activity-group__label chat-activity-trail__label", "the settled stretch is not live");
+  assert.equal(trails[0]?.[2], "Worked for 12s · 1 run", "it reads what it measured, never the wall clock");
+  assert.equal(trails[1]?.[1], "chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live");
+  assert.match(trails[1]?.[2] ?? "", /^Working for \d+s · 1 run$/u);
+  assert.equal(html.split("chat-activity-trail__label--live").length - 1, 1, "exactly one stretch is live");
+  // The same settled receipt while a later turn runs never counts either: nothing about it reads `now`.
+  const settledOnly = await renderWorkerSession("running", { streaming: true, turnStartedAt: Date.now() - 5_000, transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "tool", id: "t1", name: "read", status: "succeeded", args: { path: "a.ts" }, metrics: { timestamp: 1_000, completedAt: 4_000 } },
+    { kind: "message", id: "a1", role: "assistant", text: "Reading done, working on the rest." },
+  ] });
+  assert.match(settledOnly, /<span class=chat-activity-group__label chat-activity-trail__label>Worked for 3s · 1 read<\/span>/u);
+  assert.doesNotMatch(settledOnly, /chat-activity-trail__label--live/u, "a stretch whose messages follow it settled");
 });
 
 test("an opened trail lists reasoning and calls in order, with each call's duration and proven chips", async () => {
@@ -1032,7 +1070,10 @@ test("an opened trail lists reasoning and calls in order, with each call's durat
   // The chips follow the row's data: the file it read, the pull request it printed and the session it named.
   assert.match(body, /<div class="tool-call-row__chips"><span class="tool-call-chip tool-call-chip--file"><hui-file-ref data-path=\/repo\/fixture\.txt>\/repo\/fixture\.txt<\/hui-file-ref><\/span>/u);
   assert.match(body, /<a class="tool-call-chip tool-call-chip--pr" href=https:\/\/github\.com\/DaniFdz\/HUI\/pull\/580 target="_blank" rel="noopener">PR #580<\/a>/u);
-  assert.match(body, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001>session:8f14e45f-ceea-467a-9b1d-000000000001<\/hui-session-ref>/u);
+  // The session chip is drawn from its query alone: no child text, so a Lit template that holds this row owns no part
+  // of the element the widget rewrites (an ejected marker throws on the transcript's next render).
+  assert.match(body, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001><\/hui-session-ref>/u);
+  assert.doesNotMatch(body, /hui-session-ref[^>]*>session:/u, "the chip writes its own words, never a Lit child expression");
   // A row nobody proved a reference for draws no chips line at all.
   assert.equal(body.split("tool-call-row__chips").length - 1, 2);
 });

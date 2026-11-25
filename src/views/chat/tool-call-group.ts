@@ -244,6 +244,19 @@ function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult; color?:
 
 type Status = "running" | "succeeded" | "failed";
 
+/** What each call proved, remembered per item object: a live turn redraws once a second, and scanning every row's
+ * arguments and output again on each of those redraws is what a long trail cannot afford. A new item object (a call that
+ * changed) has no entry and is read then. */
+const REFERENCES = new WeakMap<ToolItem, ToolReference[]>();
+
+function provenReferences(item: ToolItem): ToolReference[] {
+  const remembered = REFERENCES.get(item);
+  if (remembered) return remembered;
+  const references = toolReferences(item);
+  REFERENCES.set(item, references);
+  return references;
+}
+
 function statusOf(item: ToolItem): Status {
   if (item.failed || item.status === "failed") return "failed";
   return (item.status ?? "running") === "running" ? "running" : "succeeded";
@@ -271,8 +284,10 @@ export type ToolCallRowOptions = {
 function renderReference(reference: ToolReference): TemplateResult {
   if (reference.kind === "file") return html`<span class="tool-call-chip tool-call-chip--file">${renderToolFileReference(reference.path)}</span>`;
   if (reference.kind === "session") {
-    // The typed text is what the chip reads until the registry resolves it, exactly as a reference in prose does.
-    return html`<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=${reference.query}>session:${reference.query}</hui-session-ref>`;
+    // No child expression: the element writes the text it shows (`components/session-ref.ts`), and a Lit child part a
+    // chip's own `replaceChildren` would eject leaves Lit holding a marker with no parent, which throws on the next
+    // render of the transcript.
+    return html`<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=${reference.query}></hui-session-ref>`;
   }
   return html`<a class="tool-call-chip ${reference.kind === "pull" ? "tool-call-chip--pr" : "tool-call-chip--issue"}" href=${reference.href}
     target="_blank" rel="noopener">${toolReferenceLabel(reference)}</a>`;
@@ -318,7 +333,7 @@ export function renderToolCallRows(items: readonly ToolItem[], options: ToolCall
         const icon = toolIcon(item);
         const emoji = toolEmoji(item, custom);
         const iconName = toolIconName(item, iconsByName);
-        const references = toolReferences(item);
+        const references = provenReferences(item);
         return html`<div class="tool-call-row" data-status=${status}>
           <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
             @click=${() => options.onRowToggle(expansionId, !open)}>

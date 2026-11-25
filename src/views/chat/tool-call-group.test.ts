@@ -78,6 +78,25 @@ test("a group's emoji marks sit inside their ring, smaller than a row's", () => 
   assert.ok(size(".tool-call-group__emoji") <= 11, "and leave the 24px ring clear");
 });
 
+test("a redraw of the same call reuses what it proved instead of scanning its text again", () => {
+  // A live turn redraws every second. Each call's chips are read from its own arguments and output, which cannot change
+  // under the same item object, so a redraw must not re-run that scan.
+  let reads = 0;
+  const item = {
+    kind: "tool" as const, id: "t1", name: "bash", status: "succeeded" as const,
+    get args() { reads += 1; return { command: "echo https://github.com/DaniFdz/HUI/pull/580 session:abc12345" }; },
+    output: "",
+  };
+  const options = { expansionId: () => "s:t1", expandedIds: new Set<string>(), onRowToggle: () => {}, onCopy: () => {} };
+  const first = markup(renderToolCallRows([item], options));
+  assert.match(first, /PR #580/u, "the first draw reads the call and proves its chips");
+  const scanned = reads;
+  const second = markup(renderToolCallRows([item], options));
+  assert.equal(second, first, "the redrawn row is the row it drew");
+  assert.ok(reads - scanned < scanned,
+    `a redraw read the call's data ${reads - scanned} times, the first draw ${scanned}: the reference scan must be the part it skips`);
+});
+
 test("a settled call's row adds its measured duration to the meta, and a running one shows none", () => {
   const settled = rows([tool("read", { path: "a.ts" }, { status: "succeeded", output: "a\nb\nc\n", metrics: { timestamp: 1_000, completedAt: 13_000, durationMs: 12_000 } })]);
   assert.match(settled, /<span class="tool-call-row__meta">3 lines · 12s<\/span>/u);
@@ -101,7 +120,10 @@ test("a row's proven file, pull request and session chips sit beside its toggle,
   })]);
   const chips = html.slice(html.indexOf('<div class="tool-call-row__chips">'));
   assert.match(chips, /<a class="tool-call-chip tool-call-chip--pr" href=https:\/\/github\.com\/DaniFdz\/HUI\/pull\/580 target="_blank" rel="noopener">PR #580<\/a>/u);
-  assert.match(chips, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001>session:8f14e45f-ceea-467a-9b1d-000000000001<\/hui-session-ref>/u);
+  // The session element carries its query and no child: `components/session-ref.ts` writes the words it shows, so no
+  // Lit child part sits where the chip's own `replaceChildren` would eject it.
+  assert.match(chips, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001><\/hui-session-ref>/u);
+  assert.doesNotMatch(chips, /hui-session-ref[^>]*>[^<]/u, "the chip starts empty and writes its own text");
   // The toggle keeps its own label and closes before the chips line: a link inside a button would be neither valid nor
   // reachable from the keyboard.
   const toggle = html.slice(html.indexOf("<button"), html.indexOf("</button>"));

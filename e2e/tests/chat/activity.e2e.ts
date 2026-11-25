@@ -50,20 +50,23 @@ test("each stretch of activity folds under one trail that opens in order", { tag
   await hui.open(`/sessions/${session.id}`);
   await expect(idle).toBeVisible();
 
-  // Reasoning alone keeps its own words, and one stretch is one disclosure, never two.
+  // Reasoning alone is one stretch and one disclosure, never two, and its header is found by the shared trail regex:
+  // once it measured a span it reads the clock rather than the word Reasoning.
   await message.fill("E2E_THINKING");
   await send.tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
   await expect(idle).toBeVisible();
-  await expect(transcript.getByText(trail)).toHaveCount(1);
-  await hui.scrollTo(transcript, transcript.getByText("Reasoning"));
-  await transcript.getByText("Reasoning").tap();
+  const thinkingTrail = transcript.getByText(trail);
+  await expect(thinkingTrail).toHaveCount(1);
+  await hui.scrollTo(transcript, thinkingTrail);
+  await thinkingTrail.tap();
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 
+  // The turn this composer send started counts from that moment, so the held call reads the clock, never only a count.
   await message.fill(call("HOLD", [{ name: "fixture_echo", input: { text: "live" } }]));
   await send.tap();
   await hui.provider.held();
-  await expect(transcript.getByText(/^Using 1 tool · 1 other call$/u)).toBeVisible();
+  await expect(transcript.getByText(/^Working for \d+s · 1 other call$/u)).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
   await expect(transcript.getByText(/^Worked for \d+s · 1 other call$/u)).toBeVisible();

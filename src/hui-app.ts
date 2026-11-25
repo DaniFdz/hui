@@ -661,9 +661,10 @@ export class HuiApp extends HuiElement {
    * conversation keeps the one slow poll it always had. */
   private liveClockPoll?: number;
 
-  /** Starts the activity clock's once-a-second redraw with a turn and stops it the moment the turn settles. */
+  /** Starts the activity clock's once-a-second redraw with a turn on screen and stops it the moment the turn settles or
+   * the operator leaves the chat: Bots, Kanban, Sessions and Settings draw no clock, so they start none. */
   private syncLiveClock(): void {
-    if (this.conversation.streaming) {
+    if (this.view === "home" && this.conversation.streaming) {
       if (this.liveClockPoll !== undefined) return;
       this.liveClockPoll = window.setInterval(() => {
         if (!document.hidden) this.requestUpdate();

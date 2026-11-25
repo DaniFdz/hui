@@ -566,7 +566,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   turn's own start, and **Worked for 1m 12s …** once it settles, from the earliest
   measured start to the latest measured completion; a stretch that reported
   neither end keeps the count wording (**Used 5 tools …**) rather than inventing a
-  clock, and reasoning alone reads **Reasoning** / **Thinking…**. The header then
+  clock, and reasoning alone reads that same clock once it measured both ends,
+  **Reasoning** / **Thinking…** only when nothing measured a span for it. A turn's
+  start is only known when this page watched it begin — the composer's send or the
+  turn's own start frame — so a chat opened on a turn that had already been running
+  keeps its measured wording instead of counting from the page's load, and only the
+  turn's latest stretch still unsettled is live: an earlier stretch stays a settled
+  receipt while a later one runs. The header then
   counts what the calls did, in one fixed order and singular or plural with zero
   kinds left out: edits, writes, reads, searches, runs, fetches, browser steps and
   other calls. A failed call, or an error the stretch holds, marks the collapsed

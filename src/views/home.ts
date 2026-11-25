@@ -1419,19 +1419,23 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
+      // Live is the row's own: the turn's latest stretch, while every one of its items is still unsettled. An earlier
+      // stretch, or one whose items all reported a completion, settled — it must not animate or count later turns.
+      const live = props.streaming && rowIndex === rows.length - 1
+        && !row.items.every((item) => item.metrics?.completedAt !== undefined);
       const trail = activityTrail(row.items, {
-        streaming: props.streaming,
+        streaming: live,
         ...(props.turnStartedAt !== undefined ? { turnStartedAt: props.turnStartedAt } : {}),
       });
       const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
       // Folded until the person opens it: a live turn no longer forces the trail open.
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
-          <details class="chat-activity-group chat-activity-trail" .open=${open}
+          <details class="chat-activity-group chat-activity-trail" .open=${open} data-testid="activity-trail-group"
             @toggle=${(event: Event) => props.onActivityExpanded(expansionId, (event.currentTarget as HTMLDetailsElement).open)}>
             <summary class="chat-inline-disclosure chat-activity-group__summary chat-activity-trail__head" data-testid="activity-trail">
               <span class="chat-activity-group__icon" aria-hidden="true">${chevronDownIcon}</span>
-              <span class=${props.streaming ? "chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live" : "chat-activity-group__label chat-activity-trail__label"}>${trail.label}</span>
+              <span class=${live ? "chat-activity-group__label chat-activity-trail__label chat-activity-trail__label--live" : "chat-activity-group__label chat-activity-trail__label"}>${trail.label}</span>
               ${trail.failed ? html`<span class="chat-activity-trail__failed"><span class="chat-activity-trail__failed-mark" aria-hidden="true">${icons.alertTriangle}</span>${trail.failed === 1 ? "failed" : `${trail.failed} failed`}</span>` : nothing}
               ${tools.length ? renderToolMarks(tools, { marks: props.chatPreferences.toolMarks, icons: props.chatPreferences.toolIcons }) : nothing}
             </summary>

@@ -50,15 +50,19 @@ function measuredSpan(items: readonly TrailItem[], options: ActivityTrailOptions
 }
 
 /** The collapsed summary: `Working for 3m 04s · 5 edits, 3 reads, 2 runs` while it runs and `Worked for …` once it
- * settles, the count wording when no span could be measured, `Reasoning`/`Thinking…` for reasoning alone, and how many
- * of its calls (or its error) failed. */
+ * settles, the count wording when no span could be measured, `Reasoning`/`Thinking…` for reasoning alone that measured
+ * nothing, and how many of its calls (or its error) failed. Reasoning that did measure both ends reads the clock as
+ * well: it is work the turn spent, and there is nothing for a count to say. */
 export function activityTrail(items: readonly TrailItem[], options: ActivityTrailOptions): ActivityTrail {
   const tools = items.filter((item): item is ToolItem => item.kind === "tool");
   const failed = items.filter((item) => item.kind === "error" || (item.kind === "tool" && (item.failed === true || item.status === "failed"))).length;
   let label: string;
   if (!tools.length) {
-    // Reasoning alone is not a run of calls and has nothing to count, so it keeps the words it had.
-    label = items.some((item) => item.kind === "thinking") ? (options.streaming ? "Thinking…" : "Reasoning") : "Run details";
+    // Reasoning alone keeps its words only when nothing measured a span for it.
+    const span = measuredSpan(items, options);
+    label = span !== undefined
+      ? `${options.streaming ? "Working" : "Worked"} for ${span}`
+      : items.some((item) => item.kind === "thinking") ? (options.streaming ? "Thinking…" : "Reasoning") : "Run details";
     return { label, failed };
   }
   const counts = toolActivityCounts(tools);

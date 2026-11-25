@@ -167,13 +167,16 @@ async function showCalls(d: Director, timeout = 45_000) {
 }
 
 /** Waits until the trail's three rows have all answered and its header says so: the completed rows the clip reads. A
- * settled call's row carries `data-status="succeeded"`; `running` is the spinner and `failed` the alert. */
+ * settled call's row carries `data-status="succeeded"`; `running` is the spinner and `failed` the alert. The header is
+ * read in both of its settled wordings, the clock a measured stretch shows and the count a receipt without timings
+ * keeps, so a turn that reported no measurements cannot hang the recording. */
 async function callsDone(d: Director, timeout = 60_000) {
   const deadline = Date.now() + timeout;
   for (;;) {
     await showCalls(d);
     if (await d.find({ css: `.tool-call-row[data-status="succeeded"]`, nth: 2 })
-      && await d.find({ css: ".chat-activity-trail__label", contains: "Worked for" })) return;
+      && (await d.find({ css: ".chat-activity-trail__label", contains: "Worked for" })
+        || await d.find({ css: ".chat-activity-trail__label", contains: "Used " }))) return;
     if (Date.now() > deadline) throw new Error("The chief's three calls did not draw as completed rows.");
     await sleep(400);
   }
