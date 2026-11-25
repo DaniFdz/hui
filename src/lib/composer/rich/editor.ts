@@ -21,10 +21,12 @@
  *
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
  * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
- * newline in a fence) or the send `composerEnterMode` names, a paragraph that is only a fence opens a code block before
- * either, Shift+Enter always inserts one hard break, and Mod-Enter always sends. Tab, Shift+Tab and the formatting chords
- * are `keys.ts`'. The app re-reads its completion queries from the caret, so a position it has already read is not
- * reported again: the keyup of an Enter that took a suggestion must not reopen the menu that choice just closed.
+ * newline in a fence, the block change a quote or a heading takes) or the send `composerEnterMode` names, a paragraph
+ * that is only a fence opens a code block before either, Shift+Enter always inserts one hard break, and Mod-Enter always
+ * sends. A quote and a heading are never sent from, on a phone either: their Enter is the block command below, never the
+ * line break prose gets there. Tab, Shift+Tab and the formatting chords are `keys.ts`'. The app re-reads its completion
+ * queries from the caret, so a position it has already read is not reported again: the keyup of an Enter that took a
+ * suggestion must not reopen the menu that choice just closed.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { history } from "prosemirror-history";
@@ -422,6 +424,8 @@ class ComposerEditorImpl implements ComposerEditor {
       this.#options.onSubmit(mode);
       return true;
     }
+    // A quote's or a heading's Enter is an edit on every device: `enterKey` takes it as the block change it is, so on a
+    // coarse pointer, where Enter is otherwise a line break, the block command runs rather than the hard break below.
     return this.#edit(view, enterKey);
   }
 
