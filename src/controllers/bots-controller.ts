@@ -113,19 +113,22 @@ export class BotsController implements ReactiveController {
   }
 
   adopt(bots: readonly BotView[]): void {
-    this.list = bots;
-    // A bot that left the roster (deleted, archived) keeps no expanded row behind it.
-    if (this.expandedSessions.size) {
-      const known = new Set(bots.filter((bot) => !bot.archived).map((bot) => bot.id));
-      const kept = [...this.expandedSessions].filter((id) => known.has(id));
-      if (kept.length !== this.expandedSessions.size) this.expandedSessions = new Set(kept);
-    }
-    this.#host.requestUpdate();
+    this.#set({ list: bots });
+  }
+
+  /** A bot that left the roster (deleted, archived, by this tab or another) keeps no expanded row behind it: every list
+   * replacement, from the stream, a read or a local change, goes through here. */
+  #pruneExpanded(list: readonly BotView[]): void {
+    if (!this.expandedSessions.size) return;
+    const known = new Set(list.filter((bot) => !bot.archived).map((bot) => bot.id));
+    const kept = [...this.expandedSessions].filter((id) => known.has(id));
+    if (kept.length !== this.expandedSessions.size) this.expandedSessions = new Set(kept);
   }
 
   #set(next: Partial<Pick<BotsController, "list" | "loading" | "loaded" | "error" | "showHidden" | "showArchived" | "pendingId" | "creating"
     | "archiving" | "archivePending" | "archiveError" | "deleting" | "deletePending" | "deleteError" | "archiveToast">>): void {
     Object.assign(this, next);
+    if (next.list) this.#pruneExpanded(next.list);
     this.#host.requestUpdate();
   }
 

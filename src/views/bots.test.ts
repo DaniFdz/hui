@@ -391,7 +391,7 @@ test("the roster's row counts the sessions it has in flight and, opened, lists i
   assert.match(collapsed, /aria-label=Boss, working, 2 sessions in flight/u);
   assert.match(collapsed, /aria-label=Quiet, sleeping/u);
   assert.doesNotMatch(collapsed, /Quiet, sleeping, .*in flight/u);
-  assert.equal(collapsed.match(/class="bot-row__inflight" aria-hidden="true">2</gu)?.length, 1);
+  assert.equal(collapsed.match(/class="bot-row__inflight" data-testid="bot-row-inflight" aria-hidden="true">2</gu)?.length, 1);
   assert.doesNotMatch(collapsed, /bot-row-children/u, "a collapsed bot lists nothing");
   assert.match(collapsed, /class="bot-row-expander" aria-expanded=false/u);
   assert.match(collapsed, /aria-label=Expand sessions of Boss/u);
@@ -420,7 +420,7 @@ test("a hidden bot offers no count and no sessions, even while it started some",
   assert.doesNotMatch(page, /bot-row__inflight|bot-row-expander|bot-row-children/u);
 });
 
-test("the overview opens on Work: its counts, Needs you, Working and Recent in lane order, eight rows and Show more", () => {
+test("the overview draws Work first among what the bot does on its own: its counts, Needs you, Working and Recent in lane order, eight rows and Show more", () => {
   // The panel reads its own clock, so the times are built against it: ten seconds past a whole minute keeps "2m"
   // stable for the length of the test.
   const recent = new Date(Date.now() - 2 * 60_000 - 10_000).toISOString();
@@ -438,7 +438,8 @@ test("the overview opens on Work: its counts, Needs you, Working and Recent in l
   assert.equal(page.match(/class="bot-overview__row bot-work__row"/gu)?.length, 8, "eight rows across the queue");
   assert.match(page, />Show 1 more</u);
   assert.match(page, /aria-expanded=false/u);
-  assert.match(page, /href=\/sessions\/s-run\?open=app/u, "a plain click opens it in the app");
+  assert.match(page, /href=\/sessions\/s-run\?open=app data-work-tone=busy/u, "a live turn's dot is busy");
+  assert.match(page, /href=\/sessions\/s-wait\?open=app data-work-tone=question/u, "a waiting row's dot asks for an answer");
   assert.ok(page.includes(`datetime=${recent}>2m</time>`), "a row says how long ago it last moved");
 
   const expanded = markup(renderBotPanel({ ...props, work: { ...props.work, expanded: true } }));
@@ -451,4 +452,21 @@ test("a bot that started nothing says so in one calm hint", () => {
   const page = markup(renderBotPanel(overviewProps({ queue: EMPTY_WORK_QUEUE, expanded: false, onToggle: () => {} })));
   assert.match(page, /class="bot-panel__hint">Nothing yet\. Sessions Ada starts show here\.</u);
   assert.doesNotMatch(page, /bot-work__lane|bot-overview__counts/u);
+});
+
+test("a Work row draws an unreachable machine in the warn tone, not the muted dot of a finished one", () => {
+  const away = startedSession("s-away", "Lost the box", { status: "disconnected", worker: { id: "w1", name: "Box" } as SessionView["worker"] });
+  const page = markup(renderBotPanel(overviewProps({ queue: botWorkQueue([away]), expanded: false, onToggle: () => {} })));
+  assert.match(page, /href=\/sessions\/s-away\?open=app data-work-tone=away/u);
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  assert.match(css, /\.bot-work__link\[data-work-tone="away"\] \.bot-work__dot \{ background: var\(--warn\); \}/u, "styled beside question, error and busy");
+});
+
+test("a bot's started-session rows close the navigation drawer without taking the link over", () => {
+  const source = read("./bots.ts");
+  const children = between(source, "function botStartedSessions(", "function archivedRow(");
+  assert.match(children, /function botStartedSessions\(bot: BotView, queue: WorkQueue, now: number, drawer: RosterDrawer\)/u);
+  assert.equal(children.match(/@click=\$\{\(event: MouseEvent\) => drawer\.navigate\(event\)\}/gu)?.length, 2, "the bot's own chat and each session it started");
+  assert.doesNotMatch(children, /preventDefault/u, "the shell's delegated listener still opens the link");
+  assert.match(source, /\$\{expanded && queue \? botStartedSessions\(bot, queue, props\.now, drawer\) : nothing\}/u);
 });

@@ -4012,15 +4012,16 @@ Soul and Memory leaving the panel rather than shrinking to a row each.
 ### A bot's panel shows the work it started (2026-11-25)
 
 The panel's overview said what a bot does on its own (routines, triggers, their runs, its cost) and never what the
-sessions its chat started are doing, so the operator read that off the Agents list. The overview now opens with
-**Work**, the sessions the bot started with `create_session`, in three lanes read from their live status, never their
-stage: **Needs you** (a question waiting, an error, a disconnected machine, or a run that failed and left the session
-idle), **Working** (a turn starting, running or reconnecting) and **Recent** (everything else, a failed worktree
-creation included, since that is not a status). A session sits in one lane and is counted once; the section's header
-counts the lanes it has (*1 needs you · 1 working · 7 recent*) and a bot that started nothing says so in one calm line.
-Each row shows a status dot, the session's title and how long ago it last moved, and opens
-`/sessions/<id>?open=app` in the app on a plain click, leaving a key, Ctrl, ⌘, Shift or middle click to the link. The
-queue draws its first eight rows and **Show N more** draws the rest in place, per bot and never remembered.
+sessions its chat started are doing, so the operator read that off the Agents list. Under its profile, the overview now
+draws **Work** first among what the bot does on its own: the sessions the bot started with `create_session`, in three
+lanes read from their live status, never their stage: **Needs you** (a question waiting, an error, a disconnected
+machine, or a run that failed and left the session idle), **Working** (a turn starting, running or reconnecting) and
+**Recent** (everything else, a failed worktree creation included, since that is not a status). A session sits in one
+lane and is counted once; the section's header counts the lanes it has (*1 needs you · 1 working · 7 recent*) and a
+bot that started nothing says so in one calm line. Each row shows a status dot, the session's title and how long ago it
+last moved; its link is `/sessions/<id>?open=app`, and a plain click or Enter opens that chat in the app, while a
+new-tab or new-window click (and Ctrl, ⌘, Shift or a middle click) keeps the link. The queue draws its first eight rows
+and **Show N more** draws the rest in place, per bot and never remembered.
 
 ### A bot's roster row counts and lists the work it started (2026-11-25)
 

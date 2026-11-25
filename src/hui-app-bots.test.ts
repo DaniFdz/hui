@@ -354,9 +354,21 @@ test("the Bots tab and the bot's panel read one work projection per registry, wi
   // Off the Bots tab the shell walks nothing for the roster.
   app["bots"].selectTab("sessions");
   assert.equal(app["shellBotsProps"]().roster.work, undefined);
+  // The bot's own chat reads the same started index: one walk of a registry projection, never one per reader.
+  app["bots"].selectTab("bots");
+  let createdByReads = 0;
+  const counted = started("s-counted", "waiting");
+  Object.defineProperty(counted, "createdBy", { enumerable: true, get: () => { createdByReads += 1; return { id: BOT.id, handle: BOT.handle, name: BOT.name }; } });
+  app["sessions"].groups = [{ label: "g1", sessions: [SESSION, counted] }];
+  app["shellBotsProps"]();
+  const reads = createdByReads;
+  assert.equal(reads, 1, "the projection reads each started session once");
+  app["conversation"].selected = SESSION;
+  assert.deepEqual(app["childSessions"].map(({ id }) => id), ["s-counted"]);
+  assert.equal(createdByReads, reads, "the bot's chat reuses the queue's started index instead of walking the registry again");
 });
 
-test("the roster's expanded sessions follow the bots that stay", () => {
+test("the roster's expanded sessions follow the bots that stay", async () => {
   const app = setup();
   app["bots"].toggleSessions(BOT.id);
   assert.deepEqual([...app["bots"].expandedSessions], [BOT.id]);
@@ -365,6 +377,22 @@ test("the roster's expanded sessions follow the bots that stay", () => {
   app["bots"].toggleSessions(BOT.id);
   app["bots"].adopt([{ ...BOT, id: "other", name: "Grace", handle: "grace", sessionId: "s-grace" }]);
   assert.deepEqual([...app["bots"].expandedSessions], [], "a bot that left the roster keeps no expanded row");
+  // Every list replacement prunes, not just a local adopt: the stream and a read are how another client's archive lands.
+  app["bots"].adopt([BOT]);
+  app["bots"].toggleSessions(BOT.id);
+  let handlers: Parameters<typeof botApi.subscribeBots>[0] | undefined;
+  vi.spyOn(botApi, "subscribeBots").mockImplementation((next) => { handlers = next; return () => {}; });
+  vi.mocked(app["bots"].sync).mockRestore();
+  app["bots"].sync();
+  handlers!.onUpdate({ revision: 1, ids: [BOT.id], upserts: [{ ...BOT, archived: true }] }, true);
+  assert.deepEqual(app["bots"].list.map(({ id, archived }) => [id, archived]), [[BOT.id, true]]);
+  assert.deepEqual([...app["bots"].expandedSessions], [], "a bot another client archived keeps no expanded row");
+  app["bots"].adopt([BOT]);
+  app["bots"].toggleSessions(BOT.id);
+  vi.spyOn(botApi, "loadBots").mockResolvedValue([{ ...BOT, id: "other", name: "Grace" }]);
+  await app["bots"].refresh();
+  assert.deepEqual(app["bots"].list.map(({ id }) => id), ["other"]);
+  assert.deepEqual([...app["bots"].expandedSessions], [], "a read that no longer has the bot drops its expanded row");
 });
 
 test("an open bot panel redraws for the roster's clock every 30 seconds, and a closed one on another tab adds none", () => {

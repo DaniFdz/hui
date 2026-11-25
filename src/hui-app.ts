@@ -2112,9 +2112,20 @@ export class HuiApp extends HuiElement {
   /** Every pane reading the same registry shares one child projection, including the empty-array identity. */
   private static readonly childSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
   /** Same sharing, for what a bot's chat started through `create_session`; built lazily, only while a bot's own chat
-   * is open, so an ordinary conversation never pays for it. */
+   * or the Bots tab reads it, so an ordinary conversation never pays for it. */
   private static readonly startedSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
   private static readonly noChildSessions: readonly SessionView[] = [];
+  /** The sessions each bot started, from one walk per registry projection: a bot's merged Sessions list and the Bots
+   * tab's Work queues read the same index instead of each building one. */
+  private static startedSessionIndex(groups: readonly SessionGroup[]): ReadonlyMap<string, readonly SessionView[]> {
+    let index = HuiApp.startedSessionIndexes.get(groups);
+    if (!index) {
+      index = startedSessionsByBot(groups);
+      HuiApp.startedSessionIndexes.set(groups, index);
+    }
+    return index;
+  }
+
   private get childSessions(): readonly SessionView[] {
     // Embedded panes overlay only their own status. Their children come from the canonical shared list.
     const groups = this.embeddedPane && this.paneGroups ? this.paneGroups : this.sessions.groups;
@@ -2126,22 +2137,17 @@ export class HuiApp extends HuiElement {
     const children = index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
     const bot = this.conversation.selected?.bot;
     if (!bot) return children;
-    let startedIndex = HuiApp.startedSessionIndexes.get(groups);
-    if (!startedIndex) {
-      startedIndex = startedSessionsByBot(groups);
-      HuiApp.startedSessionIndexes.set(groups, startedIndex);
-    }
-    return mergeChildAndStartedSessions(children, startedIndex.get(bot.id) ?? HuiApp.noChildSessions);
+    return mergeChildAndStartedSessions(children, HuiApp.startedSessionIndex(groups).get(bot.id) ?? HuiApp.noChildSessions);
   }
 
   /** Every bot's work, in the panel's lanes and the roster's counts: one projection per registry, built lazily and
-   * only while the Bots tab or a bot's chat reads it, so a frame never walks the registry twice for it. */
+   * only while the Bots tab or a bot's chat reads it, over the started index the bot's own chat shares. */
   private static readonly botWorkIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, WorkQueue>>();
   private botWork(): ReadonlyMap<string, WorkQueue> {
     const groups = this.sessions.groups;
     let queues = HuiApp.botWorkIndexes.get(groups);
     if (!queues) {
-      queues = botWorkQueues(startedSessionsByBot(groups));
+      queues = botWorkQueues(HuiApp.startedSessionIndex(groups));
       HuiApp.botWorkIndexes.set(groups, queues);
     }
     return queues;
