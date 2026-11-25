@@ -70,7 +70,7 @@ test("an HTML paste is only mapped where a DOM exists", () => {
 
 /**
  * The test DOM: exactly the surface `htmlSlice` and ProseMirror's `DOMParser` read — node type and name, attributes,
- * children and siblings, tag and attribute selectors, and `createTextNode`. Nothing here needs a full DOM.
+ * children and siblings, tag, class and attribute selectors, and `createTextNode`. Nothing here needs a full DOM.
  */
 class TestNode {
   attributes = new Map<string, string>();
@@ -172,12 +172,20 @@ function link(parent: TestNode, children: TestNode[]): void {
   });
 }
 
-/** A tag name, or a tag name with an attribute, which is all the schema's `parseDOM` rules ask for. */
+/**
+ * A tag name, any number of `.class` segments, and an optional attribute: what the schema's `parseDOM` rules ask for
+ * (`aside.markdown-alert`, `div.markdown-alert.markdown-alert--tip`, `p`, `a[href]`). A selector outside that shape
+ * throws instead of quietly matching nothing, so a rule this test DOM cannot answer fails here rather than in a browser
+ * where it would pass.
+ */
 function matchesPart(node: TestNode, selector: string): boolean {
-  const part = /^\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\[([-a-zA-Z_:][-a-zA-Z0-9_:.]*)\])?\s*$/u.exec(selector);
+  const part = /^\s*([a-zA-Z][a-zA-Z0-9-]*)((?:\.[^\s.[\]#:>+~]+)*)(?:\[([-a-zA-Z_:][-a-zA-Z0-9_:.]*)\])?\s*$/u.exec(selector);
   if (!part) throw new RangeError(`The test DOM has no selector ${JSON.stringify(selector.trim())}.`);
   if (node.nodeName !== part[1]?.toUpperCase()) return false;
-  return part[2] === undefined || node.attributes.has(part[2]);
+  const classes = node.className.split(/\s+/u);
+  const wanted = (part[2] ?? "").split(".").filter((name) => name !== "");
+  if (!wanted.every((name) => classes.includes(name))) return false;
+  return part[3] === undefined || node.hasAttribute(part[3]);
 }
 
 const VOID_ELEMENTS = new Set(["br", "hr", "img", "input", "link", "meta"]);
@@ -271,4 +279,40 @@ test("an HTML paste is mapped through the schema's parseDOM rules", () => {
   assert.deepEqual([blocks[3]?.attrs["language"], blocks[3]?.textContent], ["ts", "let a = 1;"], "pre > code keeps its language");
   assert.deepEqual(inlineShape(blocks[4]!), [{ text: "inline", marks: ["code"] }, { text: " ", marks: [] }, { text: "gone", marks: ["s"] }, { text: " pic", marks: [] }], "the image became its alt text, merged with the space before it");
   assert.equal(doc.textContent.includes("alert(1)"), false, "a script's text never reaches the document");
+});
+
+test("a pasted callout becomes a note of its kind, and a plain aside stays ordinary text", () => {
+  const html = '<aside class="markdown-alert markdown-alert--warning" aria-label="Warning">'
+    + '<div class="markdown-alert__title">Warning</div>'
+    + '<div class="markdown-alert__body"><p>Check it</p></div>'
+    + "</aside>";
+  const slice = htmlSlice(richSchema, html, TEST_DOM);
+  assert.ok(slice, "a DOM maps the pasted callout");
+  const doc = documentOf(slice);
+  const note = doc.child(0);
+  assert.equal(note.type.name, "note", "aside.markdown-alert is the note's parseDOM selector");
+  assert.equal(note.attrs["kind"], "warning", "the kind is the markdown-alert--… class");
+  assert.equal(note.childCount, 2, "the title element's own text arrives as a first paragraph, then the body");
+  assert.equal(note.child(1).textContent, "Check it", "its body arrives as the note's content");
+
+  const plain = documentOf(htmlSlice(richSchema, "<aside>plain</aside>", TEST_DOM)!);
+  const plainTypes: string[] = [];
+  plain.descendants((node) => {
+    plainTypes.push(node.type.name);
+  });
+  assert.equal(plain.child(0).type.name, "paragraph", "a bare aside has no rule, so its text becomes a paragraph");
+  assert.equal(plain.textContent, "plain");
+  assert.equal(plainTypes.includes("note"), false, "it does not become a note");
+});
+
+test("the test DOM answers the schema's selector shapes and refuses any other", () => {
+  const document = new TestDocument("");
+  const alert = TestNode.element(document, "div", { class: "markdown-alert markdown-alert--tip" });
+  assert.equal(alert.matches("div.markdown-alert"), true, "one class segment");
+  assert.equal(alert.matches("div.markdown-alert.markdown-alert--tip"), true, "several class segments, all required");
+  assert.equal(alert.matches("div.markdown-alert.markdown-alert--note"), false, "a class it does not carry");
+  assert.equal(alert.matches("aside.markdown-alert"), false, "a tag it is not");
+  assert.equal(TestNode.element(document, "aside", { "data-x": "1" }).matches("aside[data-x]"), true);
+  assert.equal(TestNode.element(document, "aside").matches("aside[data-x]"), false);
+  assert.throws(() => alert.matches("aside > p"), RangeError, "a selector it cannot read throws instead of passing");
 });
