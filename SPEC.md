@@ -1879,8 +1879,14 @@ never a textarea with Markdown in it: in a rich draft no marker is visible, beca
 typing one converts live (a literal draft, below, is the one exception).
 `**bold**`, `*italic*`, `~~strikethrough~~`, `` `code` ``, `# heading`, `> quote`,
 `- item` and `1. item` each become their node or mark the moment the run completes,
-and a triple-backtick fence becomes a code block carrying its language when Enter
-follows it (or the space after it), while `2 * 3 * 4`, `a * b`, `read_text_file`, a
+a triple-backtick fence becomes a code block carrying its language when Enter
+follows it (or the space after it), and `> [!NOTE]` inside a quote becomes a note
+block when Enter follows it or when the marker's own space completes it, with TIP,
+IMPORTANT, WARNING and CAUTION naming the other four kinds in any case. A note block
+draws the transcript's own callout — the tinted box, its label title and its body —
+and its wire is the canonical `> [!NOTE]` marker line with the body below it, `> ` on
+every line; a `> ` of its own stays a plain quote, and a marker no kind names, such as
+`> [!FOO]`, stays quote text, while `2 * 3 * 4`, `a * b`, `read_text_file`, a
 lone `*` and an unmatched `**` stay exactly as typed. The
 form submits the draft's canonical Markdown through a hidden field — the exact
 source an unedited draft was loaded with, the serializer's own spelling after a
@@ -1888,11 +1894,11 @@ rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break)
 and the transcript renders that same Markdown. Prompts HUI writes for routines and
 triggers stay plain text.
 
-A draft holding something the editor cannot represent — raw HTML, math, a table,
-an alert or details block, an image, a rule, a task list, a link reference, a
-`session:`/file chip — loads as literal text: one paragraph that shows the draft's
-exact bytes, markers and pipes included, and sends exactly those bytes, so the
-transcript renders it as any sent message. The composer has no Markdown toggle and
+A draft holding something the editor cannot represent — raw HTML, math, a table, a
+details block, an image, a rule, a task list, a link reference, a `session:`/file
+chip — loads as literal text: one paragraph that shows the draft's exact bytes,
+markers and pipes included, and sends exactly those bytes, so the transcript renders
+it as any sent message. The composer has no Markdown toggle and
 no source editor. A literal draft is never formatted as it is typed: typed text and
 line breaks are plain text, pasted and dropped text is inserted as plain text, and
 the formatting chords do nothing, so every character shown is one the wire carries.
@@ -1900,19 +1906,29 @@ An edit leaves the wire as the text shown. A literal draft stays literal until H
 loads a draft the editor can represent in its place, as a send's clear does, so
 editing one never turns it into formatting.
 
-Enter sends in prose; inside a non-empty list item it splits the item, on an empty
-list item it ends the list, and inside a fence it adds a line. In a paragraph that is
-only a fence (```` ``` ```` or ```` ```lang ````), Enter opens a code block carrying
-that language instead of sending, on a keyboard and on a phone alike, unless that
-paragraph cannot become one where it sits (a list item's first paragraph keeps its
-markers and Enter keeps its ordinary meaning). Inside that block Enter adds a line,
-ArrowDown at the block's end or Enter on a closing ```` ``` ```` line that a
-paragraph can follow leaves it for that paragraph, and where none can follow the line
-stays and Enter adds a line. Cmd/Ctrl+Shift+E turns a fence back into a paragraph,
-and none of this changes the Markdown the wire carries.
-Shift+Enter always inserts one line break, Send and Cmd/Ctrl+Enter always send, and
-on a coarse pointer (or with the modifier-Enter preference) plain Enter stays a line
-break.
+Enter sends only from prose. Inside a quote, a note, a heading, a list item or a code
+block it never sends and never steers: it edits the block the caret sits in — a line
+inside the quote, the note or the fence, a split item in a list, an empty item ending
+the list, and the paragraph a heading ends in. So `>`, Space, the text and Enter leave
+the quote holding that text and one empty line, and nothing is posted. Send and
+Cmd/Ctrl+Enter still send or queue the draft from anywhere, Shift+Enter still inserts
+one line break, and on a coarse pointer (or with the modifier-Enter preference) plain
+Enter stays a line break in prose.
+The way out of a quote, a note or a fence is Backspace on the empty line that gesture
+leaves: the empty line goes, the text the operator typed stays, and the caret lands in
+a plain paragraph below the block, which the wire writes as the quote's `> text` and
+then the prose one blank line below. A Backspace that would delete typed text never
+ejects — it deletes the character, as it always did — an empty line in the middle of a
+block stays a join, and an empty quote, note or heading at its start still becomes the
+paragraph it wraps, with its marker gone from the wire. A fence keeps its own two
+exits beside that one: ArrowDown at the block's end, or Enter on a last line that is
+only ```` ``` ````, leaves it for the paragraph after, and where no paragraph can
+follow the line stays and Enter adds a line. A paragraph that is only a fence
+(```` ``` ```` or ```` ```lang ````) still opens a code block carrying that language
+on Enter instead of sending, on a keyboard and on a phone alike, unless that paragraph
+cannot become one where it sits (a list item's first paragraph keeps its markers and
+Enter keeps its ordinary meaning). Cmd/Ctrl+Shift+E turns a fence back into a
+paragraph, and none of this changes the Markdown the wire carries.
 Tab and Shift+Tab change a list item's depth (three spaces per level) or indent
 a fence, and leave the editor outside both. Cmd/Ctrl+B, I and E toggle bold,
 italic and inline code, and Cmd/Ctrl+Shift+E fences the selection. Pasted plain
@@ -1920,6 +1936,24 @@ text is literal: one paragraph per blank-line group and one line break per newli
 so pasted Markdown syntax is escaped rather than executed, while pasted rich HTML
 maps to the same nodes and marks; a pasted code block stays a code block, and a
 pasted image or a very long paste becomes an attachment instead of a draft.
+
+A secondary click on a selection in the rich composer opens HUI's own formatting
+toolbar where the platform's menu would be, on a fine pointer only: a toolbar named
+**Format selection**, with the selection's inline marks — **Bold**, **Italic**,
+**Strikethrough**, **Inline code** — the block it becomes — **Quote**, **Note**,
+**Bullet list**, **Code block** — **Text** to take any of those away, and **Cut**,
+**Copy** and **Paste**. Each toggle carries its `aria-pressed` state for what the
+selection already holds, a button the schema cannot apply there is disabled, and the
+arrow keys with Home and End move between the enabled ones. One action is one undo
+step and the hidden field follows at once; the strip stays open over the result and
+closes on Escape, which gives the editor its focus back, on a press outside it, on a
+scroll, or when the selection it was opened on changes. A tooltip the keyboard focus
+grows on a button takes Escape first, as a tooltip does anywhere, so a keyboard's way
+out of the strip is pressed twice. Cut and Copy are the browser's own, so the
+clipboard keeps what it wrote, and Paste inserts the text the strip read when it
+opened. An empty selection never opens it, because the platform's menu is what pastes
+into a caret, and a phone keeps its own long press with its own Cut, Copy and Paste:
+the strip is never drawn there and that menu is untouched.
 
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
 New Session offers the skills of the session it will start, never those of the
@@ -3555,6 +3589,17 @@ A mouse or trackpad's secondary click on a session row opens the row's
 **Actions for** menu on the web. A touch screen has no secondary click: the
 iPhone app opens the same menu by long-pressing the row, so the gesture is a web
 use case and the menu and its items stay shared ones.
+
+### A secondary click is the web's way into a composer selection's formatting (2026-11-25)
+
+A mouse or trackpad's secondary click on a selection in the rich composer opens
+the composer's own formatting toolbar, **Format selection**, instead of the
+platform's menu. A touch screen has no secondary click: a long press is the
+platform's own menu, which is where a phone's Cut, Copy and Paste live, so the
+composer leaves that menu untouched and draws no strip there. The gesture is
+therefore a web use case, while the formatting it applies, the Markdown it
+writes and the editor it edits stay shared ones; the web's keyboard alternative,
+Shift+F10, is a chord a phone has no key for either.
 
 ### The iPhone app follows the phone's text size (2026-10-26)
 

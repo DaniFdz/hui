@@ -1134,12 +1134,34 @@ const cases: UseCase[] = [
     id: "CHAT-095",
     title: "Start and leave a code block from the composer keyboard",
     behaviour:
-      "In the rich composer a paragraph that is only a fence — a bare ``` or a ``` with a language — becomes a fenced code block carrying that language when Enter follows it, exactly as the space after it already does: the markers go, the caret sits inside the empty block, and nothing is sent, on a keyboard and on a phone alike. Enter inside the block adds a line. ArrowDown at the end of the block's content leaves it for the paragraph after it, adding one there where its container allows it, and Enter on a last line that is only ``` removes that line, and the newline before it, and leaves the block the same way where a paragraph can follow it (elsewhere the line stays and Enter adds a line); a block holding nothing else becomes that paragraph. The hidden field carries the canonical Markdown: an empty fence is its fence line twice, a block with lines is its fence, its lines and its closing fence, and a paragraph after it is written one blank line below.",
+      "In the rich composer a paragraph that is only a fence — a bare ``` or a ``` with a language — becomes a fenced code block carrying that language when Enter follows it, exactly as the space after it already does: the markers go, the caret sits inside the empty block, and nothing is sent, on a keyboard and on a phone alike. Enter inside the block adds a line, and Backspace on the empty last line Enter leaves takes only that line away: the block keeps the text typed into it, and the caret lands in a plain paragraph below the fence. ArrowDown at the end of the block's content leaves it for the paragraph after it, adding one there where its container allows it, and Enter on a last line that is only ``` removes that line, and the newline before it, and leaves the block the same way where a paragraph can follow it (elsewhere the line stays and Enter adds a line); a block holding nothing else becomes that paragraph. The hidden field carries the canonical Markdown: an empty fence is its fence line twice, a block with lines is its fence, its lines and its closing fence, and a paragraph after it is written one blank line below.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer"],
     web: "required",
     phone: "required",
+  },
+  {
+    id: "CHAT-096",
+    title: "Write a note in the composer and leave it with Backspace",
+    behaviour:
+      "In the rich composer a typed `>` and the space after it open a quote, and a `[!NOTE]` marker typed in that quote becomes a note when Enter follows it or the marker's own space completes it: the marker goes, nothing is sent, and the draft draws the transcript's callout — the tinted aside titled **Note**, with the body below its title — exactly as the chat draws it. TIP, IMPORTANT, WARNING and CAUTION name the other four kinds, which the same gesture opens with the titles **Tip**, **Important**, **Warning** and **Caution**. The hidden field carries the canonical Markdown, the `> [!NOTE]` marker line and the body under it with `> ` on every line, and a draft holding one loads rich as that same callout rather than as the literal text it used to be. A `> ` quote with no marker is a plain quote, and a marker no kind names, such as `> [!FOO]`, stays quote text. Enter inside the quote or the note adds a line and never sends, and the way out is Backspace on the empty line that leaves: the typed text stays, the empty lines go, and the caret lands in a plain paragraph below the block, so the wire keeps the marker line and the body, with the prose one blank line below.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "CHAT-097",
+    title: "Format a composer selection from the toolbar a secondary click opens",
+    behaviour:
+      "On a fine pointer, a secondary click on a non-empty selection in the rich composer opens HUI's formatting toolbar where the platform's own menu would be: a toolbar named **Format selection**, holding **Bold**, **Italic**, **Strikethrough**, **Inline code**, **Quote**, **Note**, **Bullet list**, **Code block**, **Text**, **Cut**, **Copy** and **Paste**. Each toggle reports what the selection already carries in its `aria-pressed`. **Bold** wraps the selected words in `**…**` at once — the draft draws them strong and the hidden field carries the markers in the same transaction — and one undo puts the draft back exactly as it was. Escape closes the strip and gives the editor its focus back, and the browser's own paste chord still inserts what the clipboard holds afterwards. The keyboard's Shift+F10 opens the same strip with focus on its first enabled button, and the arrow keys move between the enabled ones. A secondary click on an empty selection opens no strip, so the platform's menu, where a paste into a caret lives, is still there.",
+    spec: ["SPEC.md#behaviour", "SPEC.md#a-secondary-click-is-the-webs-way-into-a-composer-selections-formatting-2026-11-25"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: { excluded: "A secondary click is the web's: a phone's long press keeps the platform's own menu, which is where its Cut, Copy and Paste live, so the strip is never drawn there and this gesture cannot be made on a touch screen.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-composer-selections-formatting-2026-11-25" },
   },
 ];
 
