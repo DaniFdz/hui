@@ -1886,11 +1886,11 @@ IMPORTANT, WARNING and CAUTION naming the other four kinds in any case. A note b
 draws the transcript's own callout — the tinted box, its label title and its body —
 and its wire is the canonical `> [!NOTE]` marker line with the body below it, `> ` on
 every line; a `> ` of its own stays a plain quote, and a marker no kind names, such as
-`> [!FOO]`, stays quote text, while `2 * 3 * 4`, `a * b`, `read_text_file`, a
-lone `*` and an unmatched `**` stay exactly as typed. The
-form submits the draft's canonical Markdown through a hidden field — the exact
-source an unedited draft was loaded with, the serializer's own spelling after a
-rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break) —
+`> [!FOO]`, stays quote text whose line the wire carries as those same bytes, while
+`2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*` and an unmatched `**` stay exactly
+as typed. The form submits the draft's canonical Markdown through a hidden field —
+the exact source an unedited draft was loaded with, the serializer's own spelling after
+a rich edit (`- ` bullets, `**strong**`, `*emphasis*`, one newline per line break) —
 and the transcript renders that same Markdown. Prompts HUI writes for routines and
 triggers stay plain text.
 
@@ -1947,13 +1947,14 @@ selection already holds, a button the schema cannot apply there is disabled, and
 arrow keys with Home and End move between the enabled ones. One action is one undo
 step and the hidden field follows at once; the strip stays open over the result and
 closes on Escape, which gives the editor its focus back, on a press outside it, on a
-scroll, or when the selection it was opened on changes. A tooltip the keyboard focus
-grows on a button takes Escape first, as a tooltip does anywhere, so a keyboard's way
-out of the strip is pressed twice. Cut and Copy are the browser's own, so the
-clipboard keeps what it wrote, and Paste inserts the text the strip read when it
-opened. An empty selection never opens it, because the platform's menu is what pastes
-into a caret, and a phone keeps its own long press with its own Cut, Copy and Paste:
-the strip is never drawn there and that menu is untouched.
+scroll, or when the selection it was opened on changes. One Escape is enough however
+the strip was opened: while it is open the composer answers that key on the
+document's capture phase, ahead of the tooltip a button the keyboard focus grew shows,
+so one press closes the strip and puts the caret back in the editor. Cut and Copy are
+the browser's own, so the clipboard keeps what it wrote, and Paste inserts the text
+the strip read when it opened. An empty selection never opens it, because the
+platform's menu is what pastes into a caret, and a phone keeps its own long press with
+its own Cut, Copy and Paste: the strip is never drawn there and that menu is untouched.
 
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
 New Session offers the skills of the session it will start, never those of the

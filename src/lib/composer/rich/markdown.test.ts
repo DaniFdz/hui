@@ -4,7 +4,7 @@
  * the serializer must reproduce byte for byte (`2 * 3 * 4`, `read_text_file`, an unmatched `**`).
  */
 import assert from "node:assert/strict";
-import type { Node } from "prosemirror-model";
+import { Fragment, type Node } from "prosemirror-model";
 import { test } from "vitest";
 import {
   canonicalize,
@@ -22,7 +22,17 @@ import { richSchema, schemaNode } from "./schema.ts";
 /** A document of `content`, with the helpers a test needs to build one. */
 const docOf = (...content: Node[]) => schemaNode(richSchema, "doc").create(null, content);
 const paragraph = (...content: Node[]) => schemaNode(richSchema, "paragraph").create(null, content);
+const blockquote = (...content: Node[]) => schemaNode(richSchema, "blockquote").create(null, content);
 const hardBreak = () => schemaNode(richSchema, "hard_break").create();
+
+/**
+ * A paragraph of the given runs, each its own text node: `Fragment.fromArray` joins adjacent text nodes with the same
+ * marks, so a document split mid-run — which the fragment itself allows — is built through the fragment.
+ */
+function splitParagraph(...runs: Node[]): Node {
+  const content = new (Fragment as unknown as new (content: readonly Node[], size?: number) => Fragment)(runs);
+  return schemaNode(richSchema, "paragraph").create(null, content);
+}
 
 type Case = {
   source: string;
@@ -105,6 +115,25 @@ for (const entry of CASES) {
     assert.equal(canonicalize(entry.canonical), entry.canonical, `${label} canonicalizes twice to one text`);
   });
 }
+
+test("a quote's unknown marker is written byte for byte, however the text and the caret's line are split", () => {
+  // `[!FOO]` names no kind, so the marker is the quote's own text: the wire carries those bytes, never an escaped pair of
+  // brackets, and it reads back as that quote rather than as a note.
+  const quote = parseMarkdown("> [!FOO]");
+  assert.equal(quote.firstChild?.type.name, "blockquote", "a marker no kind names stays quote text");
+  assert.equal(serializeMarkdown(quote), "> [!FOO]", "the marker line is written as it reads");
+  assert.equal(serializeMarkdown(parseMarkdown(serializeMarkdown(quote))), "> [!FOO]", "the wire is its own canonical spelling");
+
+  // The empty paragraph Enter leaves below the marker is the caret's, not a line of Markdown: it writes nothing, so the
+  // escaper cannot read the marker as a document that differs from the one it was given and escape brackets it need not.
+  const caret = docOf(blockquote(paragraph(richSchema.text("[!FOO]")), paragraph()));
+  assert.equal(serializeMarkdown(caret), "> [!FOO]", "the caret's empty line below the marker writes no line");
+
+  // How the editor split the run into nodes is not part of the wire either: two adjacent text nodes spelling the marker
+  // write the same bytes as one.
+  const split = docOf(blockquote(splitParagraph(richSchema.text("["), richSchema.text("!FOO]"))));
+  assert.equal(serializeMarkdown(split), "> [!FOO]", "the same bytes from a run split into two text nodes");
+});
 
 /** The inline shape of a document: each text run and the marks it carries, in order. */
 function inlineShape(doc: Node): { text: string; marks: string[] }[] {

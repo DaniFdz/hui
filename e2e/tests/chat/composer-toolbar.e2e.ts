@@ -8,8 +8,9 @@
  * what that range carries.
  *
  * A strip button the keyboard focus grows also shows HUI's tooltip, and a tooltip takes Escape first wherever it is open
- * (`components/badge-hovercard.ts`), so the keyboard's way out of the strip is pressed twice: whichever press closes it,
- * the pair leaves it shut over the editor.
+ * (`components/badge-hovercard.ts`). The composer answers that key on the document's capture phase while the strip is
+ * open, so the keyboard's way out of the strip is one press: it closes the strip and leaves the caret in the editor
+ * whether the pointer or Shift+F10 opened it.
  */
 import { expect, type Locator, type Role } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -96,10 +97,8 @@ test("a secondary click on a selection formats it from the toolbar, and Escape g
   await expect(toolbar.getByRole("button", "Italic")).toBeFocused();
   await toolbar.press("ArrowLeft");
   await expect(bold).toBeFocused();
-  // Escape closes the strip and gives the editor its focus back. A button the keyboard focus grew shows HUI's tooltip,
-  // and a tooltip takes Escape first wherever it is open (CHAT-031), so the keyboard's way out is pressed twice: whichever
-  // of the two closes the strip, the pair leaves it shut with the caret back in the editor.
-  await toolbar.press("Escape");
+  // Escape closes the strip and gives the editor its focus back, in one press even though the focused button shows HUI's
+  // tooltip: the composer answers the key before that card does (CHAT-031), so the tooltip takes no press of its own.
   await toolbar.press("Escape");
   await expect(toolbar).toBeHidden();
   await expect(message).toBeFocused();

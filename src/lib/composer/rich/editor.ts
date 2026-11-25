@@ -33,7 +33,9 @@
  * (`toolbar.ts`) instead of the browser menu, on a fine pointer only: a phone keeps its own long-press menu, which is
  * where its cut, copy and paste live. The strip is the editor's, not the view's: it acts on the selection the editor
  * holds, an action of its own keeps it open over the result (`#toolbarAction`), and anything else that moves the caret,
- * scrolls, presses outside it or empties the selection closes it.
+ * scrolls, presses outside it or empties the selection closes it. Escape closes it too, and one press is enough while it
+ * is open: the editor answers the key on the document's capture phase (`#listenStripEscape`), ahead of the tooltip a
+ * button the keyboard focus grew and of the strip's own handler, and gives the editor its focus back.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { closeHistory, history } from "prosemirror-history";
@@ -242,6 +244,8 @@ class ComposerEditorImpl implements ComposerEditor {
   #toolbarSelection: EditorState["selection"] | undefined;
   /** Whether the transaction being dispatched is the toolbar's own, which re-anchors it instead of closing it. */
   #toolbarAction = false;
+  /** The document listener that answers Escape for the open strip: it lives exactly as long as the strip is open. */
+  #stripEscape: AbortController | undefined;
   /** Set while an action's own `scrollIntoView` is still settling: that scroll is the action's, not the operator's. */
   #ownScroll = false;
   #ownScrollFrame: number | null = null;
@@ -258,6 +262,7 @@ class ComposerEditorImpl implements ComposerEditor {
       focusEditor: () => this.focus(),
       closed: () => {
         this.#toolbarSelection = undefined;
+        this.#listenStripEscape(false);
       },
     });
     this.#plugins = [
@@ -343,6 +348,7 @@ class ComposerEditorImpl implements ComposerEditor {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#events.abort();
+    this.#listenStripEscape(false);
     this.#toolbar.destroy();
     this.#toolbarSelection = undefined;
     if (this.#ownScrollFrame !== null) cancelAnimationFrame(this.#ownScrollFrame);
@@ -534,6 +540,7 @@ class ComposerEditorImpl implements ComposerEditor {
     if (!rect) return false;
     this.#toolbarSelection = this.#view.state.selection;
     this.#toolbar.open(rect, this.#formatState(), { focus });
+    this.#listenStripEscape(true);
     return true;
   }
 
@@ -544,6 +551,7 @@ class ComposerEditorImpl implements ComposerEditor {
 
   #closeToolbar(): void {
     this.#toolbarSelection = undefined;
+    this.#listenStripEscape(false);
     this.#toolbar.close();
   }
 
@@ -582,13 +590,6 @@ class ComposerEditorImpl implements ComposerEditor {
     return true;
   }
 
-  /** Escape closes the strip while the caret stays in the editor; the strip's own Escape returns focus here. */
-  #escape(): boolean {
-    if (this.#toolbarSelection === undefined) return false;
-    this.#closeToolbar();
-    return true;
-  }
-
   /** What Enter means right now, from the operator's device, preference and the running turn. */
   #enterMode(shiftKey = false, ctrlKey = false, metaKey = false): PromptMode | "newline" | undefined {
     return composerEnterMode({
@@ -611,8 +612,8 @@ class ComposerEditorImpl implements ComposerEditor {
     this.#options.onBeforeKeyDown(event);
     if (event.defaultPrevented) return true;
     if (view.composing || event.isComposing) return false;
-    if (event.key === "Escape" && this.#escape()) return true;
-    // Every other key, the formatting chords included, is the keymap's: a literal draft's chords are consumed there.
+    // Escape is the open strip's own (`#listenStripEscape`), answered before this handler, so every key here is the
+    // keymap's: a literal draft's formatting chords are consumed there.
     if (event.key !== "Enter" || event.altKey) return false;
     // Shift+Enter is always one hard break, and Mod-Enter always sends, whatever the cursor sits in.
     if (event.shiftKey) return this.#edit(view, hardBreak);
@@ -713,6 +714,34 @@ class ComposerEditorImpl implements ComposerEditor {
       if (this.#toolbarSelection === undefined || this.#ownScroll) return;
       this.#closeToolbar();
     }, { capture: true, passive: true, signal });
+  }
+
+  /**
+   * The strip's Escape, registered while it is open and taken away the moment it closes. It answers on the document's
+   * capture phase, ahead of everything the strip drew: a button the keyboard focus grew shows HUI's tooltip
+   * (`components/badge-hovercard.ts`), and a tooltip takes Escape first wherever it is open, so a listener on the strip
+   * or in the editor would only ever see the second press. One press closes the strip and gives the editor its focus
+   * back, whether the pointer or the keyboard opened it.
+   */
+  #listenStripEscape(open: boolean): void {
+    if (!open) {
+      this.#stripEscape?.abort();
+      this.#stripEscape = undefined;
+      return;
+    }
+    if (this.#stripEscape) return;
+    const controller = new AbortController();
+    this.#stripEscape = controller;
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || this.#toolbarSelection === undefined) return;
+      // A key pressed somewhere else — a dialog opened over the composer — is that surface's Escape, not the strip's.
+      const target = event.target;
+      if (target instanceof Node && !this.#view.dom.contains(target) && !this.#toolbar.element().contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.#closeToolbar();
+      this.focus();
+    }, { capture: true, signal: controller.signal });
   }
 
   /** The surface's identity: the combobox attributes and the id it carries, and the lock the editor applies to it. */

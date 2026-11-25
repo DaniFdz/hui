@@ -4,8 +4,9 @@
  * Important, Warning or Caution with the body under its title — and the space that completes the marker opens it too. A
  * note writes canonical Markdown (`> [!NOTE]` and its body, `> ` on every line), so the draft it came from loads rich
  * again after a reload, and the note keeps the typed text when the operator leaves it. A plain quote is not a note and a
- * marker no kind names stays quote text. Enter never sends from a quote or a note: the seeded reply stays the transcript's
- * only one, so the send is always the Send button, which is also what a phone presses.
+ * marker no kind names stays quote text, written on the wire as those same bytes. Enter never sends from a quote or a
+ * note: the seeded reply stays the transcript's only one, so the send is always the Send button, which is also what a
+ * phone presses.
  */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -130,16 +131,16 @@ test("a plain quote and an unknown marker stay text, and each of the five kinds 
   await clear();
 
   // A marker no kind names stays quote text, and Enter there is the quote's own line, not a note. The wire is the
-  // quote's own line too, with the escaping a line that would read as syntax gets; which of the writer's two passes
-  // spells it is not what this case is about.
+  // marker's own bytes on that line, never an escaped pair of brackets, and the caret's empty line below it is no line of
+  // Markdown, so the same bytes come back after the Enter too.
   await message.pressSequentially("> ");
   await message.pressSequentially("[!FOO]");
   await expect(message).toHaveValue("[!FOO]");
   await expect(message.getByLabel("Note")).toHaveCount(0);
-  await expect(wire).toHaveValue(/^> \\?\[\\?!FOO\\?\]$/u);
+  await expect(wire).toHaveValue("> [!FOO]");
   await message.press("Enter");
   await expect(message.getByLabel("Note")).toHaveCount(0);
-  await expect(wire).toHaveValue(/^> \\?\[\\?!FOO\\?\]$/u);
+  await expect(wire).toHaveValue("> [!FOO]");
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   await clear();
 
