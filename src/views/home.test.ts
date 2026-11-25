@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test, vi } from "vitest";
 import type { PowerStatus } from "../api/schema/power.ts";
+import { stripPointer } from "../lib/composer/rich/editor.ts";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -494,6 +495,15 @@ test("the selection toolbar is a fixed popover inside the viewport, never a row 
   assert.match(editor, /this\.#toolbar\.destroy\(\);/u);
   assert.match(editor, /window\.matchMedia\?\.\("\(pointer: fine\)"\)\.matches === true/u);
   assert.match(editor, /contextmenu: \(_view, event\) => this\.#contextMenu\(event as MouseEvent\),/u);
+  // A touch laptop or a tablet with a trackpad matches a fine pointer as well, and a long press there is still the
+  // platform's own menu: the gate is the fine match and no touch at all, never the fine match alone.
+  assert.equal(stripPointer({ fine: true, coarse: true }), false, "a touch device draws no strip, whatever its pointer matches");
+  assert.equal(stripPointer({ fine: true, coarse: false }), true, "a mouse or a trackpad is what the strip is for");
+  assert.equal(stripPointer({ fine: false, coarse: true }), false, "a phone keeps its own long-press menu");
+  assert.match(editor, /stripPointer\(\{ fine: window\.matchMedia\?\.\("\(pointer: fine\)"\)\.matches === true, coarse: coarsePointer\(\) \}\)/u,
+    "the gate reads the coarse match it already had, so any touch keeps the platform's menu");
+  // An action of the strip's own re-places it over the result; only opening reads the clipboard.
+  assert.match(editor, /this\.#toolbar\.reanchor\(rect, this\.#formatState\(\)\);/u, "an action re-places the strip without reading the clipboard again");
   // No permanent row, no Aa button and no hint strip: nothing of the composer's own markup carries the strip.
   assert.doesNotMatch(home, /composer-toolbar/u);
   assert.doesNotMatch(home, /Format selection/u);

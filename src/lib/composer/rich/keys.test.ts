@@ -44,7 +44,7 @@ import {
   toggleStrong,
   toPlainParagraph,
 } from "./keys.ts";
-import { serializeMarkdown } from "./markdown.ts";
+import { serializeMarkdown, sourceMode } from "./markdown.ts";
 import { richSchema, schemaMark, schemaNode } from "./schema.ts";
 
 const docOf = (...content: Node[]) => schemaNode(richSchema, "doc").create(null, content);
@@ -683,6 +683,7 @@ test("Enter opens no note that is not a quote's whole first paragraph", () => {
     ["with text before the marker", stateAt(docOf(blockquote(paragraph(richSchema.text("a [!NOTE]")))))],
     ["with text after the marker", stateAt(docOf(blockquote(paragraph(richSchema.text("[!NOTE] more")))))],
     ["in a later paragraph", stateAt(later, endOfLastBlock(later))],
+    ["in a quote that holds a second block", stateAt(docOf(blockquote(paragraph(marker), paragraph(richSchema.text("second")))))],
     ["with a hard break after the marker", stateAt(docOf(blockquote(paragraph(marker, schemaNode(richSchema, "hard_break").create()))))],
     ["outside a quote", stateAt(docOf(paragraph(marker)))],
     ["inside a note instead of a quote", stateAt(docOf(note("note", paragraph(marker))))],
@@ -691,6 +692,24 @@ test("Enter opens no note that is not a quote's whole first paragraph", () => {
   for (const [label, state] of cases) {
     assert.equal(openNote(state, () => assert.fail(`${label} dispatched`)), false, label);
   }
+});
+
+test("Enter leaves a marker its own note could not read back as the quote's text", () => {
+  // The input rule converts a quote holding that one paragraph; a quote holding more would become a note whose marker
+  // line has blocks after it, and that wire reads back as a literal marker. Enter refuses where the conversion could not
+  // round-trip, so the quote keeps its marker as text and nothing is dispatched.
+  const doc = docOf(blockquote(paragraph(richSchema.text("[!NOTE]")), paragraph(richSchema.text("second"))));
+  const state = stateAt(doc);
+  assert.equal(openNote(state, () => assert.fail("a quote holding a second block dispatched")), false);
+  assert.equal(state.doc.firstChild?.type.name, "blockquote", "the quote is still a quote");
+  assert.deepEqual(inlineShape(state.doc), [{ text: "[!NOTE]", marks: [] }, { text: "second", marks: [] }], "and its markers are still its text");
+  assert.equal(sourceMode(serializeMarkdown(state.doc)), false, "the wire is written so it reads back as this quote");
+
+  // The quote holding nothing but the marker is what the input rule converts, so Enter still opens its note.
+  const opened = run(stateAt(docOf(blockquote(paragraph(richSchema.text("[!NOTE]"))))), openNote);
+  assert.equal(opened.ok, true);
+  assert.equal(opened.state.doc.firstChild?.type.name, "note");
+  assert.equal(serializeMarkdown(opened.state.doc), "> [!NOTE]");
 });
 
 test("one undo restores the marker Enter converted, and the note writes that marker back", () => {
@@ -965,6 +984,44 @@ test("what the strip's block actions write over a range is the Markdown of the b
   const fenced = run(twoParagraphs(), toggleCodeBlock);
   assert.equal(fenced.ok, true);
   assert.equal(serializeMarkdown(fenced.state.doc), "```\none\n```\n\n```\ntwo\n```", "Code block fences each selected block");
+});
+
+test("a block action keeps the operator's range over the blocks it changed", () => {
+  /** The text a selection covers, a line per block it spans. */
+  const selected = (state: EditorState) => state.doc.textBetween(state.selection.from, state.selection.to, "\n");
+
+  // A quote at the top of the document can only go by replacing it, and the range moves up with the `> ` it takes out.
+  const quote = docOf(blockquote(paragraph(richSchema.text("one")), paragraph(richSchema.text("two"))));
+  const base = EditorState.create({ doc: quote, plugins: [history()] });
+  const range = base.apply(base.tr.setSelection(TextSelection.create(base.doc, 2, 10)));
+  assert.equal(selected(range), "one\ntwo");
+  const flattened = run(range, toPlainParagraph);
+  assert.equal(flattened.ok, true);
+  assert.equal(serializeMarkdown(flattened.state.doc), "one\n\ntwo", "the wire is the text the range covered");
+  assert.equal(flattened.state.selection instanceof TextSelection, true, "the strip still has a range, never a caret");
+  assert.equal(flattened.state.selection.empty, false);
+  assert.equal(selected(flattened.state), "one\ntwo", "and it is the same text");
+
+  // A note goes the same way: the range is its body, never its marker or the title it draws.
+  const noted = docOf(note("tip", paragraph(richSchema.text("body"))));
+  const inside = EditorState.create({ doc: noted, plugins: [history()] });
+  const word = inside.apply(inside.tr.setSelection(TextSelection.create(inside.doc, 2, 6)));
+  const plain = run(word, toPlainParagraph);
+  assert.equal(plain.ok, true);
+  assert.equal(serializeMarkdown(plain.state.doc), "body");
+  assert.equal(plain.state.selection instanceof TextSelection, true);
+  assert.equal(selected(plain.state), "body", "the range is the note's own text");
+
+  // Quote over a selection inside a quote takes the quote away, and both paragraphs stay the range.
+  const unwrapped = run(range, toggleQuote);
+  assert.equal(unwrapped.ok, true);
+  assert.equal(unwrapped.state.doc.firstChild?.type.name, "paragraph", "the quote is gone");
+  assert.equal(unwrapped.state.selection instanceof TextSelection, true);
+  assert.equal(selected(unwrapped.state), "one\ntwo", "both paragraphs are still selected");
+  const undone = run(unwrapped.state, undo);
+  assert.equal(undone.ok, true);
+  assert.equal(undone.state.doc.eq(quote), true, "one undo restores the quote");
+  assert.equal(serializeMarkdown(undone.state.doc), "> one\n>\n> two", "and the wire it carried");
 });
 
 test("one undo takes a strip action back, and the typing before it stays", () => {

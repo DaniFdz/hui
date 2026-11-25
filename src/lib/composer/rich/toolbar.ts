@@ -18,8 +18,9 @@
  *
  * Clipboard: Cut and Copy run `document.execCommand` inside the click's own gesture, so the clipboard keeps the flavours
  * the browser wrote (Copy falls back to `navigator.clipboard.writeText` where the command is refused). Paste is read
- * through `navigator.clipboard.readText()` when the strip opens, and stays disabled while that read is refused. An empty
- * selection never opens the strip, so the platform's own menu — and its paste — is still there.
+ * through `navigator.clipboard.readText()` once per opening, and stays disabled while that read is refused: an action of
+ * the strip re-places it over its result (`reanchor`) without reading the clipboard again. An empty selection never opens
+ * the strip, so the platform's own menu — and its paste — is still there.
  */
 import { COMPOSER_ACTIONS, type ComposerAction, type ComposerActionId, type FormatState } from "./keys.ts";
 
@@ -177,6 +178,18 @@ export class ComposerToolbar {
     this.#place();
     this.#readPaste();
     if (options.focus) this.#buttons.find((item) => !item.button.disabled)?.button.focus();
+  }
+
+  /**
+   * Re-places the open strip over the selection one of its own actions left, with the state that result carries. The
+   * clipboard is read once per opening, so nothing here resets Paste: it keeps the text and the availability it has.
+   */
+  reanchor(anchor: ToolbarAnchor, state: FormatState): void {
+    if (this.#destroyed || this.#anchor === undefined) return;
+    this.#anchor = anchor;
+    this.update(state);
+    this.#show();
+    this.#place();
   }
 
   /** Closes the strip and forgets the selection it was opened on: a closed strip never re-anchors to a stale one. */

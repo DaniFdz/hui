@@ -44,16 +44,18 @@
  * The selection toolbar's actions are commands here too (`COMPOSER_ACTIONS`): the inline toggles add or remove one mark,
  * and the block ones move the selected blocks into a quote, a note, a bullet list or a fence and back out again — `Text`
  * takes every one of those away. Each block action is a `sequence` of the steps it may need, so it is one transaction and
- * one undo, and the strip's disabled state is a dry run of the same command. `blockKindOf` and `markActive` are the
- * pressed state it reads: over a range they ask whether the whole selection carries the block or the mark, and at a caret
- * they answer what the next typed character would be.
+ * one undo, and the strip's disabled state is a dry run of the same command. A block action keeps the operator's range:
+ * taking a container away moves both ends of the selection by the marker it removed, so the strip goes on acting on the
+ * same text rather than closing over a caret. `blockKindOf` and `markActive` are the pressed state it reads: over a range
+ * they ask whether the whole selection carries the block or the mark, and at a caret they answer what the next typed
+ * character would be.
  */
 import { chainCommands, lift, selectAll, setBlockType, splitBlock, toggleMark, wrapIn } from "prosemirror-commands";
 import { closeHistory, redo, undo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { NodeRange, type ResolvedPos } from "prosemirror-model";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from "prosemirror-state";
+import { Plugin, Selection, TextSelection, type Command, type EditorState, type Transaction } from "prosemirror-state";
 import { liftTarget, Mapping } from "prosemirror-transform";
 import type { AlertType } from "../../markdown/parser.ts";
 import { noteFromMarker } from "./rules.ts";
@@ -247,8 +249,8 @@ type OpeningNote = { start: number; end: number; kind: AlertType };
 /**
  * The note a paragraph of a quote opens on Enter, when it holds nothing else: the marker, any of the five kinds in any
  * case, with or without the trailing space. `undefined` for a paragraph that holds more than the marker, one that is not
- * a quote's first paragraph (a later one is the quote's body), and a marker whose quote cannot be a note where it sits:
- * the check the input rule makes before it converts.
+ * a quote's first paragraph (a later one is the quote's body), a quote holding any block but that paragraph, and a marker
+ * whose quote cannot be a note where it sits: the checks the input rule makes before it converts.
  */
 function openingNote(state: EditorState): OpeningNote | undefined {
   const { selection } = state;
@@ -264,9 +266,13 @@ function openingNote(state: EditorState): OpeningNote | undefined {
   if (!match) return undefined;
   const depth = $from.depth;
   if (depth < 2) return undefined;
-  if ($from.node(depth - 1).type !== schemaNode(state.schema, "blockquote")) return undefined;
+  const quote = $from.node(depth - 1);
+  if (quote.type !== schemaNode(state.schema, "blockquote")) return undefined;
   // Only the quote's first paragraph opens a note: a later one is the quote's body.
   if ($from.index(depth - 1) !== 0) return undefined;
+  // The input rule's own condition: a quote holding more than that paragraph would become a note whose marker line has
+  // blocks after it, which its own wire does not read back as this note.
+  if (quote.childCount !== 1) return undefined;
   const container = $from.node(depth - 2);
   const index = $from.index(depth - 2);
   if (!container.canReplaceWith(index, index + 1, schemaNode(state.schema, "note"))) return undefined;
@@ -632,7 +638,19 @@ function unwrapAt(state: EditorState, depth: number): Transaction {
     if (lifted.docChanged) return lifted.scrollIntoView();
   }
   const transaction = state.tr.replaceWith(from, to, $from.node(depth).content).scrollIntoView();
-  transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(from + 1, transaction.doc.content.size))));
+  // The container's markers are one position between its start and its content's, so the operator's range moves up by
+  // exactly that much and stays the range it was: the strip goes on acting on the same text, rather than closing over a
+  // caret a replacement would otherwise leave at the container's start.
+  const open = $from.start(depth) - from;
+  const { anchor, head } = state.selection;
+  const inside = (position: number) => from < position && position < to;
+  const keeps = state.selection instanceof TextSelection && inside(anchor) && inside(head);
+  const mapped = keeps
+    ? TextSelection.between(transaction.doc.resolve(anchor - open), transaction.doc.resolve(head - open))
+    : state.selection.map(transaction.doc, transaction.mapping);
+  transaction.setSelection(mapped instanceof TextSelection
+    ? mapped
+    : Selection.near(transaction.doc.resolve(Math.min(from + 1, transaction.doc.content.size))));
   return transaction;
 }
 

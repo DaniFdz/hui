@@ -30,12 +30,13 @@
  * just closed.
  *
  * A secondary click over a selection — or the keyboard's ContextMenu key, Shift+F10 — opens the selection toolbar
- * (`toolbar.ts`) instead of the browser menu, on a fine pointer only: a phone keeps its own long-press menu, which is
- * where its cut, copy and paste live. The strip is the editor's, not the view's: it acts on the selection the editor
- * holds, an action of its own keeps it open over the result (`#toolbarAction`), and anything else that moves the caret,
- * scrolls, presses outside it or empties the selection closes it. Escape closes it too, and one press is enough while it
- * is open: the editor answers the key on the document's capture phase (`#listenStripEscape`), ahead of the tooltip a
- * button the keyboard focus grew and of the strip's own handler, and gives the editor its focus back.
+ * (`toolbar.ts`) instead of the browser menu, on a fine pointer that reports no touch only: a phone, and a touch laptop
+ * whose long press is still the platform's menu, keep their own, which is where their cut, copy and paste live. The strip
+ * is the editor's, not the view's: it acts on the selection the editor holds, an action of its own keeps it open over the
+ * result (`#toolbarAction`) without reading the clipboard again, and anything else that moves the caret, scrolls, presses
+ * outside it or empties the selection closes it. Escape closes it too, and one press is enough while it is open: the
+ * editor answers the key on the document's capture phase (`#listenStripEscape`), ahead of the tooltip a button the
+ * keyboard focus grew and of the strip's own handler, and gives the editor its focus back.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { closeHistory, history } from "prosemirror-history";
@@ -79,14 +80,6 @@ export type ComposerControl = {
   editable(): boolean;
   /** Whether a key or focus event came from this composer. */
   isTarget(target: Node | null): boolean;
-  /** Runs one selection-toolbar action (`COMPOSER_ACTIONS`) as a single transaction. */
-  run?(action: ComposerActionId): void;
-  /** What the toolbar shows for the selection: each action's pressed and disabled state. */
-  formatState?(): FormatState;
-  /** The selection's box in viewport coordinates, or `undefined` when it is empty: where the toolbar is anchored. */
-  selectionRect?(): ToolbarAnchor | undefined;
-  /** Inserts plain text the way a plain-text paste does, so its lines become paragraphs and breaks. */
-  pasteText?(text: string): void;
 };
 
 /** Everything one render hands the editor. A changed `markdown` reloads the draft; anything else patches in place. */
@@ -159,10 +152,17 @@ function coarsePointer(): boolean {
   return window.matchMedia?.("(pointer: coarse)").matches === true || navigator.maxTouchPoints > 0;
 }
 
-/** A mouse or a trackpad: the pointer that gets a formatting toolbar instead of the platform's own menu. */
+/** A mouse or a trackpad, and no touch at all: the pointer that gets a formatting toolbar instead of the platform's own
+ * menu. A touch laptop or a tablet with a trackpad matches `(pointer: fine)` as well, and its long press is still the
+ * platform's menu, so a device that reports any touch keeps the menu it has. */
+export function stripPointer(pointer: { fine: boolean; coarse: boolean }): boolean {
+  return pointer.fine && !pointer.coarse;
+}
+
+/** Whether this device's secondary click opens the strip rather than the platform's menu (`stripPointer`). */
 function finePointer(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia?.("(pointer: fine)").matches === true;
+  return stripPointer({ fine: window.matchMedia?.("(pointer: fine)").matches === true, coarse: coarsePointer() });
 }
 
 /** An empty draft: one paragraph, which is what a cleared composer shows. */
@@ -220,10 +220,6 @@ class ComposerEditorImpl implements ComposerEditor {
     caretAtEnd: () => this.caretAtEnd(),
     editable: () => !this.#options.locked,
     isTarget: (target) => this.#isTarget(target),
-    run: (action) => this.#run(action),
-    formatState: () => this.#formatState(),
-    selectionRect: () => this.#selectionRect(),
-    pasteText: (text) => this.#pasteText(text),
   };
   readonly #host: HTMLElement;
   readonly #view: EditorView;
@@ -544,9 +540,15 @@ class ComposerEditorImpl implements ComposerEditor {
     return true;
   }
 
-  /** Re-places the open strip over the selection its own action left. */
+  /** Re-places the open strip over the selection its own action left, without reading the clipboard again. */
   #anchorToolbar(): void {
-    if (!this.#openToolbar(false)) this.#closeToolbar();
+    const rect = this.#selectionRect();
+    if (!rect) {
+      this.#closeToolbar();
+      return;
+    }
+    this.#toolbarSelection = this.#view.state.selection;
+    this.#toolbar.reanchor(rect, this.#formatState());
   }
 
   #closeToolbar(): void {

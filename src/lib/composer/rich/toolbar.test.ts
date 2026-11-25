@@ -1,7 +1,8 @@
 /**
  * The composer's selection toolbar: its role and accessible names, the pressed and disabled state of every button, the
- * roving focus its keys move, its placement inside a phone and a desktop viewport, and the promise that a closed strip
- * never re-anchors to the selection it forgot.
+ * roving focus its keys move, its placement inside a phone and a desktop viewport, the clipboard it reads once per
+ * opening and re-places itself over an action's result without reading again, and the promise that a closed strip never
+ * re-anchors to the selection it forgot.
  *
  * These tests run without a browser, so a small stand-in DOM — elements, their attributes, focus and their own listeners,
  * and nothing more — is what the toolbar is built into. The documents are real ProseMirror states, so what the buttons
@@ -158,17 +159,31 @@ type Mounted = {
   run: ReturnType<typeof vi.fn>;
   insertText: ReturnType<typeof vi.fn>;
   focusEditor: ReturnType<typeof vi.fn>;
+  /** The clipboard reads the strip asked for, and the writes it fell back to. */
+  readText: ReturnType<typeof vi.fn>;
+  writeText: ReturnType<typeof vi.fn>;
+  /** The platform's own selection, which the Copy fallback reads: what it stringifies to is the selected text. */
+  selection: { text: string };
   buttons: () => FakeElement[];
 };
 
 /** Mounts one toolbar into a stand-in DOM of a given viewport size. */
-function mount(options: { width?: number; height?: number; clipboard?: Promise<string> } = {}): Mounted {
+function mount(options: { width?: number; height?: number; clipboard?: Promise<string>; selection?: string } = {}): Mounted {
   const document = new FakeDocument();
   const viewport = new FakeViewport(options.width ?? 1440, options.height ?? 900);
   const frames: FrameRequestCallback[] = [];
+  const selection = { text: options.selection ?? "" };
+  const readText = vi.fn(() => options.clipboard ?? Promise.resolve("pasted text"));
+  const writeText = vi.fn(() => Promise.resolve());
   vi.stubGlobal("document", document);
-  vi.stubGlobal("window", { innerWidth: viewport.width, innerHeight: viewport.height, visualViewport: viewport });
-  vi.stubGlobal("navigator", { clipboard: { readText: () => options.clipboard ?? Promise.resolve("pasted text"), writeText: () => Promise.resolve() } });
+  vi.stubGlobal("window", {
+    innerWidth: viewport.width,
+    innerHeight: viewport.height,
+    visualViewport: viewport,
+    // A range whose text is the selection, which is what the platform's Copy hands a fallback that cannot run it.
+    getSelection: () => ({ toString: () => selection.text }),
+  });
+  vi.stubGlobal("navigator", { clipboard: { readText, writeText } });
   vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
   vi.stubGlobal("cancelAnimationFrame", () => {});
   const run = vi.fn();
@@ -184,12 +199,16 @@ function mount(options: { width?: number; height?: number; clipboard?: Promise<s
     run,
     insertText,
     focusEditor,
+    readText,
+    writeText,
+    selection,
     buttons: () => (toolbar.element() as unknown as FakeElement).children.filter((child) => child.tagName === "BUTTON"),
   };
 }
 
 const paragraph = (...content: ProseMirrorNode[]) => schemaNode(richSchema, "paragraph").create(null, content);
 const docOf = (...content: ProseMirrorNode[]) => schemaNode(richSchema, "doc").create(null, content);
+const blockquote = (...content: ProseMirrorNode[]) => schemaNode(richSchema, "blockquote").create(null, content);
 const note = (...content: ProseMirrorNode[]) => schemaNode(richSchema, "note").create({ kind: "note" }, content);
 
 /** A state whose selection spans the whole of the document's first textblock, however deeply a block wraps it. */
@@ -390,8 +409,24 @@ test("a formatting button runs its action and keeps the strip open", async () =>
   assert.equal(toolbar.isOpen, true, "the editor decides whether the strip stays: a pointer press does not close it");
 });
 
+test("an action re-places the open strip without reading the clipboard again", async () => {
+  const { toolbar, element, buttons, readText } = mount({ clipboard: Promise.resolve("pasted") });
+  toolbar.open(ANCHOR, formatState(selected(docOf(paragraph(richSchema.text("plain text"))))));
+  await Promise.resolve();
+  const paste = () => buttons().find((button) => button.getAttribute("aria-label") === "Paste");
+  assert.equal(readText.mock.calls.length, 1, "the clipboard is read when the strip opens");
+  assert.equal(paste()?.disabled, false, "and Paste can insert what it read");
+
+  // The editor re-anchors the strip over the result one of its own actions left, through `reanchor`.
+  toolbar.reanchor({ left: 100, top: 200, right: 240, bottom: 220 }, formatState(selected(docOf(blockquote(paragraph(richSchema.text("plain text")))))));
+  assert.equal(readText.mock.calls.length, 1, "an action's re-anchor reads nothing");
+  assert.equal(paste()?.disabled, false, "Paste keeps the text and the availability it had");
+  assert.equal(toolbar.isOpen, true, "and the strip stays open over the result");
+  assert.equal(element.style["top"], "152px", "placed against the box the new selection asked for");
+});
+
 test("Cut and Copy keep the browser's own flavours, and Paste inserts what was read", async () => {
-  const mounted = mount({ clipboard: Promise.resolve("first line\nsecond line") });
+  const mounted = mount({ clipboard: Promise.resolve("first line\nsecond line"), selection: "plain text" });
   const state = selected(docOf(paragraph(richSchema.text("plain text"))));
   mounted.toolbar.open(ANCHOR, formatState(state));
   await Promise.resolve();
@@ -403,10 +438,19 @@ test("Cut and Copy keep the browser's own flavours, and Paste inserts what was r
 
   byName.get("Copy")?.dispatch("click");
   assert.deepEqual(mounted.document.clipboard, ["cut", "copy"]);
-  // A refused command falls back to the clipboard API's plain text.
+  assert.deepEqual(mounted.writeText.mock.calls, [], "a command the browser ran needs no fallback");
+
+  // A refused command falls back to the clipboard API, with the plain text of the selection itself.
   mounted.document.command = false;
   byName.get("Copy")?.dispatch("click");
   assert.deepEqual(mounted.document.clipboard, ["cut", "copy", "copy"], "the command was tried");
+  assert.deepEqual(mounted.writeText.mock.calls, [["plain text"]], "and the selection's own text reached the clipboard");
+
+  // Nothing selected is nothing to write: the fallback never puts an empty string on the clipboard.
+  mounted.selection.text = "";
+  byName.get("Copy")?.dispatch("click");
+  assert.deepEqual(mounted.document.clipboard, ["cut", "copy", "copy", "copy"], "the command was tried again");
+  assert.equal(mounted.writeText.mock.calls.length, 1, "an empty selection writes nothing");
 
   byName.get("Paste")?.dispatch("click");
   assert.deepEqual(mounted.insertText.mock.calls, [["first line\nsecond line"]], "the text read when the strip opened");

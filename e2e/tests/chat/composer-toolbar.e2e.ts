@@ -11,6 +11,10 @@
  * (`components/badge-hovercard.ts`). The composer answers that key on the document's capture phase while the strip is
  * open, so the keyboard's way out of the strip is one press: it closes the strip and leaves the caret in the editor
  * whether the pointer or Shift+F10 opened it.
+ *
+ * A block action keeps the strip open over the range it changed, which is a promise about the selection and not only
+ * about the document: the last section puts the paragraph into a quote and reads back a strip that is still open, a
+ * pressed Quote and a range Cut can still cut.
  */
 import { expect, type Locator, type Role } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -21,6 +25,9 @@ const TAIL = " here.";
 
 /** The words the selection holds once the tail is trimmed from the keyboard. */
 const CHOSEN = DRAFT.slice(0, -TAIL.length);
+
+/** The draft after the pasted words land at the end of that selection. */
+const PASTED = `${CHOSEN} and pasted${TAIL}`;
 
 /** Every button the strip draws, by the name the toolbar gives it. */
 const BUTTONS = ["Bold", "Italic", "Strikethrough", "Inline code", "Quote", "Note", "Bullet list", "Code block", "Text", "Cut", "Copy", "Paste"];
@@ -82,7 +89,7 @@ test("a secondary click on a selection formats it from the toolbar, and Escape g
   // the selection the strip closed over, and the clipboard's own text lands there.
   await message.press("ArrowRight");
   await hui.paste(" and pasted");
-  await expect(wire).toHaveValue(`${CHOSEN} and pasted${TAIL}`);
+  await expect(wire).toHaveValue(PASTED);
 
   // An empty selection is the platform's own: a secondary click over a caret opens no strip.
   await hui.contextMenu(message);
@@ -102,7 +109,7 @@ test("a secondary click on a selection formats it from the toolbar, and Escape g
   await toolbar.press("Escape");
   await expect(toolbar).toBeHidden();
   await expect(message).toBeFocused();
-  await expect(wire).toHaveValue(`${CHOSEN} and pasted${TAIL}`);
+  await expect(wire).toHaveValue(PASTED);
 
   // The strip is placed inside the viewport it is opened on, at a desktop's width and at a phone's.
   for (const size of ["wide", "phone"] as const) {
@@ -122,4 +129,24 @@ test("a secondary click on a selection formats it from the toolbar, and Escape g
     await transcript.tap();
     await expect(toolbar).toBeHidden();
   }
+
+  // A block action keeps the strip open over the range it changed: the paragraph the selection sits in went into a quote,
+  // Quote is what the selection now carries, and taking that quote away again leaves the same range selected — Cut has
+  // something to cut, which the caret a lost selection would leave does not. (A mark action like Bold is only half of it:
+  // wrapping a block maps the selection for free, and taking a container away is what has to keep it.)
+  await hui.wideScreen();
+  await select();
+  await message.press("Shift+F10");
+  await expect(toolbar).toBeVisible();
+  await toolbar.getByRole("button", "Quote").tap();
+  await expect(wire).toHaveValue(`> ${PASTED}`);
+  await expect(toolbar.getByRole("button", "Quote")).toHaveAttribute("aria-pressed", "true");
+  await toolbar.getByRole("button", "Text").tap();
+  await expect(wire).toHaveValue(PASTED);
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.getByRole("button", "Cut")).toBeEnabled();
+
+  // One undo puts the quote back the way Text took it away, and the draft is the block it was.
+  await message.press("ControlOrMeta+z");
+  await expect(wire).toHaveValue(`> ${PASTED}`);
 });

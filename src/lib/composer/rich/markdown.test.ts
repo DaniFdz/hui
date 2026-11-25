@@ -85,6 +85,8 @@ const CASES: readonly Case[] = [
   // note holding one empty paragraph.
   { source: "> [!NOTE]", canonical: "> [!NOTE]" },
   { source: "> [!note]\n> hi", canonical: "> [!NOTE]\n> hi" },
+  // The two spaces of a Markdown hard break end the marker line, not the note's body.
+  { source: "> [!NOTE]  \n> body", canonical: "> [!NOTE]\n> body" },
   { source: "> [!NOTE]\n> one\n>\n> two", canonical: "> [!NOTE]\n> one\n>\n> two" },
   { source: "> [!NOTE]\n> - a\n> - b", canonical: "> [!NOTE]\n> - a\n> - b" },
   { source: "> [!NOTE]\n> ```\n> x\n> ```", canonical: "> [!NOTE]\n> ```\n> x\n> ```" },

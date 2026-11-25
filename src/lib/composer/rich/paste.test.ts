@@ -343,6 +343,29 @@ test("a callout's body keeps every block, and one without a body keeps what the 
   }, "a callout with no markdown-alert__body keeps whatever the aside holds");
 });
 
+/** A `toDOM` spec as the markup it draws, so the element a note renders into the editable root can be asserted. */
+function drawn(spec: unknown): string {
+  if (typeof spec === "string") return spec;
+  // A hole (`0`) is where the node's content goes, which this markup has no document for.
+  if (typeof spec === "number") return "";
+  const [tag, second, ...rest] = spec as [string, unknown, ...unknown[]];
+  const attrs = second !== null && typeof second === "object" && !Array.isArray(second) ? second as Record<string, string> : undefined;
+  const children = (attrs ? rest : [second, ...rest]).filter((child) => child !== undefined && child !== null);
+  const attributes = Object.entries(attrs ?? {}).map(([name, value]) => ` ${name}="${value}"`).join("");
+  return `<${tag}${attributes}>${children.map(drawn).join("")}</${tag}>`;
+}
+
+test("a note draws its title outside the document's own content", () => {
+  const toDOM = schemaNode(richSchema, "note").spec.toDOM as (node: Node) => unknown;
+  assert.equal(
+    drawn(toDOM(schemaNode(richSchema, "note").create({ kind: "warning" }))),
+    '<aside class="markdown-alert markdown-alert--warning" aria-label="Warning">'
+      + '<div class="markdown-alert__title" contenteditable="false">Warning</div>'
+      + '<div class="markdown-alert__body"></div></aside>',
+    "the title is drawn contenteditable=false: a selection across the note copies the body alone, and Cut never takes away text the document does not hold",
+  );
+});
+
 test("the test DOM answers the schema's selector shapes and refuses any other", () => {
   const document = new TestDocument("");
   const alert = TestNode.element(document, "div", { class: "markdown-alert markdown-alert--tip" });

@@ -9,6 +9,8 @@
  * the title is presentation from the transcript's own label map (`../markdown/parser.ts`), never document content. The
  * element it draws is the one the transcript renders (`aside.markdown-alert`), so the composer shows the same callout —
  * and a pasted one reads back that way: only the callout's body arrives as content, so the title it draws is drawn once.
+ * That title is no part of the document either, and it is drawn `contenteditable="false"`: a selection across the note
+ * copies the body alone, and Cut never takes away text the document does not hold.
  *
  * Images, horizontal rules, tables, task lists and math have no node here on purpose. They are not unrenderable by the
  * transcript, but the composer cannot edit them as rich content, so `sourceMode` loads a draft holding one as literal
@@ -84,10 +86,12 @@ const note: NodeSpec = {
   toDOM: (node): DOMOutputSpec => {
     const kind = String(node.attrs.kind) as AlertType;
     const label = ALERT_LABELS[kind] ?? ALERT_LABELS.note;
+    // The title is drawn `contenteditable="false"`: it sits inside the editable root but is not document content, so a
+    // selection across the note copies its body alone and Cut never takes away text the document does not hold.
     return [
       "aside",
       { class: `markdown-alert markdown-alert--${kind}`, "aria-label": label },
-      ["div", { class: "markdown-alert__title" }, label],
+      ["div", { class: "markdown-alert__title", contenteditable: "false" }, label],
       ["div", { class: "markdown-alert__body" }, 0],
     ];
   },

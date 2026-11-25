@@ -63,7 +63,8 @@ const tokenizer = new MarkdownIt({ html: false, linkify: false, breaks: true });
 tokenizer.use(markdownItCjkFriendly);
 // The transcript's own alert rule, so a draft holding `> [!NOTE]` is the callout the chat draws, and the kind is read
 // exactly as the transcript reads it. It has to run before the hard-break rule below: it drops the `softbreak` that ends
-// the marker line, and a `hardbreak` there would leave the note's body starting on a break.
+// the marker line, and this tokenizer keeps the `hardbreak` a marker line ending in two spaces carries for the composer's
+// own alert rule below to drop with it.
 installAlerts(tokenizer);
 /** A typed newline is a line break: `softbreak` would otherwise become a space in the document. */
 tokenizer.core.ruler.after("hui_markdown_alerts", "hui_composer_hard_breaks", (state: StateCore) => {
@@ -74,7 +75,9 @@ tokenizer.core.ruler.after("hui_markdown_alerts", "hui_composer_hard_breaks", (s
 /**
  * The composer's own alert tokens: `hui_alert_open`/`hui_alert_close` carry the kind in `meta.huiAlert`, and the marker
  * paragraph goes with them. `> [!NOTE]` alone is the callout, not an empty first paragraph, so a marker line that has
- * blocks after it is dropped here: the note's body is what the marker opened.
+ * blocks after it is dropped here: the note's body is what the marker opened. The marker line's own ending is not part of
+ * that body either — the two spaces of a Markdown hard break (`> [!NOTE]  `) leave a `hardbreak` behind the marker, and a
+ * body that began on a break would be a note its own marker does not read back.
  */
 tokenizer.core.ruler.after("hui_composer_hard_breaks", "hui_composer_alert_tokens", (state: StateCore) => {
   const tokens = state.tokens;
@@ -87,7 +90,10 @@ tokenizer.core.ruler.after("hui_composer_hard_breaks", "hui_composer_alert_token
     if (tokens[index]?.type !== "hui_alert_open") continue;
     const [open, inline, close] = [tokens[index + 1], tokens[index + 2], tokens[index + 3]];
     if (open?.type !== "paragraph_open" || inline?.type !== "inline" || close?.type !== "paragraph_close") continue;
-    if ((inline.children ?? []).length > 0 || tokens[index + 4]?.type === "hui_alert_close") continue;
+    const children = inline.children ?? [];
+    // The marker line's ending goes with the marker: a body that keeps it would begin on a blank line of its own.
+    while (children[0]?.type === "softbreak" || children[0]?.type === "hardbreak") children.shift();
+    if (children.length > 0 || tokens[index + 4]?.type === "hui_alert_close") continue;
     tokens.splice(index + 1, 3);
   }
 });
