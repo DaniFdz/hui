@@ -6,11 +6,16 @@
  * clipboard items. It never owns the document's content: a formatting button runs a command through the editor
  * (`COMPOSER_ACTIONS`, in `keys.ts`), and pasted text goes back through the editor's own plain-text paste mapping.
  *
- * The strip is a manual popover appended to `document.body`, so it draws in the top layer: the composer's own
- * `overflow`, its fade mask and the container query around it cannot clip it, and it never takes room in the composer.
- * It is `position: fixed`, sits above the selection with an 8px gap, flips below it when there is no room above, and is
- * clamped 8px inside the visual viewport — a phone with its keyboard up moves that viewport, and the strip follows it
- * until the selection it was opened on leaves it.
+ * The strip is a manual popover appended to `document.body` while it is open, so it draws in the top layer: the
+ * composer's own `overflow`, its fade mask and the container query around it cannot clip it, and it never takes room in
+ * the composer. It is `position: fixed`, sits above the selection with an 8px gap, flips below it when there is no room
+ * above, and is clamped 8px inside the visual viewport — a phone with its keyboard up moves that viewport, and the strip
+ * follows it until the selection it was opened on leaves it.
+ *
+ * A closed strip is not in the document at all. Its twelve buttons are the only "Paste", "Copy" and "Bold" in a page
+ * while it is closed, so a query for one of those names — a test's `getByLabel`, a screen reader's own tree — finds the
+ * page's control and nothing else: `hidden` alone still answers an accessible-name query, so it stays as the fallback
+ * for a browser without the popover API rather than as the way the strip leaves the page.
  *
  * Keyboard: one button is on the tab order at a time (roving `tabindex`), arrows step between the enabled buttons and
  * Home/End go to the ends, and Escape closes the strip and gives the editor its focus back. A disabled button is a real
@@ -157,7 +162,7 @@ export class ComposerToolbar {
       this.#buttons.push({ action, button });
       this.#root.append(button);
     }
-    document.body.append(this.#root);
+    // Mounted by `#show`, never here: a composer that was never opened leaves no button of the strip in the document.
     const signal = this.#viewport.signal;
     window.visualViewport?.addEventListener("resize", () => this.#reanchor(), { signal });
     window.visualViewport?.addEventListener("scroll", () => this.#reanchor(), { signal });
@@ -205,6 +210,8 @@ export class ComposerToolbar {
     } catch {
       // A browser without the popover API, or one that already closed it: there is nothing left to hide.
     }
+    // Out of the document, not only hidden: a hidden element still carries its accessible names.
+    this.#root.remove();
     this.#options.closed();
   }
 
@@ -242,6 +249,9 @@ export class ComposerToolbar {
   }
 
   #show(): void {
+    // A popover enters the top layer only while it is connected, so the strip is put back on the body before it shows.
+    // A strip that is already there — an open one, re-anchored — is left exactly where it is.
+    if (!this.#root.isConnected) document.body.append(this.#root);
     this.#root.removeAttribute("hidden");
     try {
       this.#root.showPopover();

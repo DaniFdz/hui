@@ -43,6 +43,11 @@ class FakeElement {
     this.#document = owner;
   }
 
+  /** Whether the element reaches the document's body, as `document.body.append` and `remove` leave it. */
+  get isConnected(): boolean {
+    return this.#document.body.contains(this);
+  }
+
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
     if (name === "tabindex") this.tabIndex = Number(value);
@@ -237,7 +242,6 @@ test("the strip is a labelled toolbar of real buttons, drawn in the top layer", 
   assert.equal(element.getAttribute("role"), "toolbar", "the strip is the toolbar role");
   assert.equal(element.getAttribute("aria-label"), "Format selection", "and carries the name a screen reader reads");
   assert.equal(element.getAttribute("popover"), "manual", "it is a manual popover, so it draws in the top layer");
-  assert.ok(element.parent === document.body, "appended to the body, never into the composer");
   assert.deepEqual(buttons().map((button) => button.getAttribute("aria-label")), LABELS, "every action, named");
   for (const button of buttons()) {
     assert.equal(button.type, "button", "a real button, which never submits the composer's form");
@@ -249,9 +253,30 @@ test("the strip is a labelled toolbar of real buttons, drawn in the top layer", 
   assert.equal(element.getAttribute("hidden"), "", "and the element is hidden as well as closed");
   toolbar.open(ANCHOR, formatState(selected(docOf(paragraph(richSchema.text("plain"))))));
   assert.equal(element.getAttribute("hidden"), null, "opening shows it");
+  assert.ok(element.parent === document.body, "mounted on the body, never into the composer");
   assert.equal(element.shown, true, "as a popover in the top layer");
   toolbar.close();
   assert.equal(element.getAttribute("hidden"), "", "closing hides the element again");
+});
+
+test("a closed strip is out of the document, and only an open one is in it", () => {
+  const { toolbar, element, document } = mount();
+  const state = formatState(selected(docOf(paragraph(richSchema.text("plain")))));
+
+  assert.equal(element.parent, null, "a constructed strip is in no document: no button of it answers a name query");
+  assert.equal(element.isConnected, false);
+
+  toolbar.open(ANCHOR, state);
+  assert.ok(element.parent === document.body, "opening mounts it on the body, where a popover draws in the top layer");
+  assert.equal(element.isConnected, true);
+
+  toolbar.close();
+  assert.equal(element.parent, null, "closing takes it out again: a hidden strip still answers an accessible-name query");
+  assert.equal(element.isConnected, false);
+
+  toolbar.destroy();
+  assert.equal(element.parent, null, "and destroying the editor's strip leaves nothing of it behind");
+  assert.equal(element.isConnected, false);
 });
 
 test("pressed and disabled come from the selection's marks and from a dry run of each command", async () => {
@@ -365,7 +390,7 @@ test("the placement flips and clamps, and keeps its 8px padding at every edge", 
 });
 
 test("a closed strip forgets its selection and never re-anchors to it", async () => {
-  const { toolbar, element, viewport, document } = mount({ width: 1440, height: 900 });
+  const { toolbar, element, viewport } = mount({ width: 1440, height: 900 });
   const state = selected(docOf(paragraph(richSchema.text("plain text"))));
   toolbar.open(ANCHOR, formatState(state));
   await Promise.resolve();
@@ -380,7 +405,7 @@ test("a closed strip forgets its selection and never re-anchors to it", async ()
   viewport.dispatch("scroll");
   assert.deepEqual({ left: element.style["left"], top: element.style["top"] }, placed, "a closed strip keeps its last box and follows nothing");
   assert.equal(element.shown, false, "and stays closed");
-  assert.ok(element.parent === document.body, "it is still mounted: the editor closes it, only destroying removes it");
+  assert.equal(element.parent, null, "a closed strip is out of the document, so it answers no query of its own");
 
   // An open strip is clamped again on the same events, which is what a phone's on-screen keyboard needs.
   toolbar.open({ left: 1000, top: 600, right: 1200, bottom: 620 }, formatState(state));
@@ -410,7 +435,7 @@ test("a formatting button runs its action and keeps the strip open", async () =>
 });
 
 test("an action re-places the open strip without reading the clipboard again", async () => {
-  const { toolbar, element, buttons, readText } = mount({ clipboard: Promise.resolve("pasted") });
+  const { toolbar, element, buttons, document, readText } = mount({ clipboard: Promise.resolve("pasted") });
   toolbar.open(ANCHOR, formatState(selected(docOf(paragraph(richSchema.text("plain text"))))));
   await Promise.resolve();
   const paste = () => buttons().find((button) => button.getAttribute("aria-label") === "Paste");
@@ -418,8 +443,11 @@ test("an action re-places the open strip without reading the clipboard again", a
   assert.equal(paste()?.disabled, false, "and Paste can insert what it read");
 
   // The editor re-anchors the strip over the result one of its own actions left, through `reanchor`.
+  const mounted = document.body.children.indexOf(element);
   toolbar.reanchor({ left: 100, top: 200, right: 240, bottom: 220 }, formatState(selected(docOf(blockquote(paragraph(richSchema.text("plain text")))))));
   assert.equal(readText.mock.calls.length, 1, "an action's re-anchor reads nothing");
+  assert.equal(document.body.children.indexOf(element), mounted, "a re-anchor leaves the mounted strip where it is");
+  assert.equal(element.isConnected, true, "never detaching and re-mounting it");
   assert.equal(paste()?.disabled, false, "Paste keeps the text and the availability it had");
   assert.equal(toolbar.isOpen, true, "and the strip stays open over the result");
   assert.equal(element.style["top"], "152px", "placed against the box the new selection asked for");
