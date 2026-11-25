@@ -10,6 +10,11 @@
  * blank line keeps an empty paragraph there, so the caret and the operator's next word sit below the quote they loaded,
  * not inside it.
  *
+ * The placeholder the sheet paints is the surface's `data-empty`, and that attribute is only ever set on the empty draft
+ * itself — one paragraph holding nothing, which is what a cleared composer shows. A note, a quote, a heading or a fence
+ * is a block the operator made, so an empty one keeps the placeholder off it (`emptyDraft`): the sheet draws
+ * `Send a message…` across whatever the surface holds, never over the title of a callout.
+ *
  * A draft the schema cannot hold (raw HTML, a table, math, an image, a link reference, a `session:` chip) is a
  * literal draft instead. It loads as its own text, one paragraph with every marker and pipe visible, and the hidden field
  * keeps its exact bytes until the operator edits it. A literal draft is never formatted as it is typed: typed, pasted and
@@ -168,6 +173,17 @@ function finePointer(): boolean {
 /** An empty draft: one paragraph, which is what a cleared composer shows. */
 function emptyDocument(): ProseMirrorNode {
   return schemaNode(richSchema, "doc").create(null, schemaNode(richSchema, "paragraph").create());
+}
+
+/**
+ * Whether the draft is the empty document itself: one paragraph holding nothing, which is the state the sheet's
+ * placeholder belongs to. Every other draft has a block the operator made — a note, a quote, a heading, a fence, a list,
+ * even an empty one — and the placeholder is laid over the surface, so it would be painted across that block's own
+ * words. A cleared composer is this paragraph, and so is a draft the operator typed into and emptied again.
+ */
+export function emptyDraft(doc: ProseMirrorNode): boolean {
+  const paragraph = doc.firstChild;
+  return doc.childCount === 1 && paragraph?.type === richSchema.nodes.paragraph && paragraph.content.size === 0;
 }
 
 /** Whether the wire ends on a blank line: the operator's own place to write, below a quote or a list. */
@@ -789,9 +805,9 @@ class ComposerEditorImpl implements ComposerEditor {
     return attributes;
   }
 
-  /** The placeholder shows while the rich document holds no text at all. */
+  /** The placeholder shows on the empty draft alone (`emptyDraft`), never over a block the operator made. */
   #syncEmpty(): void {
-    this.#view.dom.toggleAttribute("data-empty", this.#view.state.doc.textContent === "");
+    this.#view.dom.toggleAttribute("data-empty", emptyDraft(this.#view.state.doc));
   }
 
   /** A scrollable draft keeps the sheet's fade; measured after a frame, never from inside a transaction. */

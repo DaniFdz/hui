@@ -6,7 +6,8 @@
  * again after a reload, and the note keeps the typed text when the operator leaves it. A plain quote is not a note and a
  * marker no kind names stays quote text, written on the wire as those same bytes. Enter never sends from a quote or a
  * note: the seeded reply stays the transcript's only one, so the send is always the Send button, which is also what a
- * phone presses.
+ * phone presses. The composer's placeholder belongs to the empty draft: an open callout, whose body may be empty, keeps
+ * `data-empty` off the surface, and a cleared composer puts it back.
  */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -38,6 +39,8 @@ test("Enter on a note's marker draws the callout, and Backspace on its empty lin
   await expect(note).toHaveCount(1);
   await expect(note.getByText("Note", { exact: true })).toBeVisible();
   await expect(message).not.toContainText("[!NOTE]");
+  // The callout is a block of the operator's, empty or not: the placeholder is not painted across its title.
+  await expect(message).not.toHaveAttribute("data-empty");
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
 
   // The body is the note's, and its wire is the marker line and the body with `> ` on every line.
@@ -106,6 +109,8 @@ test("a plain quote and an unknown marker stay text, and each of the five kinds 
     await message.press("ControlOrMeta+a");
     await message.press("Delete");
     await expect(wire).toHaveValue("");
+    // The empty draft is the placeholder's own state, so a cleared composer shows it again.
+    await expect(message).toHaveAttribute("data-empty");
   };
 
   // A quote with no marker is a plain quote, and Enter inside it adds a line instead of sending.
