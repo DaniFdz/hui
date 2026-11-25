@@ -9,7 +9,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { panelOverview, roster } from "./bot-panel.ts";
+import { hideBotPanel, panelOverview, roster } from "./bot-panel.ts";
 
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 const question = { questions: [{ header: "Lane", question: "Which lane next?", options: [{ label: "Needs you", description: "Ask me." }, { label: "Working", description: "Keep going." }] }] };
@@ -86,6 +86,8 @@ test("a bot's panel queues the sessions it started and its roster row counts and
     await expect(returned.getByRole("button", "Show 1 more")).toBeVisible();
     await expect(returned.getByRole("button", "Show less")).toHaveCount(0);
 
+    // A phone draws the panel as a sheet over the chat, so it closes before the roster's drawer opens underneath it.
+    await hideBotPanel(screen);
     // The roster counts the two in flight on its row and never the seven that finished.
     await roster(screen, hui);
     const botRow = (name: string) => screen.getByTestId("bot-row").filter({ hasText: name });
