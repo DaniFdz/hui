@@ -158,7 +158,7 @@ const cases: UseCase[] = [
     id: "CHAT-013",
     title: "Attach images and files to a message",
     behaviour:
-      "Add attachment offers Take photo, Photo and File. Images show as thumbnails and files by name, each with Remove <name>; an image or a file alone can be sent. The sent turn shows the images as thumbnails that open in the media viewer and the files by their original names, each with Open <name>, which downloads it under that name. They survive a reload without exposing stored paths.",
+      "Add attachment offers Take photo, Photo and File. Images show as thumbnails and files by name, each with Remove <name>; an image alone can be sent, and with only a file attached Send message opens. The sent turn shows the images as thumbnails that open in the media viewer and the files by their original names, each with Open <name>, which downloads it under that name. They survive a reload without exposing stored paths.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#shapes"],
     surfaces: [
       "route:POST /__hui/sessions/:id/prompt",

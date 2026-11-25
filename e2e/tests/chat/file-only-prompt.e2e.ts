@@ -30,6 +30,9 @@ test("a file alone is a prompt", { tags: ["CHAT-098"], platforms: ["web"] }, asy
   await expect(card).toBeVisible();
   // The reply names the file too, so the operator's row is the one carrying the attachments list beside its words.
   const row = transcript.getByTestId("message-row").filter({ has: screen.getByRole("list", "Attachments") });
+  // The row has to exist before its state means anything: a missing row would report its text as hidden too.
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
   // An empty text block is not painted: the sent turn is the file's card, with no bubble of the operator's own.
   await expect(row.getByTestId("message-text")).toBeHidden();
   await expect(transcript.getByText(/File received: .*file-only-.*\.txt/u)).toBeVisible();
