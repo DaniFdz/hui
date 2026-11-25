@@ -10,13 +10,26 @@ import { EditorState, TextSelection, type Transaction } from "prosemirror-state"
 import type { EditorView } from "prosemirror-view";
 import { test } from "vitest";
 import { richInputRules } from "./rules.ts";
+import { serializeMarkdown } from "./markdown.ts";
 import { richSchema, schemaMark, schemaNode } from "./schema.ts";
 
 const plugin = richInputRules(richSchema);
 
 const docOf = (...content: Node[]) => schemaNode(richSchema, "doc").create(null, content);
 const paragraph = (...content: Node[]) => schemaNode(richSchema, "paragraph").create(null, content);
+const blockquote = (...content: Node[]) => schemaNode(richSchema, "blockquote").create(null, content);
 const emptyDoc = () => docOf(paragraph());
+
+/** The position at the end of the document's last textblock's content, however deeply a container wraps it. */
+function endOfLastBlock(doc: Node): number {
+  let end = -1;
+  doc.descendants((node, position) => {
+    if (node.isTextblock) end = position + 1 + node.content.size;
+    return true;
+  });
+  if (end < 0) throw new RangeError("The document holds no textblock.");
+  return end;
+}
 
 /** One text run and its marks, for asserting what the typing produced. */
 function inlineShape(doc: Node): { text: string; marks: string[] }[] {
@@ -98,6 +111,79 @@ test("every block rule converts its completed marker", () => {
     for (const [key, value] of Object.entries(attrs)) assert.equal(block?.attrs[key], value, `${name}.${key}`);
     assert.equal(editor.state.doc.textContent, "", `typing ${JSON.stringify(typed)} leaves no marker behind`);
   }
+});
+
+test("a note marker and the space after it turn the quote into that note", () => {
+  const cases: readonly [typed: string, kind: string][] = [
+    ["NOTE", "note"],
+    ["note", "note"],
+    ["TIP", "tip"],
+    ["Important", "important"],
+    ["WARNING", "warning"],
+    ["caution", "caution"],
+  ];
+  for (const [typed, kind] of cases) {
+    const editor = editorFor(emptyDoc());
+    editor.type(`> [!${typed}] `);
+    const block = editor.state.doc.firstChild;
+    assert.equal(block?.type.name, "note", `typing > [!${typed}] `);
+    assert.equal(block?.attrs["kind"], kind, `typing > [!${typed}] `);
+    assert.equal(editor.state.doc.textContent, "", `typing > [!${typed}] leaves no marker behind`);
+    assert.equal(editor.state.doc.childCount, 1, "the quote became the note, it did not join it");
+    assert.equal(block?.childCount, 1);
+    assert.equal(block?.firstChild?.type.name, "paragraph");
+    assert.equal(block?.firstChild?.content.size, 0, "the note is empty, its marker gone");
+    assert.equal(serializeMarkdown(editor.state.doc), `> [!${kind.toUpperCase()}]`, "the wire is the note's marker alone");
+  }
+});
+
+test("one undo brings the typed note marker back as the text it was", () => {
+  const editor = editorFor(emptyDoc());
+  editor.type("> [!note] ");
+  assert.equal(editor.state.doc.firstChild?.type.name, "note", "the marker converted");
+  editor.undo();
+  assert.equal(editor.state.doc.firstChild?.type.name, "blockquote", "one undo restores the quote it was typed in");
+  assert.deepEqual(inlineShape(editor.state.doc), [{ text: "[!note] ", marks: [] }], "with the marker as it was typed");
+  editor.undo();
+  assert.equal(editor.state.doc.firstChild?.type.name, "blockquote", "the typing is the undo after");
+  assert.equal(editor.state.doc.textContent, "", "the typed marker is gone");
+  editor.undo();
+  assert.equal(editor.state.doc.firstChild?.type.name, "paragraph", "and then the `> ` that made the quote");
+});
+
+test("a note marker stays text without a quote, or in a quote holding more", () => {
+  // No quote at all: prose keeps the marker as the text it is.
+  const prose = editorFor(emptyDoc());
+  prose.type("[!NOTE] ");
+  assert.equal(prose.state.doc.firstChild?.type.name, "paragraph");
+  assert.deepEqual(inlineShape(prose.state.doc), [{ text: "[!NOTE] ", marks: [] }]);
+
+  // A quote already holding another paragraph is not the note's: the marker is that paragraph's text.
+  const twoBlocks = docOf(blockquote(paragraph(richSchema.text("one")), paragraph()));
+  const later = editorFor(twoBlocks, endOfLastBlock(twoBlocks));
+  later.type("[!TIP] ");
+  assert.equal(later.state.doc.firstChild?.type.name, "blockquote", "the quote is untouched");
+  assert.equal(later.state.doc.firstChild?.childCount, 2);
+  assert.deepEqual(inlineShape(later.state.doc), [{ text: "one", marks: [] }, { text: "[!TIP] ", marks: [] }]);
+
+  // A marker without the space that completes it is text too, in prose and in a quote.
+  const openProse = editorFor(emptyDoc());
+  openProse.type("[!WARNING]");
+  assert.deepEqual(inlineShape(openProse.state.doc), [{ text: "[!WARNING]", marks: [] }], "the marker alone is text");
+  const openQuote = editorFor(emptyDoc());
+  openQuote.type("> [!WARNING]");
+  assert.equal(openQuote.state.doc.firstChild?.type.name, "blockquote", "`> ` made the quote and the marker is its text");
+  assert.deepEqual(inlineShape(openQuote.state.doc), [{ text: "[!WARNING]", marks: [] }]);
+});
+
+test("a plain `> ` stays a quote", () => {
+  const editor = editorFor(emptyDoc());
+  editor.type("> ");
+  assert.equal(editor.state.doc.firstChild?.type.name, "blockquote");
+  assert.equal(editor.state.doc.firstChild?.attrs["kind"], undefined, "a quote carries no note kind");
+  editor.type("quote");
+  assert.deepEqual(inlineShape(editor.state.doc), [{ text: "quote", marks: [] }]);
+  assert.equal(serializeMarkdown(editor.state.doc), "> quote");
 });
 
 test("a literal run stays exactly as typed", () => {

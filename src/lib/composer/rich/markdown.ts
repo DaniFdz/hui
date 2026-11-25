@@ -7,13 +7,17 @@
  * instead of losing it.
  *
  * The parser is markdown-it 15 with the transcript's CJK-friendly emphasis rules, `html: false`, `linkify: false` and
- * `breaks: true`, plus one core rule that turns every `softbreak` into a `hardbreak`: in a composer a plain newline is
- * a line break, not a space, so it must survive the round trip as a `hard_break`. Tokens the schema has no node for
- * are rejected by the ProseMirror token map (it throws) and by `hasUnsupportedMarkdown`, so nothing is dropped.
+ * `breaks: true`, plus the transcript's own alert rule: `> [!NOTE]` is the callout the chat draws, with its kind read one
+ * way in both places. Two core rules follow it. One turns every `softbreak` into a `hardbreak`: in a composer a plain
+ * newline is a line break, not a space, so it must survive the round trip as a `hard_break`. The other renames an alert
+ * blockquote's tokens to the schema's `note` one, and a marker line that has blocks after it is not one of those blocks.
+ * Tokens the schema has no node for are rejected by the ProseMirror token map (it throws) and by
+ * `hasUnsupportedMarkdown`, so nothing is dropped.
  *
  * The serializer writes `\n` for a hard break, `- ` for a bullet, `1. ` from the list's `order`, three spaces per
- * nesting level (the composer's `LIST_INDENT`), a fence one backtick longer than the longest run inside it, and
- * `[text](href)`. Its `esc` is a two-pass one: a line that already reads as its own literal text is written byte for
+ * nesting level (the composer's `LIST_INDENT`), a fence one backtick longer than the longest run inside it,
+ * `[text](href)`, and a note as its marker line (`> [!NOTE]`, uppercase kind) followed by its body, `> ` on every line.
+ * Its `esc` is a two-pass one: a line that already reads as its own literal text is written byte for
  * byte, so `2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*` and an unmatched `**` survive untouched, while a line
  * that would read as Markdown syntax gets every metacharacter and its block marker escaped (`*genuine markdown*`
  * becomes `\*genuine markdown\*`). `serializeMarkdown` re-parses its own output and falls back to escaping every
@@ -29,7 +33,7 @@ import MarkdownIt, { type Env, type StateCore, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
 import type { Mark, Node } from "prosemirror-model";
 import { MarkdownParser, MarkdownSerializer, type MarkdownSerializerState, type ParseSpec } from "prosemirror-markdown";
-import { markdownTokens } from "../../markdown/parser.ts";
+import { installAlerts, markdownTokens } from "../../markdown/parser.ts";
 import { richSchema, schemaNode } from "./schema.ts";
 
 /** What the dialect holds and how the canonical form writes it. `markdown.test.ts` holds the round trip to this. */
@@ -38,6 +42,7 @@ export const SUPPORTED_DIALECT = {
     paragraph: "a blank line between paragraphs",
     heading: "`#` … `######` followed by a space; setext headings canonicalize to `#`",
     blockquote: "`> ` on every line",
+    note: "`> [!NOTE]` and the body after it, `> ` on every line; the four other kinds replace `NOTE` (see `schema.ts`)",
     bullet_list: "`- ` for every item, three spaces per nesting level",
     ordered_list: "`1. ` counting from the list's `order`, three spaces per nesting level",
     code_block: "a backtick fence, one longer than any run inside it, with the language after it",
@@ -50,15 +55,39 @@ export const SUPPORTED_DIALECT = {
     code: "backticks, one longer than any run inside the span",
     link: "`[text](href)`, with `\"title\"` only when the link carries one",
   },
-  unsupported: "raw HTML, math, tables, alerts and details, images, horizontal rules, task lists, link reference definitions, and `session:`/file references the transcript draws as chips",
+  unsupported: "raw HTML, math, tables, details, images, horizontal rules, task lists, link reference definitions, and `session:`/file references the transcript draws as chips",
 } as const;
 
 const tokenizer = new MarkdownIt({ html: false, linkify: false, breaks: true });
 tokenizer.use(markdownItCjkFriendly);
+// The transcript's own alert rule, so a draft holding `> [!NOTE]` is the callout the chat draws, and the kind is read
+// exactly as the transcript reads it. It has to run before the hard-break rule below: it drops the `softbreak` that ends
+// the marker line, and a `hardbreak` there would leave the note's body starting on a break.
+installAlerts(tokenizer);
 /** A typed newline is a line break: `softbreak` would otherwise become a space in the document. */
-tokenizer.core.ruler.after("inline", "hui_composer_hard_breaks", (state: StateCore) => {
+tokenizer.core.ruler.after("hui_markdown_alerts", "hui_composer_hard_breaks", (state: StateCore) => {
   for (const token of state.tokens) {
     for (const child of token.children ?? []) if (child.type === "softbreak") child.type = "hardbreak";
+  }
+});
+/**
+ * The composer's own alert tokens: `hui_alert_open`/`hui_alert_close` carry the kind in `meta.huiAlert`, and the marker
+ * paragraph goes with them. `> [!NOTE]` alone is the callout, not an empty first paragraph, so a marker line that has
+ * blocks after it is dropped here: the note's body is what the marker opened.
+ */
+tokenizer.core.ruler.after("hui_composer_hard_breaks", "hui_composer_alert_tokens", (state: StateCore) => {
+  const tokens = state.tokens;
+  for (const token of tokens) {
+    if (token.meta?.huiAlert === undefined) continue;
+    if (token.type === "blockquote_open") token.type = "hui_alert_open";
+    else if (token.type === "blockquote_close") token.type = "hui_alert_close";
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index]?.type !== "hui_alert_open") continue;
+    const [open, inline, close] = [tokens[index + 1], tokens[index + 2], tokens[index + 3]];
+    if (open?.type !== "paragraph_open" || inline?.type !== "inline" || close?.type !== "paragraph_close") continue;
+    if ((inline.children ?? []).length > 0 || tokens[index + 4]?.type === "hui_alert_close") continue;
+    tokens.splice(index + 1, 3);
   }
 });
 
@@ -81,6 +110,8 @@ const DIALECT_TOKENS: ReadonlySet<string> = new Set([
 
 const parseTokens: Record<string, ParseSpec> = {
   blockquote: { block: "blockquote" },
+  // The composer's own alert tokens, which the tokenizer gives the note's block (§ `hui_composer_alert_tokens`).
+  hui_alert: { block: "note", getAttrs: (token: Token) => ({ kind: token.meta?.huiAlert }) },
   paragraph: { block: "paragraph" },
   list_item: { block: "list_item" },
   bullet_list: { block: "bullet_list" },
@@ -114,11 +145,12 @@ function hasReferenceDefinition(source: string): boolean {
 /** Whether a draft holds a construct the schema and therefore the rich editor cannot represent. */
 export function hasUnsupportedMarkdown(source: string): boolean {
   try {
-    // The transcript's own tokenizer, so the draft is judged by the dialect it will be rendered with: math, alerts,
-    // details, task lists, HTML, images, rules, tables and the `session:`/file chips all show up here as their tokens.
+    // The transcript's own tokenizer, so the draft is judged by the dialect it will be rendered with: a note's alert,
+    // math, details, task lists, HTML, images, rules, tables and the `session:`/file chips all show up here as their
+    // tokens.
     const tokens = markdownTokens(source, true);
     const unsupported = tokens.some(function outsideDialect(token: Token): boolean {
-      return !DIALECT_TOKENS.has(token.type) || token.meta?.huiAlert !== undefined
+      return !DIALECT_TOKENS.has(token.type)
         || (token.children ?? []).some(outsideDialect);
     });
     return unsupported || hasReferenceDefinition(source);
@@ -393,6 +425,20 @@ function serializerWith(escape: Escaper): MarkdownSerializer {
       state.closeBlock(node);
     },
     blockquote(state, node) {
+      state.wrapBlock("> ", null, node, () => state.renderContent(node));
+    },
+    note(state, node) {
+      const marker = `> [!${String(node.attrs.kind ?? "note").toUpperCase()}]`;
+      // The marker line is the note: a note holding nothing but an empty paragraph writes it and nothing after it, the way
+      // `> [!NOTE]` alone reads back as that note.
+      const only = node.childCount === 1 ? node.child(0) : null;
+      const lone = only?.type === richSchema.nodes.paragraph && only.content.size === 0;
+      if (lone) {
+        state.write(marker);
+        state.closeBlock(node);
+        return;
+      }
+      state.write(`${marker}\n`);
       state.wrapBlock("> ", null, node, () => state.renderContent(node));
     },
     bullet_list(state, node) {

@@ -5,24 +5,26 @@
  * Enter policy. Enter sends in prose, and the integration binds that send; the editor only edits where an edit is what
  * Enter means:
  * - in a paragraph holding nothing but ```` ``` ```` or ```` ```lang ```` it opens a fenced code block with that
- *   language, so a fence starts on Enter as well as on the space the input rule converts;
+ *   language, so a fence starts on Enter as well as on the space the input rule converts, and in a paragraph holding
+ *   nothing but a `[!NOTE]` marker (any of the five kinds) inside a quote's first paragraph it opens that note, so a
+ *   callout starts on Enter as well as on the space the marker's rule converts;
  * - in a non-empty list item it splits the item, so a list grows without leaving it;
  * - on an empty list item it lifts the item out and ends the list;
  * - in a code block it inserts a newline, because a fence's lines are content, and on a last line that is only
  *   ```` ``` ```` it drops that line and leaves the block, where a paragraph can follow it; elsewhere that line stays
  *   and Enter adds a line after it;
- * - in a heading, and anywhere inside a quote (`block`), it edits the block rather than sending: at the end of the
- *   block a plain paragraph starts below it, adding one where the container allows it and splitting inside the block
+ * - in a heading, and anywhere inside a quote or a note (`block`), it edits the block rather than sending: at the end of
+ *   the block a plain paragraph starts below it, adding one where the container allows it and splitting inside the block
  *   where it does not; in the middle the block splits where the caret is; and an empty block is left for prose;
  * - everywhere else it reports `false`, and the caller sends.
  * Shift+Enter always inserts a hard break. The Send button and Mod-Enter always send, whatever the cursor sits in.
  *
- * A quote and a heading are left from the keyboard too: ArrowDown at the end of a quote's or a heading's last line
- * (`exitBlockDown`) moves the caret to the paragraph after it, adding one when the block ends its container, and
- * Backspace at its start (`exitBlockBackward`) turns a heading, and a quote holding one paragraph, back into a plain
- * paragraph. A quote holding several blocks, a list item and a fence keep their own Backspace, and `false` lets
- * `baseKeymap` go on deleting characters. Each of these exits is one transaction, and the block change in it is closed
- * from the typed text's history event, so one undo restores the block and its wire.
+ * A quote, a note and a heading are left from the keyboard too: ArrowDown at the end of a quote's, a note's or a
+ * heading's last line (`exitBlockDown`) moves the caret to the paragraph after it, adding one when the block ends its
+ * container, and Backspace at its start (`exitBlockBackward`) turns a heading, and a quote or a note holding one
+ * paragraph, back into a plain paragraph. A quote or a note holding several blocks, a list item and a fence keep their
+ * own Backspace, and `false` lets `baseKeymap` go on deleting characters. Each of these exits is one transaction, and the
+ * block change in it is closed from the typed text's history event, so one undo restores the block and its wire.
  *
  * A fence is left from the keyboard too: ArrowDown at the end of a code block's content (`exitCodeBlockDown`) or Enter
  * on its closing fence line (`closeCodeFence`) moves the caret to the paragraph after it, adding one when the block ends
@@ -40,6 +42,8 @@ import { closeHistory, redo, undo } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { liftListItem, sinkListItem, splitListItem } from "prosemirror-schema-list";
 import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from "prosemirror-state";
+import type { AlertType } from "../../markdown/parser.ts";
+import { noteFromMarker } from "./rules.ts";
 import { schemaMark, schemaNode } from "./schema.ts";
 
 /** What Enter means where the cursor is (see the module header). */
@@ -68,10 +72,10 @@ function emptyListItem(state: EditorState): boolean {
 
 /**
  * The node names a caret can sit inside and leave as a block: the containers Enter, Backspace and ArrowDown turn into
- * prose. The note block joins this set in the change that adds it, so a container is always read by membership here and
+ * prose. A note joins this set, so it is left exactly as a quote is: a container is always read by membership here and
  * never by a second name of its own.
  */
-const CONTAINER_EXITS: ReadonlySet<string> = new Set(["blockquote"]);
+const CONTAINER_EXITS: ReadonlySet<string> = new Set(["blockquote", "note"]);
 
 /** The block Enter and the arrows act on around the caret. */
 type BlockAnchor = {
@@ -244,6 +248,57 @@ export const openCodeFence: Command = (state, dispatch) => {
     const { start, end, language } = fence;
     const tr = state.tr.delete(start, end).setBlockType(start, start, schemaNode(state.schema, "code_block"), { language });
     tr.setSelection(TextSelection.create(tr.doc, start)).scrollIntoView();
+    dispatch(closeHistory(tr));
+  }
+  return true;
+};
+
+/** The marker a paragraph of a quote holds whole: `[!NOTE]` … `[!CAUTION]`, any case, one optional trailing space. */
+const NOTE_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\] ?$/iu;
+
+/** A quote's first paragraph that holds nothing but a note marker: the range it spans and the kind the marker names. */
+type OpeningNote = { start: number; end: number; kind: AlertType };
+
+/**
+ * The note a paragraph of a quote opens on Enter, when it holds nothing else: the marker, any of the five kinds in any
+ * case, with or without the trailing space. `undefined` for a paragraph that holds more than the marker, one that is not
+ * a quote's first paragraph (a later one is the quote's body), and a marker whose quote cannot be a note where it sits:
+ * the check the input rule makes before it converts.
+ */
+function openingNote(state: EditorState): OpeningNote | undefined {
+  const { selection } = state;
+  if (!selection.empty) return undefined;
+  const { $from } = selection;
+  if ($from.parent.type !== schemaNode(state.schema, "paragraph")) return undefined;
+  if ($from.parentOffset !== $from.parent.content.size) return undefined;
+  // One text node, so a hard break after the marker is not read as part of the marker's paragraph.
+  if ($from.parent.childCount !== 1) return undefined;
+  const pendingCode = state.storedMarks?.some((mark) => mark.type.spec.code) ?? false;
+  if (pendingCode || $from.marks().some((mark) => mark.type.spec.code)) return undefined;
+  const match = NOTE_MARKER_RE.exec($from.parent.textContent);
+  if (!match) return undefined;
+  const depth = $from.depth;
+  if (depth < 2) return undefined;
+  if ($from.node(depth - 1).type !== schemaNode(state.schema, "blockquote")) return undefined;
+  // Only the quote's first paragraph opens a note: a later one is the quote's body.
+  if ($from.index(depth - 1) !== 0) return undefined;
+  const container = $from.node(depth - 2);
+  const index = $from.index(depth - 2);
+  if (!container.canReplaceWith(index, index + 1, schemaNode(state.schema, "note"))) return undefined;
+  return { start: $from.start(), end: $from.end(), kind: (match[1] ?? "note").toLowerCase() as AlertType };
+}
+
+/**
+ * Enter on a paragraph that is only a note marker turns its quote into the note of that kind, the marker gone: the same
+ * conversion the input rule makes on the space (`rules.ts`' `noteFromMarker`), one transaction, closed from the typed
+ * text's history event, so one undo restores the literal marker byte for byte.
+ */
+export const openNote: Command = (state, dispatch) => {
+  const note = openingNote(state);
+  if (!note) return false;
+  if (dispatch) {
+    const tr = noteFromMarker(state, note.start, note.end, note.kind);
+    if (!tr) return false;
     dispatch(closeHistory(tr));
   }
   return true;

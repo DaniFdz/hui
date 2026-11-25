@@ -71,7 +71,18 @@ const CASES: readonly Case[] = [
   { source: "$$x$$", canonical: "$$x$$", mode: "literal" },
   { source: "$x$", canonical: "$x$", mode: "literal" },
   { source: "- [ ] task", canonical: "- [ ] task", mode: "literal" },
-  { source: "> [!NOTE]\n> hi", canonical: "> [!NOTE]\n> hi", mode: "literal" },
+  // A GitHub alert is the composer's note block: its marker, its kind and its body round-trip, and the marker alone is a
+  // note holding one empty paragraph.
+  { source: "> [!NOTE]", canonical: "> [!NOTE]" },
+  { source: "> [!note]\n> hi", canonical: "> [!NOTE]\n> hi" },
+  { source: "> [!NOTE]\n> one\n>\n> two", canonical: "> [!NOTE]\n> one\n>\n> two" },
+  { source: "> [!NOTE]\n> - a\n> - b", canonical: "> [!NOTE]\n> - a\n> - b" },
+  { source: "> [!NOTE]\n> ```\n> x\n> ```", canonical: "> [!NOTE]\n> ```\n> x\n> ```" },
+  { source: "> > [!NOTE]\n> > body", canonical: "> > [!NOTE]\n> > body" },
+  { source: "> one\n> [!NOTE]", canonical: "> one\n> [!NOTE]" },
+  { source: "[!NOTE]", canonical: "[!NOTE]" },
+  { source: "> [!FOO]", canonical: "> [!FOO]" },
+  { source: "> quote", canonical: "> quote" },
   { source: "[a]: https://x", canonical: "[a]: https://x", mode: "literal" },
   { source: "session:195c3659", canonical: "session:195c3659", mode: "literal" },
   { source: "`src/lib/composer/rich/schema.ts`", canonical: "`src/lib/composer/rich/schema.ts`", mode: "literal" },
@@ -120,6 +131,34 @@ test("a parsed draft carries the structure the editor draws", () => {
   ]);
   assert.equal(doc.firstChild?.type.name, "paragraph");
   assert.equal(doc.lastChild?.attrs["language"], "ts");
+});
+
+test("a note holds the blocks its marker opens, and its marker is never content", () => {
+  const blocks = (doc: Node) => doc.firstChild?.content.content.map((child) => child.type.name) ?? [];
+  const list = parseMarkdown("> [!NOTE]\n> - a\n> - b");
+  assert.equal(list.firstChild?.type.name, "note");
+  assert.equal(list.firstChild?.attrs["kind"], "note");
+  assert.deepEqual(blocks(list), ["bullet_list"], "the marker line is the note, not an empty paragraph in it");
+  assert.equal(serializeMarkdown(list), "> [!NOTE]\n> - a\n> - b");
+
+  const fenced = parseMarkdown("> [!WARNING]\n> ```ts\n> x\n> ```");
+  assert.equal(fenced.firstChild?.type.name, "note");
+  assert.equal(fenced.firstChild?.attrs["kind"], "warning");
+  assert.deepEqual(blocks(fenced), ["code_block"]);
+  assert.equal(fenced.firstChild?.firstChild?.attrs["language"], "ts");
+  assert.equal(fenced.firstChild?.textContent, "x");
+
+  const lone = parseMarkdown("> [!Tip]");
+  assert.equal(lone.firstChild?.type.name, "note");
+  assert.equal(lone.firstChild?.attrs["kind"], "tip");
+  assert.deepEqual(blocks(lone), ["paragraph"], "a marker alone holds the note's one empty paragraph");
+  assert.equal(lone.firstChild?.textContent, "", "the marker and the title are not document content");
+  assert.equal(serializeMarkdown(lone), "> [!TIP]", "a note with no body writes its marker line alone");
+
+  const nested = parseMarkdown("> > [!CAUTION]\n> > body");
+  assert.equal(nested.firstChild?.type.name, "blockquote", "a note inside a quote is that quote's child");
+  assert.equal(nested.firstChild?.firstChild?.type.name, "note");
+  assert.equal(nested.firstChild?.firstChild?.attrs["kind"], "caution");
 });
 
 test("a literal text node that looks like Markdown is escaped instead of read back", () => {

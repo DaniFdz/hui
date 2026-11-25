@@ -10,7 +10,7 @@
  * blank line keeps an empty paragraph there, so the caret and the operator's next word sit below the quote they loaded,
  * not inside it.
  *
- * A draft the schema cannot hold (raw HTML, a table, math, an alert, an image, a link reference, a `session:` chip) is a
+ * A draft the schema cannot hold (raw HTML, a table, math, an image, a link reference, a `session:` chip) is a
  * literal draft instead. It loads as its own text, one paragraph with every marker and pipe visible, and the hidden field
  * keeps its exact bytes until the operator edits it. A literal draft is never formatted as it is typed: typed, pasted and
  * dropped text enter as plain text and line breaks, the input rules are off, and the formatting chords do nothing. So
@@ -21,12 +21,13 @@
  *
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
  * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
- * newline in a fence, the block change a quote or a heading takes) or the send `composerEnterMode` names, a paragraph
- * that is only a fence opens a code block before either, Shift+Enter always inserts one hard break, and Mod-Enter always
- * sends. A quote and a heading are never sent from, on a phone either: their Enter is the block command below, never the
- * line break prose gets there. Tab, Shift+Tab and the formatting chords are `keys.ts`'. The app re-reads its completion
- * queries from the caret, so a position it has already read is not reported again: the keyup of an Enter that took a
- * suggestion must not reopen the menu that choice just closed.
+ * newline in a fence, the block change a quote, a note or a heading takes) or the send `composerEnterMode` names, a
+ * paragraph that is only a fence opens a code block and one that is only a note marker opens that note before either,
+ * Shift+Enter always inserts one hard break, and Mod-Enter always sends. A quote, a note and a heading are never sent
+ * from, on a phone either: their Enter is the block command below, never the line break prose gets there. Tab, Shift+Tab
+ * and the formatting chords are `keys.ts`'. The app re-reads its completion queries from the caret, so a position it has
+ * already read is not reported again: the keyup of an Enter that took a suggestion must not reopen the menu that choice
+ * just closed.
  */
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { history } from "prosemirror-history";
@@ -36,7 +37,7 @@ import { EditorState, TextSelection, type Command, type Plugin, type Transaction
 import { EditorView } from "prosemirror-view";
 import type { PromptMode } from "../../../api/sessions.ts";
 import { composerEnterMode } from "../state.ts";
-import { codeBlockNewline, enterKey, enterPolicy, newline, openCodeFence, richKeymap } from "./keys.ts";
+import { codeBlockNewline, enterKey, enterPolicy, newline, openCodeFence, openNote, richKeymap } from "./keys.ts";
 import { literalDocument, literalInline, literalWire, parseMarkdown, serializeMarkdown, sourceMode } from "./markdown.ts";
 import { htmlSlice, plainTextSlice } from "./paste.ts";
 import { richInputRules } from "./rules.ts";
@@ -415,8 +416,10 @@ class ComposerEditorImpl implements ComposerEditor {
       this.#send(this.#enterMode(false, event.ctrlKey, event.metaKey));
       return true;
     }
-    // A fence opens the block Enter would otherwise send or break; a literal draft keeps its own markers.
+    // A fence opens the block Enter would otherwise send or break, and so does a note's marker; a literal draft keeps
+    // its own markers.
     if (!this.#literal && openCodeFence(view.state, view.dispatch, view)) return true;
+    if (!this.#literal && openNote(view.state, view.dispatch, view)) return true;
     const mode = this.#enterMode();
     // A coarse pointer, or the modifier-Enter preference, keeps plain Enter an edit.
     if (mode === undefined) return false;

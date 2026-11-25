@@ -190,11 +190,25 @@ test("renders inline and display math without treating ordinary currency as math
 });
 
 test("renders GitHub-style alert blockquotes and preserves ordinary quotes", () => {
+  // The markup the composer's note block draws is this one (`../composer/rich/schema.ts`'s `toDOM`), so a note draft and
+  // the transcript it becomes are the same callout: the kind's class, its label as the aria-label and the title.
+  assert.equal(
+    markdownToHtml("> [!NOTE]\n> hi"),
+    '<aside class="markdown-alert markdown-alert--note" aria-label="Note"><div class="markdown-alert__title">Note</div><div class="markdown-alert__body"><p>hi</p>\n</div></aside>\n',
+  );
   const html = markdownToHtml("> [!WARNING]\n> Check **the inputs**.\n\n> Ordinary quote");
   assert.match(html, /<aside class="markdown-alert markdown-alert--warning" aria-label="Warning">/u);
   assert.match(html, /<div class="markdown-alert__title">Warning<\/div>/u);
   assert.match(html, /Check <strong>the inputs<\/strong>\./u);
   assert.match(html, /<blockquote>\n<p>Ordinary quote<\/p>\n<\/blockquote>/u);
+  // Only the five kinds are an alert, and only a quote's first line names one: everything else is the quote it reads as.
+  assert.equal(markdownToHtml("> [!FOO]"), "<blockquote>\n<p>[!FOO]</p>\n</blockquote>\n");
+  assert.equal(markdownToHtml("> one\n> [!NOTE]"), "<blockquote>\n<p>one<br>\n[!NOTE]</p>\n</blockquote>\n");
+  // An alert inside a quote nests in it.
+  assert.equal(
+    markdownToHtml("> > [!NOTE]\n> > body"),
+    '<blockquote>\n<aside class="markdown-alert markdown-alert--note" aria-label="Note"><div class="markdown-alert__title">Note</div><div class="markdown-alert__body"><p>body</p>\n</div></aside>\n</blockquote>\n',
+  );
 });
 
 test("embeds only isolated bare X post URLs and keeps other link forms ordinary", () => {

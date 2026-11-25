@@ -1,10 +1,11 @@
 /**
- * The composer's keys: what Enter means in prose, a list item, a code block, a quote and a heading, that a paragraph
- * holding only a fence opens a code block with its language on Enter, that ArrowDown at a fence's, a quote's or a
- * heading's end and Enter on a closing fence line leave it where a paragraph can follow, that Backspace at a quote's or
- * a heading's start makes it prose, that Shift+Enter always hard-breaks, that Tab and Shift+Tab leave the editor alone
- * outside a list, that one undo takes every exit back, and that the formatting chords, undo, redo and select-all act on
- * the document. The Enter policy itself is documented in `keys.ts`.
+ * The composer's keys: what Enter means in prose, a list item, a code block, a quote, a note and a heading, that a
+ * paragraph holding only a fence opens a code block with its language on Enter and one holding only a note marker opens
+ * that note, that ArrowDown at a fence's, a quote's, a note's or a heading's end and Enter on a closing fence line leave it
+ * where a paragraph can follow, that Backspace at a quote's, a note's or a heading's start makes it prose, that Shift+Enter
+ * always hard-breaks, that Tab and Shift+Tab leave the editor alone outside a list, that one undo takes every exit back,
+ * and that the formatting chords, undo, redo and select-all act on the document. The Enter policy itself is documented
+ * in `keys.ts`.
  */
 import assert from "node:assert/strict";
 import { chainCommands } from "prosemirror-commands";
@@ -24,6 +25,7 @@ import {
   indentCodeBlock,
   newline,
   openCodeFence,
+  openNote,
   outdentCodeBlock,
   selectAll,
   shiftTabInList,
@@ -41,6 +43,7 @@ const codeBlock = (text: string) => schemaNode(richSchema, "code_block").create(
 const listItem = (...content: Node[]) => schemaNode(richSchema, "list_item").create(null, content);
 const bulletList = (...items: Node[]) => schemaNode(richSchema, "bullet_list").create(null, items);
 const blockquote = (...content: Node[]) => schemaNode(richSchema, "blockquote").create(null, content);
+const note = (kind: string, ...content: Node[]) => schemaNode(richSchema, "note").create({ kind }, content);
 const heading = (level: number, ...content: Node[]) => schemaNode(richSchema, "heading").create({ level }, content);
 
 /** A state with its cursor at `from`, or at the end of the document when no position is given. */
@@ -102,6 +105,17 @@ function endOfFirstBlock(doc: Node): number {
     if (!node.isTextblock) return true;
     end = position + 1 + node.content.size;
     return false;
+  });
+  if (end < 0) throw new RangeError("The document holds no textblock.");
+  return end;
+}
+
+/** The position at the end of the document's last textblock, however deeply a container wraps it. */
+function endOfLastBlock(doc: Node): number {
+  let end = -1;
+  doc.descendants((node, position) => {
+    if (node.isTextblock) end = position + 1 + node.content.size;
+    return true;
   });
   if (end < 0) throw new RangeError("The document holds no textblock.");
   return end;
@@ -495,11 +509,15 @@ test("ArrowDown at the end of a quote or a heading leaves it for the paragraph a
 test("one undo takes back each block an exit changed, and the wire with it", () => {
   const quoted = docOf(blockquote(paragraph(richSchema.text("quote"))));
   const headed = docOf(heading(1, richSchema.text("heading")));
+  const noted = docOf(note("note", paragraph(richSchema.text("noted"))));
   const cases: readonly [label: string, doc: Node, command: Command, caret?: number][] = [
     ["Enter at the end of a quote", quoted, enterKey],
     ["Enter at the end of a heading", headed, enterKey],
+    ["Enter at the end of a note", noted, enterKey],
     ["Backspace at the start of a quote", quoted, exitBlockBackward, startOfFirstBlock(quoted)],
+    ["Backspace at the start of a note", noted, exitBlockBackward, startOfFirstBlock(noted)],
     ["ArrowDown at the end of a heading", headed, exitBlockDown],
+    ["ArrowDown at the end of a note", noted, exitBlockDown],
   ];
   for (const [label, doc, command, caret] of cases) {
     const base = EditorState.create({ doc, selection: TextSelection.atEnd(doc), plugins: [history()] });
@@ -518,6 +536,131 @@ test("one undo takes back each block an exit changed, and the wire with it", () 
     assert.equal(twice.ok, true, label);
     assert.equal(twice.state.doc.eq(base.doc), true, `${label}: the typing before it is the undo after`);
   }
+});
+
+test("Enter on a note's marker opens that note", () => {
+  const cases: readonly [marker: string, kind: string][] = [
+    ["[!NOTE]", "note"],
+    ["[!note]", "note"],
+    ["[!Tip]", "tip"],
+    ["[!IMPORTANT]", "important"],
+    ["[!warning]", "warning"],
+    ["[!CAUTION]", "caution"],
+  ];
+  for (const [marker, kind] of cases) {
+    for (const space of ["", " "]) {
+      const label = `> ${marker}${space}`;
+      const doc = docOf(blockquote(paragraph(richSchema.text(`${marker}${space}`))));
+      const result = run(stateAt(doc), openNote);
+      assert.equal(result.ok, true, label);
+      const block = result.state.doc.firstChild;
+      assert.equal(block?.type.name, "note", label);
+      assert.equal(block?.attrs["kind"], kind, label);
+      assert.equal(block?.childCount, 1, label);
+      assert.equal(block?.firstChild?.type.name, "paragraph", label);
+      assert.equal(block?.firstChild?.content.size, 0, `${label}: the marker is gone`);
+      assert.equal(result.state.doc.textContent, "", label);
+      assert.equal(serializeMarkdown(result.state.doc), `> [!${kind.toUpperCase()}]`, `${label}: the wire is the marker alone`);
+      assert.equal(result.state.selection.$from.parent, block?.firstChild, `${label}: the caret is in the note's paragraph`);
+    }
+  }
+});
+
+test("Enter opens no note that is not a quote's whole first paragraph", () => {
+  const marker = richSchema.text("[!NOTE]");
+  const quoted = docOf(blockquote(paragraph(marker)));
+  const later = docOf(blockquote(paragraph(richSchema.text("one")), paragraph(marker)));
+  const cases: readonly [label: string, state: EditorState][] = [
+    ["with the caret before the paragraph's end", stateAt(quoted, startOfFirstBlock(quoted))],
+    ["with a selection", stateAt(quoted, startOfFirstBlock(quoted), endOfFirstBlock(quoted))],
+    ["with text before the marker", stateAt(docOf(blockquote(paragraph(richSchema.text("a [!NOTE]")))))],
+    ["with text after the marker", stateAt(docOf(blockquote(paragraph(richSchema.text("[!NOTE] more")))))],
+    ["in a later paragraph", stateAt(later, endOfLastBlock(later))],
+    ["with a hard break after the marker", stateAt(docOf(blockquote(paragraph(marker, schemaNode(richSchema, "hard_break").create()))))],
+    ["outside a quote", stateAt(docOf(paragraph(marker)))],
+    ["inside a note instead of a quote", stateAt(docOf(note("note", paragraph(marker))))],
+    ["with no marker", stateAt(docOf(blockquote(paragraph(richSchema.text("[!FOO]")))))],
+  ];
+  for (const [label, state] of cases) {
+    assert.equal(openNote(state, () => assert.fail(`${label} dispatched`)), false, label);
+  }
+});
+
+test("one undo restores the marker Enter converted, and the note writes that marker back", () => {
+  const base = EditorState.create({ doc: docOf(blockquote(paragraph())), plugins: [history()] });
+  const marked = typed(base, "[!NOTE]");
+  const opened = run(marked, openNote);
+  assert.equal(opened.ok, true);
+  assert.equal(opened.state.doc.firstChild?.type.name, "note", "the conversion is the note the draft shows");
+  assert.equal(serializeMarkdown(opened.state.doc), "> [!NOTE]", "a note writes the marker it was opened from");
+  const once = run(opened.state, undo);
+  assert.equal(once.ok, true);
+  assert.equal(once.state.doc.firstChild?.type.name, "blockquote", "one undo restores the quote");
+  assert.deepEqual(inlineShape(once.state.doc), [{ text: "[!NOTE]", marks: [] }], "with the literal marker");
+  // A quote whose decoded text is a marker is the one state the wire cannot spell: the transcript reads it as the
+  // callout, so the serializer escapes it and it reads back as that note. The text the undo restored is kept displayable.
+  assert.equal(serializeMarkdown(once.state.doc), "> \\[\\!NOTE\\]", "the marker text is escaped, never dropped");
+  const twice = run(once.state, undo);
+  assert.equal(twice.ok, true);
+  assert.equal(twice.state.doc.textContent, "", "the marker typing is the undo after");
+});
+
+test("Enter at the end of a note starts a paragraph below it", () => {
+  const doc = docOf(note("tip", paragraph(richSchema.text("body"))));
+  assert.equal(enterPolicy(stateAt(doc)), "block", "Enter inside a note is an edit, so the caller never sends");
+  const end = run(stateAt(doc), enterKey);
+  assert.equal(end.ok, true);
+  assert.equal(end.state.doc.childCount, 2, "the note keeps its place and a paragraph follows it");
+  assert.equal(end.state.doc.firstChild?.type.name, "note", "the note is still there");
+  assert.equal(end.state.doc.firstChild?.attrs["kind"], "tip", "with its kind");
+  assert.equal(end.state.doc.firstChild?.textContent, "body", "and its body");
+  assert.equal(end.state.doc.lastChild?.type.name, "paragraph");
+  assert.equal(end.state.doc.lastChild?.content.size, 0);
+  assert.equal(end.state.selection.$from.parent, end.state.doc.lastChild, "the caret sits in the paragraph after the note");
+  assert.equal(end.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(serializeMarkdown(end.state.doc), "> [!TIP]\n> body", "an empty paragraph after the note writes no line");
+
+  // In the middle the note splits where it is: a second paragraph inside it, and nothing around it.
+  const middle = run(stateAt(doc, startOfFirstBlock(doc) + 2), enterKey);
+  assert.equal(middle.ok, true);
+  assert.equal(middle.state.doc.childCount, 1, "nothing was added outside the note");
+  assert.equal(middle.state.doc.firstChild?.type.name, "note");
+  assert.equal(middle.state.doc.firstChild?.childCount, 2, "the paragraph split inside the note");
+  assert.deepEqual([middle.state.doc.firstChild?.firstChild?.textContent, middle.state.doc.firstChild?.lastChild?.textContent], ["bo", "dy"]);
+  assert.equal(serializeMarkdown(middle.state.doc), "> [!TIP]\n> bo\n>\n> dy");
+});
+
+test("Backspace at the start of a note returns its prose, and ArrowDown leaves it", () => {
+  const single = docOf(note("warning", paragraph(richSchema.text("careful"))));
+  const lifted = run(stateAt(single, startOfFirstBlock(single)), exitBlockBackward);
+  assert.equal(lifted.ok, true);
+  assert.equal(lifted.state.doc.childCount, 1, "the note is gone and its paragraph took its place");
+  assert.equal(lifted.state.doc.firstChild?.type.name, "paragraph");
+  assert.equal(lifted.state.doc.textContent, "careful", "the text is untouched");
+  assert.deepEqual([lifted.state.selection.from, lifted.state.selection.to], [1, 1], "the caret is at its start");
+  assert.equal(serializeMarkdown(lifted.state.doc), "careful", "the marker is gone from the wire");
+
+  // A note holding several blocks keeps today's Backspace, as a quote holding several does.
+  const several = docOf(note("note", paragraph(richSchema.text("one")), paragraph(richSchema.text("two"))));
+  assert.equal(exitBlockBackward(stateAt(several, startOfFirstBlock(several)), () => assert.fail("a note holding several blocks dispatched")), false);
+
+  const followed = docOf(note("caution", paragraph(richSchema.text("body"))), paragraph(richSchema.text("after")));
+  const moved = run(stateAt(followed, endOfFirstBlock(followed)), exitBlockDown);
+  assert.equal(moved.ok, true);
+  assert.equal(moved.state.doc.firstChild?.type.name, "note", "the note stays");
+  assert.equal(moved.state.selection.$from.parent, moved.state.doc.lastChild, "the caret moved to the paragraph after");
+  assert.equal(moved.state.selection.$from.parentOffset, 0);
+  assert.equal(serializeMarkdown(moved.state.doc), "> [!CAUTION]\n> body\n\nafter", "a note followed by a paragraph writes a blank line");
+
+  // With nothing after the note, the paragraph the caret lands in is added.
+  const last = docOf(note("note", paragraph(richSchema.text("body"))));
+  const created = run(stateAt(last, endOfFirstBlock(last)), exitBlockDown);
+  assert.equal(created.ok, true);
+  assert.equal(created.state.doc.childCount, 2, "the note gained the paragraph after it");
+  assert.equal(created.state.doc.lastChild?.type.name, "paragraph");
+  assert.equal(created.state.doc.lastChild?.content.size, 0);
+  assert.equal(created.state.selection.$from.parent, created.state.doc.lastChild, "the caret left the note");
+  assert.equal(created.state.selection.$from.parentOffset, 0);
 });
 
 test("Tab sinks a list item and Shift+Tab lifts it, and both leave a non-list alone", () => {
