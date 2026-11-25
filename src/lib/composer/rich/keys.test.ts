@@ -1,11 +1,12 @@
 /**
  * The composer's keys: what Enter means in prose, a list item, a code block, a quote, a note and a heading, that a
  * paragraph holding only a fence opens a code block with its language on Enter and one holding only a note marker opens
- * that note, that ArrowDown at a fence's, a quote's, a note's or a heading's end and Enter on a closing fence line leave it
- * where a paragraph can follow, that Backspace at a quote's, a note's or a heading's start makes it prose, that Shift+Enter
- * always hard-breaks, that Tab and Shift+Tab leave the editor alone outside a list, that one undo takes every exit back,
- * and that the formatting chords, undo, redo and select-all act on the document. The Enter policy itself is documented
- * in `keys.ts`.
+ * that note, that Enter adds a line inside a quote, a note and a heading and never sends there, that Backspace on the
+ * empty last line that gesture leaves is the way out of a quote, a note and a fence, that Backspace at the start of an
+ * empty quote, note or heading makes it prose, that ArrowDown at a fence's end and Enter on a closing fence line leave it
+ * where a paragraph can follow, that Shift+Enter always hard-breaks, that Tab and Shift+Tab leave the editor alone
+ * outside a list, that one undo takes every exit back, and that the formatting chords, undo, redo and select-all act on
+ * the document. The Enter policy itself is documented in `keys.ts`.
  */
 import assert from "node:assert/strict";
 import { chainCommands } from "prosemirror-commands";
@@ -20,8 +21,8 @@ import {
   enterKey,
   enterPolicy,
   exitBlockBackward,
-  exitBlockDown,
   exitCodeBlockDown,
+  exitEmptyLineBackward,
   fenceSelection,
   formatState,
   indentCodeBlock,
@@ -93,17 +94,21 @@ function endOfCodeBlock(doc: Node): number {
   return end;
 }
 
+/** The position where the document's `index`th textblock starts, in document order, however deeply a container wraps it. */
+function startOfBlock(doc: Node, index: number): number {
+  const starts: number[] = [];
+  doc.descendants((node, position) => {
+    if (node.isTextblock) starts.push(position + 1);
+    return true;
+  });
+  const start = starts[index];
+  if (start === undefined) throw new RangeError(`The document holds no textblock ${index}.`);
+  return start;
+}
+
 /** The position where the document's first textblock starts, however deeply a container wraps it. */
 function startOfFirstBlock(doc: Node): number {
-  let start = -1;
-  doc.descendants((node, position) => {
-    if (start >= 0) return false;
-    if (!node.isTextblock) return true;
-    start = position + 1;
-    return false;
-  });
-  if (start < 0) throw new RangeError("The document holds no textblock.");
-  return start;
+  return startOfBlock(doc, 0);
 }
 
 /** The position at the end of the document's first textblock, however deeply a container wraps it. */
@@ -136,6 +141,26 @@ function typed(state: EditorState, text: string): EditorState {
   for (const character of text) next = next.apply(next.tr.insertText(character, next.selection.from));
   return next;
 }
+
+/**
+ * The document's shape, one line per block: a container by its name with its children indented below it, a textblock by
+ * its name and its text, and every empty block included. It is what says an empty line came back, since the wire drops a
+ * trailing one.
+ */
+function shapeOf(node: Node, indent = ""): string[] {
+  const shape: string[] = [];
+  node.forEach((child) => {
+    if (!child.isTextblock) {
+      shape.push(`${indent}${child.type.name}`, ...shapeOf(child, `${indent}  `));
+      return;
+    }
+    shape.push(`${indent}${child.type.name}(${child.textContent.replaceAll("\n", "\\n")})`);
+  });
+  return shape;
+}
+
+/** The view's Backspace chain: the empty line's exit first, then the empty block's. */
+const backspace = chainCommands(exitEmptyLineBackward, exitBlockBackward);
 
 test("Enter means send in prose", () => {
   const state = stateAt(docOf(paragraph(richSchema.text("hello"))));
@@ -353,23 +378,41 @@ test("Shift+Enter always hard-breaks, in prose and in a code block", () => {
   assert.equal(result.state.doc.textContent, "a\n");
 });
 
-test("Enter in a quote edits the block instead of sending", () => {
+test("Enter in a quote adds a line, and Backspace on the empty one leaves it", () => {
+  // `> ` and the space that opens the quote: the rule converts it, and the caret sits in the quote's empty paragraph.
+  const opened = stateAt(docOf(blockquote(paragraph())));
+  assert.deepEqual(shapeOf(opened.doc), ["blockquote", "  paragraph()"]);
+  assert.equal(serializeMarkdown(opened.doc), "> ", "the quote is the whole draft");
+
+  const annotation = typed(opened, "hello");
+  assert.deepEqual(shapeOf(annotation.doc), ["blockquote", "  paragraph(hello)"]);
+  assert.equal(enterPolicy(annotation), "block", "Enter inside a quote is an edit, so the caller never sends");
+
+  // Enter adds a line inside the quote rather than leaving it, and the caret sits in that line.
+  const one = run(annotation, enterKey);
+  assert.equal(one.ok, true);
+  assert.deepEqual(shapeOf(one.state.doc), ["blockquote", "  paragraph(hello)", "  paragraph()"]);
+  assert.equal(one.state.selection.$from.parent, one.state.doc.firstChild?.lastChild, "the caret is in the new line");
+  assert.equal(one.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(serializeMarkdown(one.state.doc), "> hello", "an empty line inside the quote writes no line");
+
+  // A second Enter adds the third line the gesture leaves: nothing is ever added outside the quote.
+  const two = run(one.state, enterKey);
+  assert.equal(two.ok, true);
+  assert.deepEqual(shapeOf(two.state.doc), ["blockquote", "  paragraph(hello)", "  paragraph()", "  paragraph()"]);
+  assert.equal(serializeMarkdown(two.state.doc), "> hello");
+
+  // Backspace on that empty line is the way out: the empty lines go and a plain paragraph takes the caret below.
+  const left = run(two.state, backspace);
+  assert.equal(left.ok, true);
+  assert.deepEqual(shapeOf(left.state.doc), ["blockquote", "  paragraph(hello)", "paragraph()"]);
+  assert.equal(left.state.selection.$from.parent, left.state.doc.lastChild, "the caret is in the paragraph below");
+  assert.equal(left.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(left.state.selection.$from.depth, 1, "outside the quote");
+  assert.equal(serializeMarkdown(left.state.doc), "> hello", "the quote keeps its text, and its wire");
+
+  // In the middle the quote still splits where the caret is, and nothing is added around it.
   const quoted = docOf(blockquote(paragraph(richSchema.text("quote"))));
-  assert.equal(enterPolicy(stateAt(quoted)), "block", "Enter inside a quote is an edit, so the caller never sends");
-
-  // At the end of the quote a plain paragraph starts below it, and the quote keeps its text.
-  const end = run(stateAt(quoted), enterKey);
-  assert.equal(end.ok, true);
-  assert.equal(end.state.doc.childCount, 2, "the quote keeps its place and a paragraph follows it");
-  assert.equal(end.state.doc.firstChild?.type.name, "blockquote", "the quote is still there");
-  assert.equal(end.state.doc.firstChild?.textContent, "quote", "with its text");
-  assert.equal(end.state.doc.lastChild?.type.name, "paragraph");
-  assert.equal(end.state.doc.lastChild?.content.size, 0);
-  assert.equal(end.state.selection.$from.parent, end.state.doc.lastChild, "the caret sits in the paragraph after the quote");
-  assert.equal(end.state.selection.$from.parentOffset, 0, "at its start");
-  assert.equal(serializeMarkdown(end.state.doc), "> quote", "an empty paragraph after the quote writes no line");
-
-  // In the middle the quote holds two paragraphs, and nothing was added around it.
   const middle = run(stateAt(quoted, startOfFirstBlock(quoted) + 3), enterKey);
   assert.equal(middle.ok, true);
   assert.equal(middle.state.doc.childCount, 1, "nothing was added outside the quote");
@@ -381,26 +424,10 @@ test("Enter in a quote edits the block instead of sending", () => {
   assert.equal(middle.state.selection.$from.parentOffset, 0);
   assert.equal(serializeMarkdown(middle.state.doc), "> quo\n>\n> te", "the quote writes both paragraphs");
 
-  // A quote holding one empty paragraph is that paragraph: the quote goes with it.
-  const emptied = run(stateAt(docOf(blockquote(paragraph()))), enterKey);
-  assert.equal(emptied.ok, true);
-  assert.equal(emptied.state.doc.childCount, 1, "the quote is gone");
-  assert.equal(emptied.state.doc.firstChild?.type.name, "paragraph");
-  assert.equal(emptied.state.doc.textContent, "");
-  assert.deepEqual([emptied.state.selection.from, emptied.state.selection.to], [1, 1], "the caret is at the paragraph's start");
-
-  // An empty paragraph in a quote holding several blocks leaves the quote, and the empty block goes with it.
-  const several = docOf(blockquote(paragraph(richSchema.text("one")), paragraph()));
-  const left = run(stateAt(several), enterKey);
-  assert.equal(left.ok, true);
-  assert.equal(left.state.doc.childCount, 2, "a paragraph was added below the quote");
-  assert.equal(left.state.doc.firstChild?.childCount, 1, "the quote kept its text and lost the empty block");
-  assert.equal(left.state.doc.firstChild?.textContent, "one");
-  assert.equal(left.state.doc.lastChild?.type.name, "paragraph");
-  assert.equal(left.state.doc.lastChild?.content.size, 0);
-  assert.equal(left.state.selection.$from.parent, left.state.doc.lastChild, "the caret left the quote");
-  assert.equal(left.state.selection.$from.parentOffset, 0);
-  assert.equal(serializeMarkdown(left.state.doc), "> one");
+  // Nowhere for a plain paragraph to follow, the empty line stays: the key deletes instead of ejecting.
+  const blockedDoc = docOf(blockquote(paragraph(richSchema.text("quote")), paragraph()), heading(2, richSchema.text("next")));
+  const blocked = stateAt(blockedDoc, startOfBlock(blockedDoc, 1));
+  assert.equal(exitEmptyLineBackward(blocked, () => assert.fail("a quote before a heading dispatched")), false, "a heading after the quote is no exit");
 });
 
 test("Enter in a heading edits the block instead of sending", () => {
@@ -429,39 +456,42 @@ test("Enter in a heading edits the block instead of sending", () => {
   assert.equal(middle.state.selection.$from.parentOffset, 0);
   assert.equal(serializeMarkdown(middle.state.doc), "## he\n\n## ad");
 
-  // An empty heading becomes the paragraph Enter would otherwise have started below it.
+  // An empty heading splits too: Enter adds the line its own split puts below it.
   const emptied = run(stateAt(docOf(heading(1))), enterKey);
   assert.equal(emptied.ok, true);
-  assert.equal(emptied.state.doc.childCount, 1, "the heading is a paragraph and nothing else");
-  assert.equal(emptied.state.doc.firstChild?.type.name, "paragraph");
-  assert.equal(emptied.state.doc.firstChild?.content.size, 0);
-  assert.deepEqual([emptied.state.selection.from, emptied.state.selection.to], [1, 1], "the caret is inside that paragraph");
+  assert.deepEqual(shapeOf(emptied.state.doc), ["heading()", "paragraph()"]);
+  assert.equal(emptied.state.doc.firstChild?.type.name, "heading", "the heading stays where it was");
+  assert.equal(emptied.state.selection.$from.parent, emptied.state.doc.lastChild, "the caret is in the paragraph below it");
+  assert.equal(emptied.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(serializeMarkdown(emptied.state.doc), "# ", "an empty heading writes its marker, and the paragraph below no line");
 });
 
-test("Backspace at the start of a quote or a heading makes it a paragraph", () => {
-  const quoted = docOf(blockquote(paragraph(richSchema.text("quote"))));
-  const quoteStart = startOfFirstBlock(quoted);
-  const lifted = run(stateAt(quoted, quoteStart), exitBlockBackward);
+test("Backspace at the start of an empty quote or heading makes it a paragraph", () => {
+  const quoted = docOf(blockquote(paragraph()));
+  const lifted = run(stateAt(quoted), exitBlockBackward);
   assert.equal(lifted.ok, true);
   assert.equal(lifted.state.doc.childCount, 1, "the quote is gone and its paragraph took its place");
   assert.equal(lifted.state.doc.firstChild?.type.name, "paragraph");
-  assert.equal(lifted.state.doc.textContent, "quote", "the text is untouched");
+  assert.equal(lifted.state.doc.firstChild?.content.size, 0, "the text is untouched");
   assert.deepEqual([lifted.state.selection.from, lifted.state.selection.to], [1, 1], "the caret is at its start");
-  assert.equal(serializeMarkdown(lifted.state.doc), "quote", "the draft is the text the quote held");
+  assert.equal(serializeMarkdown(lifted.state.doc), "", "a quote holding nothing writes nothing");
 
-  const headed = docOf(heading(3, richSchema.text("head")));
-  const plain = run(stateAt(headed, startOfFirstBlock(headed)), exitBlockBackward);
+  const headed = docOf(heading(3));
+  const plain = run(stateAt(headed), exitBlockBackward);
   assert.equal(plain.ok, true);
   assert.equal(plain.state.doc.childCount, 1);
   assert.equal(plain.state.doc.firstChild?.type.name, "paragraph");
-  assert.equal(plain.state.doc.textContent, "head");
   assert.deepEqual([plain.state.selection.from, plain.state.selection.to], [1, 1], "the caret is at its start");
-  assert.equal(serializeMarkdown(plain.state.doc), "head", "the heading marker is gone from the wire");
+  assert.equal(serializeMarkdown(plain.state.doc), "", "the heading marker is gone from the wire");
 
-  // Everywhere else the key is not this one's: `false` lets `baseKeymap` delete a character as it always did.
+  // Typed text is never this key's: `false` lets `baseKeymap` delete a character as it always did.
+  const written = docOf(blockquote(paragraph(richSchema.text("quote"))));
+  const titled = docOf(heading(3, richSchema.text("head")));
   const several = docOf(blockquote(paragraph(richSchema.text("one")), paragraph(richSchema.text("two"))));
   const cases: readonly [label: string, state: EditorState][] = [
-    ["mid-quote", stateAt(quoted, quoteStart + 3)],
+    ["a quote holding text", stateAt(written, startOfFirstBlock(written))],
+    ["a heading holding text", stateAt(titled, startOfFirstBlock(titled))],
+    ["mid-quote", stateAt(written, startOfFirstBlock(written) + 3)],
     ["a quote holding several blocks", stateAt(several, startOfFirstBlock(several))],
     ["a list item", stateAt(docOf(bulletList(listItem(paragraph(richSchema.text("one"))))), 3)],
     ["a fence", stateAt(docOf(codeBlock("x")), 1)],
@@ -472,61 +502,84 @@ test("Backspace at the start of a quote or a heading makes it a paragraph", () =
   }
 });
 
-test("ArrowDown at the end of a quote or a heading leaves it for the paragraph after", () => {
-  const followed = docOf(blockquote(paragraph(richSchema.text("quote"))), paragraph(richSchema.text("after")));
-  const moved = run(stateAt(followed, endOfFirstBlock(followed)), exitBlockDown);
-  assert.equal(moved.ok, true);
-  assert.equal(moved.state.doc.childCount, 2, "the paragraph after was already there");
-  assert.equal(moved.state.doc.firstChild?.type.name, "blockquote", "the quote stays");
-  assert.equal(moved.state.selection.$from.parent, moved.state.doc.lastChild, "the caret moved to the paragraph after");
-  assert.equal(moved.state.selection.$from.parentOffset, 0);
-  assert.equal(serializeMarkdown(moved.state.doc), "> quote\n\nafter", "a quote followed by a paragraph writes a blank line");
+test("Enter in a code block adds a line, and Backspace on the empty one leaves it", () => {
+  // ``` and Enter open the fence, the same gesture a quote starts with; the caret sits inside it with no text.
+  const opened = stateAt(docOf(codeBlock("")));
+  assert.deepEqual(shapeOf(opened.doc), ["code_block()"], "the fence starts empty");
+  assert.equal(serializeMarkdown(opened.doc), "```\n```");
 
-  // With nothing after the block, the paragraph the caret lands in is added.
-  for (const [label, doc] of [
-    ["a quote", docOf(blockquote(paragraph(richSchema.text("quote"))))],
-    ["a heading", docOf(heading(2, richSchema.text("head")))],
-  ] as const) {
-    const created = run(stateAt(doc, endOfFirstBlock(doc)), exitBlockDown);
-    assert.equal(created.ok, true, label);
-    assert.equal(created.state.doc.childCount, 2, `${label} gained the paragraph after it`);
-    assert.equal(created.state.doc.lastChild?.type.name, "paragraph", label);
-    assert.equal(created.state.doc.lastChild?.content.size, 0, label);
-    assert.equal(created.state.selection.$from.parent, created.state.doc.lastChild, label);
-    assert.equal(created.state.selection.$from.parentOffset, 0, label);
-  }
+  const written = typed(opened, "hello");
+  assert.deepEqual(shapeOf(written.doc), ["code_block(hello)"]);
+  assert.equal(serializeMarkdown(written.doc), "```\nhello\n```");
 
-  // A heading followed by a paragraph reads as its marker and a blank line.
-  const thenParagraph = docOf(heading(1, richSchema.text("h")), paragraph(richSchema.text("after")));
-  const toParagraph = run(stateAt(thenParagraph, endOfFirstBlock(thenParagraph)), exitBlockDown);
-  assert.equal(toParagraph.ok, true);
-  assert.equal(toParagraph.state.selection.$from.parent, toParagraph.state.doc.lastChild, "the caret is in the paragraph after the heading");
-  assert.equal(serializeMarkdown(toParagraph.state.doc), "# h\n\nafter");
+  // Enter adds a newline, because a fence's lines are its content, and the caret stays in the block.
+  const one = run(written, enterKey);
+  assert.equal(one.ok, true);
+  assert.deepEqual(shapeOf(one.state.doc), ["code_block(hello\\n)"]);
+  assert.equal(one.state.selection.$from.parent.type.name, "code_block", "the caret stays in the fence");
+  assert.equal(serializeMarkdown(one.state.doc), "```\nhello\n```", "the newline is the closing fence's line");
 
-  // Elsewhere the arrow stays the browser's: mid-quote, in a list and in prose nothing is dispatched.
-  const quoted = docOf(blockquote(paragraph(richSchema.text("quote"))));
-  const cases: readonly [label: string, state: EditorState][] = [
-    ["mid-quote", stateAt(quoted, startOfFirstBlock(quoted) + 3)],
-    ["a list item", stateAt(docOf(bulletList(listItem(paragraph(richSchema.text("one"))))))],
-    ["prose", stateAt(docOf(paragraph(richSchema.text("plain"))))],
-  ];
-  for (const [label, state] of cases) {
-    assert.equal(exitBlockDown(state, () => assert.fail(`${label} dispatched`)), false, label);
-  }
+  // An empty last line takes another newline, and it is written as the blank line it is.
+  const two = run(one.state, enterKey);
+  assert.equal(two.ok, true);
+  assert.deepEqual(shapeOf(two.state.doc), ["code_block(hello\\n\\n)"]);
+  assert.equal(two.state.selection.$from.parent.type.name, "code_block", "the caret stays in the fence");
+  assert.equal(serializeMarkdown(two.state.doc), "```\nhello\n\n```");
+
+  // Backspace at the end of that empty line is the way out: the newlines go and a plain paragraph takes the caret.
+  const left = run(two.state, backspace);
+  assert.equal(left.ok, true);
+  assert.deepEqual(shapeOf(left.state.doc), ["code_block(hello)", "paragraph()"]);
+  assert.equal(left.state.selection.$from.parent, left.state.doc.lastChild, "the caret is in the paragraph below");
+  assert.equal(left.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(serializeMarkdown(left.state.doc), "```\nhello\n```", "the fence keeps its line and its closing fence");
+});
+
+test("Backspace never leaves a block by deleting typed text", () => {
+  // A caret inside typed text is not the empty line: nothing is dispatched, so `baseKeymap` deletes a character.
+  const written = docOf(blockquote(paragraph(richSchema.text("hello"))));
+  const midText = stateAt(written, startOfFirstBlock(written) + 2);
+  assert.equal(exitEmptyLineBackward(midText, () => assert.fail("a caret inside typed text dispatched")), false);
+  assert.equal(backspace(midText, () => assert.fail("the chain dispatched inside typed text")), false);
+
+  // A quote holding nothing but empty paragraphs is a join, never this exit: only an empty block is
+  // `exitBlockBackward`'s, and a second empty paragraph is no block of that shape either.
+  const empties = docOf(blockquote(paragraph(), paragraph()));
+  const emptyLast = stateAt(empties, startOfBlock(empties, 1));
+  assert.equal(exitEmptyLineBackward(emptyLast, () => assert.fail("an empty block dispatched")), false, "an empty line before only an empty line is no exit");
+  assert.equal(backspace(emptyLast, () => assert.fail("the chain dispatched on an empty block")), false);
+
+  // An empty line in the middle of a block stays a join, however much content surrounds it.
+  const middleDoc = docOf(blockquote(paragraph(richSchema.text("hello")), paragraph(), paragraph(richSchema.text("after"))));
+  const middleLine = stateAt(middleDoc, startOfBlock(middleDoc, 1));
+  assert.equal(exitEmptyLineBackward(middleLine, () => assert.fail("a middle empty line dispatched")), false);
+  assert.equal(backspace(middleLine, () => assert.fail("the chain dispatched on a middle empty line")), false);
+
+  // A fence is only left by the newlines at its very end, with text before them.
+  const fenceStart = stateAt(docOf(codeBlock("hello\nworld")), 1 + 5);
+  assert.equal(exitEmptyLineBackward(fenceStart, () => assert.fail("a fence's middle dispatched")), false);
+  const fenceOnlyNewlines = stateAt(docOf(codeBlock("\n")));
+  assert.equal(exitEmptyLineBackward(fenceOnlyNewlines, () => assert.fail("a fence of newlines dispatched")), false, "nothing typed is nothing to keep");
 });
 
 test("one undo takes back each block an exit changed, and the wire with it", () => {
   const quoted = docOf(blockquote(paragraph(richSchema.text("quote"))));
   const headed = docOf(heading(1, richSchema.text("heading")));
   const noted = docOf(note("note", paragraph(richSchema.text("noted"))));
+  const emptyQuote = docOf(blockquote(paragraph()), paragraph());
+  const emptyHeading = docOf(heading(2), paragraph());
+  const emptyNote = docOf(note("tip", paragraph()), paragraph());
+  const linedQuote = docOf(blockquote(paragraph(richSchema.text("quote")), paragraph()), paragraph());
+  const linedFence = docOf(codeBlock("let a = 1;\n"), paragraph());
   const cases: readonly [label: string, doc: Node, command: Command, caret?: number][] = [
     ["Enter at the end of a quote", quoted, enterKey],
     ["Enter at the end of a heading", headed, enterKey],
     ["Enter at the end of a note", noted, enterKey],
-    ["Backspace at the start of a quote", quoted, exitBlockBackward, startOfFirstBlock(quoted)],
-    ["Backspace at the start of a note", noted, exitBlockBackward, startOfFirstBlock(noted)],
-    ["ArrowDown at the end of a heading", headed, exitBlockDown],
-    ["ArrowDown at the end of a note", noted, exitBlockDown],
+    ["Backspace at the start of an empty quote", emptyQuote, exitBlockBackward, startOfFirstBlock(emptyQuote)],
+    ["Backspace at the start of an empty heading", emptyHeading, exitBlockBackward, startOfFirstBlock(emptyHeading)],
+    ["Backspace at the start of an empty note", emptyNote, exitBlockBackward, startOfFirstBlock(emptyNote)],
+    ["Backspace on a quote's empty last line", linedQuote, exitEmptyLineBackward, startOfBlock(linedQuote, 1)],
+    ["Backspace on a fence's empty last line", linedFence, exitEmptyLineBackward, endOfCodeBlock(linedFence)],
   ];
   for (const [label, doc, command, caret] of cases) {
     const base = EditorState.create({ doc, selection: TextSelection.atEnd(doc), plugins: [history()] });
@@ -544,6 +597,51 @@ test("one undo takes back each block an exit changed, and the wire with it", () 
     const twice = run(once.state, undo);
     assert.equal(twice.ok, true, label);
     assert.equal(twice.state.doc.eq(base.doc), true, `${label}: the typing before it is the undo after`);
+  }
+});
+
+test("one undo brings back the block and the empty line the gesture left", () => {
+  const cases: readonly [label: string, doc: Node][] = [
+    ["a quote", docOf(blockquote(paragraph(richSchema.text("hello"))))],
+    ["a note", docOf(note("tip", paragraph(richSchema.text("body"))))],
+    ["a fence", docOf(codeBlock("hello"))],
+  ];
+  for (const [label, doc] of cases) {
+    const base = EditorState.create({ doc, plugins: [history()] });
+    const start = base.apply(base.tr.setSelection(TextSelection.atEnd(base.doc)));
+    const first = run(start, enterKey);
+    const second = run(first.state, enterKey);
+    assert.equal(second.ok, true, label);
+    const before = second.state.doc;
+    const shape = shapeOf(before);
+    const left = run(second.state, backspace);
+    assert.equal(left.ok, true, label);
+    assert.equal(left.state.doc.eq(before), false, `${label}: the empty line went`);
+    const once = run(left.state, undo);
+    assert.equal(once.ok, true, label);
+    // A trailing empty line inside the block is dropped from the wire, so the document is what says it came back.
+    assert.deepEqual(shapeOf(once.state.doc), shape, `${label}: one undo restores the block and its empty line`);
+    assert.equal(once.state.doc.eq(before), true, label);
+    assert.equal(serializeMarkdown(once.state.doc), serializeMarkdown(before), `${label}: and the wire it had`);
+  }
+});
+
+test("Enter adds a line and never sends inside a quote, a note and a heading", () => {
+  const cases: readonly [label: string, doc: Node, opened: string[]][] = [
+    ["a quote", docOf(blockquote(paragraph(richSchema.text("quote")))), ["blockquote", "  paragraph(quote)", "  paragraph()"]],
+    ["a note", docOf(note("tip", paragraph(richSchema.text("body")))), ["note", "  paragraph(body)", "  paragraph()"]],
+    ["a heading", docOf(heading(2, richSchema.text("head"))), ["heading(head)", "paragraph()"]],
+  ];
+  for (const [label, doc, opened] of cases) {
+    const state = stateAt(doc);
+    assert.equal(enterPolicy(state), "block", `${label}: Enter is an edit, so the keymap's send branch is never taken`);
+    assert.equal(enterKey(state, undefined, undefined), true, `${label}: Enter has an edit to make`);
+    const result = run(state, enterKey);
+    assert.equal(result.ok, true, label);
+    assert.deepEqual(shapeOf(result.state.doc), opened, label);
+    assert.equal(result.state.selection.empty, true, `${label}: the caret is still a caret`);
+    assert.equal(result.state.selection.$from.parent.isTextblock, true, `${label}: inside a textblock`);
+    assert.doesNotThrow(() => result.state.doc.resolve(result.state.selection.from), `${label}: the caret is in the document`);
   }
 });
 
@@ -614,20 +712,19 @@ test("one undo restores the marker Enter converted, and the note writes that mar
   assert.equal(twice.state.doc.textContent, "", "the marker typing is the undo after");
 });
 
-test("Enter at the end of a note starts a paragraph below it", () => {
+test("Enter in a note adds a line inside it", () => {
   const doc = docOf(note("tip", paragraph(richSchema.text("body"))));
   assert.equal(enterPolicy(stateAt(doc)), "block", "Enter inside a note is an edit, so the caller never sends");
+
+  // The line Enter adds at the note's end is inside the note: nothing is added outside it.
   const end = run(stateAt(doc), enterKey);
   assert.equal(end.ok, true);
-  assert.equal(end.state.doc.childCount, 2, "the note keeps its place and a paragraph follows it");
-  assert.equal(end.state.doc.firstChild?.type.name, "note", "the note is still there");
-  assert.equal(end.state.doc.firstChild?.attrs["kind"], "tip", "with its kind");
-  assert.equal(end.state.doc.firstChild?.textContent, "body", "and its body");
-  assert.equal(end.state.doc.lastChild?.type.name, "paragraph");
-  assert.equal(end.state.doc.lastChild?.content.size, 0);
-  assert.equal(end.state.selection.$from.parent, end.state.doc.lastChild, "the caret sits in the paragraph after the note");
+  assert.deepEqual(shapeOf(end.state.doc), ["note", "  paragraph(body)", "  paragraph()"]);
+  assert.equal(end.state.doc.childCount, 1, "nothing was added outside the note");
+  assert.equal(end.state.doc.firstChild?.attrs["kind"], "tip", "the note keeps its kind");
+  assert.equal(end.state.selection.$from.parent, end.state.doc.firstChild?.lastChild, "the caret is in the new line");
   assert.equal(end.state.selection.$from.parentOffset, 0, "at its start");
-  assert.equal(serializeMarkdown(end.state.doc), "> [!TIP]\n> body", "an empty paragraph after the note writes no line");
+  assert.equal(serializeMarkdown(end.state.doc), "> [!TIP]\n> body", "an empty line inside the note writes no line");
 
   // In the middle the note splits where it is: a second paragraph inside it, and nothing around it.
   const middle = run(stateAt(doc, startOfFirstBlock(doc) + 2), enterKey);
@@ -639,37 +736,31 @@ test("Enter at the end of a note starts a paragraph below it", () => {
   assert.equal(serializeMarkdown(middle.state.doc), "> [!TIP]\n> bo\n>\n> dy");
 });
 
-test("Backspace at the start of a note returns its prose, and ArrowDown leaves it", () => {
-  const single = docOf(note("warning", paragraph(richSchema.text("careful"))));
-  const lifted = run(stateAt(single, startOfFirstBlock(single)), exitBlockBackward);
+test("an empty note's Backspace returns its prose, and its empty last line leaves it", () => {
+  const empty = docOf(note("warning", paragraph()));
+  const lifted = run(stateAt(empty), exitBlockBackward);
   assert.equal(lifted.ok, true);
   assert.equal(lifted.state.doc.childCount, 1, "the note is gone and its paragraph took its place");
   assert.equal(lifted.state.doc.firstChild?.type.name, "paragraph");
-  assert.equal(lifted.state.doc.textContent, "careful", "the text is untouched");
   assert.deepEqual([lifted.state.selection.from, lifted.state.selection.to], [1, 1], "the caret is at its start");
-  assert.equal(serializeMarkdown(lifted.state.doc), "careful", "the marker is gone from the wire");
+  assert.equal(serializeMarkdown(lifted.state.doc), "", "the marker is gone from the wire");
 
-  // A note holding several blocks keeps today's Backspace, as a quote holding several does.
+  // A note holding typed text keeps its Backspace for that text, and a note holding several blocks keeps it too.
+  const written = docOf(note("caution", paragraph(richSchema.text("careful"))));
+  assert.equal(exitBlockBackward(stateAt(written, startOfFirstBlock(written)), () => assert.fail("a note holding text dispatched")), false);
   const several = docOf(note("note", paragraph(richSchema.text("one")), paragraph(richSchema.text("two"))));
   assert.equal(exitBlockBackward(stateAt(several, startOfFirstBlock(several)), () => assert.fail("a note holding several blocks dispatched")), false);
 
-  const followed = docOf(note("caution", paragraph(richSchema.text("body"))), paragraph(richSchema.text("after")));
-  const moved = run(stateAt(followed, endOfFirstBlock(followed)), exitBlockDown);
-  assert.equal(moved.ok, true);
-  assert.equal(moved.state.doc.firstChild?.type.name, "note", "the note stays");
-  assert.equal(moved.state.selection.$from.parent, moved.state.doc.lastChild, "the caret moved to the paragraph after");
-  assert.equal(moved.state.selection.$from.parentOffset, 0);
-  assert.equal(serializeMarkdown(moved.state.doc), "> [!CAUTION]\n> body\n\nafter", "a note followed by a paragraph writes a blank line");
-
-  // With nothing after the note, the paragraph the caret lands in is added.
-  const last = docOf(note("note", paragraph(richSchema.text("body"))));
-  const created = run(stateAt(last, endOfFirstBlock(last)), exitBlockDown);
-  assert.equal(created.ok, true);
-  assert.equal(created.state.doc.childCount, 2, "the note gained the paragraph after it");
-  assert.equal(created.state.doc.lastChild?.type.name, "paragraph");
-  assert.equal(created.state.doc.lastChild?.content.size, 0);
-  assert.equal(created.state.selection.$from.parent, created.state.doc.lastChild, "the caret left the note");
-  assert.equal(created.state.selection.$from.parentOffset, 0);
+  // The empty line an Enter leaves is the way out, and the note keeps its marker and its body.
+  const body = docOf(note("caution", paragraph(richSchema.text("body"))));
+  const lined = run(run(stateAt(body), enterKey).state, enterKey);
+  assert.deepEqual(shapeOf(lined.state.doc), ["note", "  paragraph(body)", "  paragraph()", "  paragraph()"]);
+  const left = run(lined.state, backspace);
+  assert.equal(left.ok, true);
+  assert.deepEqual(shapeOf(left.state.doc), ["note", "  paragraph(body)", "paragraph()"]);
+  assert.equal(left.state.selection.$from.parent, left.state.doc.lastChild, "the caret is in the paragraph below the note");
+  assert.equal(left.state.selection.$from.parentOffset, 0, "at its start");
+  assert.equal(serializeMarkdown(left.state.doc), "> [!CAUTION]\n> body", "the marker and the body stay, and the empty line writes nothing");
 });
 
 test("Tab sinks a list item and Shift+Tab lifts it, and both leave a non-list alone", () => {

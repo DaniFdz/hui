@@ -13,18 +13,22 @@
  * - in a code block it inserts a newline, because a fence's lines are content, and on a last line that is only
  *   ```` ``` ```` it drops that line and leaves the block, where a paragraph can follow it; elsewhere that line stays
  *   and Enter adds a line after it;
- * - in a heading, and anywhere inside a quote or a note (`block`), it edits the block rather than sending: at the end of
- *   the block a plain paragraph starts below it, adding one where the container allows it and splitting inside the block
- *   where it does not; in the middle the block splits where the caret is; and an empty block is left for prose;
+ * - in a heading, and anywhere inside a quote or a note (`block`), it adds a line rather than sending: the block splits
+ *   where the caret is, so a quote or a note takes a second and a third empty line at its end, and a heading ends in the
+ *   paragraph its own split puts below it. Enter never leaves a quote, a note or a heading, and never sends from one;
  * - everywhere else it reports `false`, and the caller sends.
  * Shift+Enter always inserts a hard break. The Send button and Mod-Enter always send, whatever the cursor sits in.
  *
- * A quote, a note and a heading are left from the keyboard too: ArrowDown at the end of a quote's, a note's or a
- * heading's last line (`exitBlockDown`) moves the caret to the paragraph after it, adding one when the block ends its
- * container, and Backspace at its start (`exitBlockBackward`) turns a heading, and a quote or a note holding one
- * paragraph, back into a plain paragraph. A quote or a note holding several blocks, a list item and a fence keep their
- * own Backspace, and `false` lets `baseKeymap` go on deleting characters. Each of these exits is one transaction, and the
- * block change in it is closed from the typed text's history event, so one undo restores the block and its wire.
+ * The way out of a quote, a note or a fence is Backspace on the empty line that gesture leaves (`exitEmptyLineBackward`):
+ * at the start of a quote's or a note's empty last paragraph, with real content before it in the block, the block's
+ * trailing empty paragraphs go and the caret moves to a plain paragraph below the block, the text the operator typed
+ * kept; in a fence, at the end of text that ends in one or more newlines with text before them, those newlines go the
+ * same way. Only that empty line is ever the exit: a Backspace that would delete typed text reports `false` and lets
+ * `baseKeymap` delete a character, an empty line in the middle of a block stays a join, and a quote or a note holding
+ * nothing but empty paragraphs is not left this way. Backspace at the start of an empty heading, or of a quote or a note
+ * holding one empty paragraph, turns that block back into the plain paragraph it wraps (`exitBlockBackward`). Each exit
+ * is one transaction, closed from the typed text's history event, so one undo restores the block and the empty line it
+ * had.
  *
  * A fence is left from the keyboard too: ArrowDown at the end of a code block's content (`exitCodeBlockDown`) or Enter
  * on its closing fence line (`closeCodeFence`) moves the caret to the paragraph after it, adding one when the block ends
@@ -80,23 +84,24 @@ function emptyListItem(state: EditorState): boolean {
 }
 
 /**
- * The node names a caret can sit inside and leave as a block: the containers Enter, Backspace and ArrowDown turn into
- * prose. A note joins this set, so it is left exactly as a quote is: a container is always read by membership here and
- * never by a second name of its own.
+ * The node names a caret can sit inside as an annotation: the containers Enter adds a line to, and whose empty last line
+ * Backspace leaves. A note joins this set, so it is read exactly as a quote is: a container is always read by membership
+ * here and never by a second name of its own.
  */
 const CONTAINER_EXITS: ReadonlySet<string> = new Set(["blockquote", "note"]);
 
-/** The block Enter and the arrows act on around the caret. */
+/** The block Enter and Backspace act on around the caret. */
 type BlockAnchor = {
-  /** The depth of the block being left: the heading itself, or the outermost container around the caret. */
+  /** The depth of the block: the heading itself, or the outermost container around the caret. */
   depth: number;
   /** Whether that block is the caret's own textblock, a heading, rather than the container holding it. */
   own: boolean;
 };
 
 /**
- * The block Enter, Backspace and ArrowDown act on, when the caret sits in a heading or inside a container. `undefined`
- * in prose, in a list item and in a fence, which keep their own meaning for those keys.
+ * The block Enter and Backspace act on, when the caret sits in a heading or inside a container: the outermost one, which
+ * is what makes Enter an edit rather than a send. `undefined` in prose, in a list item and in a fence, which keep their
+ * own meaning for those keys.
  */
 function blockAnchor(state: EditorState): BlockAnchor | undefined {
   const { $from } = state.selection;
@@ -108,28 +113,15 @@ function blockAnchor(state: EditorState): BlockAnchor | undefined {
   return { depth, own: depth === $from.depth };
 }
 
-/**
- * Whether the caret ends every block down to `depth`: at the end of its own textblock and the last child of each
- * ancestor above it, so a second paragraph of a quote is not the quote's end.
- */
-function atBlockEnd(state: EditorState, depth: number): boolean {
-  const { $from } = state.selection;
-  if (!$from.parent.isTextblock || $from.parentOffset !== $from.parent.content.size) return false;
-  for (let level = $from.depth; level > depth; level -= 1) {
-    if ($from.index(level - 1) !== $from.node(level - 1).childCount - 1) return false;
-  }
-  return true;
-}
-
-/** Where the block at `depth` can be left: the position after it, and whether a paragraph has to be added there first. */
-type BlockExit = { after: number; insert: boolean };
+/** Where a block can be left: the position after it, and whether a paragraph has to be added there first. */
+type BlockBelow = { after: number; insert: boolean };
 
 /**
  * The paragraph after the block at `depth`, or a place for one when that block ends its container: `undefined` when no
- * paragraph can follow it, because another block does or the container cannot hold one there. `codeBlockExit`'s
- * contract, for a block that is not a fence.
+ * paragraph can follow it, because another block does or the container cannot hold one there. Both a fence's ArrowDown
+ * exit and the Backspace that leaves a block by its empty last line are read through it.
  */
-function blockExit(state: EditorState, depth: number): BlockExit | undefined {
+function paragraphBelow(state: EditorState, depth: number): BlockBelow | undefined {
   const { $from } = state.selection;
   const container = $from.node(depth - 1);
   const index = $from.index(depth - 1) + 1;
@@ -140,22 +132,6 @@ function blockExit(state: EditorState, depth: number): BlockExit | undefined {
   return container.canReplaceWith(index, index, paragraph) ? { after, insert: true } : undefined;
 }
 
-/**
- * Moves the caret to the paragraph after the block at `depth`, adding one when the block ends its container. One
- * transaction, closed from the typed text's history event, so one undo puts the caret back in the block.
- */
-function leaveBlock(state: EditorState, depth: number, dispatch?: (transaction: Transaction) => void): boolean {
-  const exit = blockExit(state, depth);
-  if (!exit) return false;
-  if (dispatch) {
-    const tr = state.tr;
-    if (exit.insert) tr.insert(exit.after, schemaNode(state.schema, "paragraph").create());
-    tr.setSelection(TextSelection.create(tr.doc, exit.after + 1)).scrollIntoView();
-    dispatch(closeHistory(tr));
-  }
-  return true;
-}
-
 /** The block at the caret becomes a plain paragraph, in one transaction the next undo takes back. */
 function toParagraph(state: EditorState, dispatch?: (transaction: Transaction) => void): boolean {
   const closed = dispatch && ((transaction: Transaction) => dispatch(closeHistory(transaction)));
@@ -163,8 +139,8 @@ function toParagraph(state: EditorState, dispatch?: (transaction: Transaction) =
 }
 
 /**
- * Lifts the caret's block out of every container holding it, so a quote holding one paragraph is that paragraph.
- * `lift` does the transform; the caret is placed at the block's start, and the exit is one undo of its own.
+ * Lifts the caret's block out of every container holding it, so a quote or a note holding one empty paragraph is that
+ * paragraph. `lift` does the transform; the caret is placed at the block's start, and the exit is one undo of its own.
  */
 function liftOut(state: EditorState, dispatch?: (transaction: Transaction) => void): boolean {
   const { $from } = state.selection;
@@ -313,28 +289,18 @@ export const openNote: Command = (state, dispatch) => {
   return true;
 };
 
-/** Where a code block can be left: the position after it, and whether a paragraph has to be inserted there first. */
-type CodeBlockExit = { after: number; insert: boolean };
-
 /**
  * Leaving the caret's code block, when the caret ends its content: the paragraph that follows it, or a place for one
  * when it ends its container. `undefined` when the caret is not in a code block, not at its content's end, or when no
  * paragraph can follow it (another block does, or the container cannot hold one there).
  */
-function codeBlockExit(state: EditorState): CodeBlockExit | undefined {
+function codeBlockExit(state: EditorState): BlockBelow | undefined {
   const { selection } = state;
   if (!selection.empty) return undefined;
   const { $from } = selection;
   if (!$from.parent.type.spec.code) return undefined;
   if ($from.parentOffset !== $from.parent.content.size) return undefined;
-  const depth = $from.depth;
-  const container = $from.node(depth - 1);
-  const index = $from.index(depth - 1) + 1;
-  const after = $from.after(depth);
-  const following = container.maybeChild(index);
-  if (following) return following.type === schemaNode(state.schema, "paragraph") ? { after, insert: false } : undefined;
-  const paragraph = schemaNode(state.schema, "paragraph");
-  return container.canReplaceWith(index, index, paragraph) ? { after, insert: true } : undefined;
+  return paragraphBelow(state, $from.depth);
 }
 
 /**
@@ -395,49 +361,27 @@ export const closeCodeFence: Command = (state, dispatch) => {
 };
 
 /**
- * Enter in a quote or a heading: a plain paragraph starts below the block at its end, the block splits where the caret
- * is in the middle, and an empty block is left rather than split. Lists and fences never reach here.
+ * Enter in a quote, a note or a heading: the block splits where the caret is, so the quote or the note takes a new empty
+ * line at its end and a heading ends in the paragraph its split puts below it. Enter never leaves a block and never
+ * sends from one: `exitEmptyLineBackward` is what leaves the empty line it adds. Lists and fences never reach here.
  */
 export const enterBlock: Command = (state, dispatch, view) => {
-  const anchor = blockAnchor(state);
-  if (!anchor) return false;
-  const { $from } = state.selection;
-  const paragraph = schemaNode(state.schema, "paragraph");
+  if (blockAnchor(state) === undefined) return false;
+  // The split is closed from the typed text's history event, so it is one undo of its own.
   const split = dispatch && ((transaction: Transaction) => dispatch(closeHistory(transaction)));
-  // An empty block is left, never split: a second empty block would only be one more thing to delete.
-  if (state.selection.empty && $from.parent.content.size === 0) {
-    // A heading becomes the paragraph Enter would otherwise have started below it.
-    if ($from.parent.type === schemaNode(state.schema, "heading")) return toParagraph(state, dispatch);
-    // A quote holding nothing but this paragraph is that paragraph: the quote goes with it.
-    if ($from.depth === anchor.depth + 1 && $from.node(anchor.depth).childCount === 1) return liftOut(state, dispatch);
-    // Another empty block leaves the container instead: it goes, and a paragraph starts below the quote.
-    const start = $from.before($from.depth);
-    const size = $from.after($from.depth) - start;
-    const exit = blockExit(state, anchor.depth);
-    if (exit && dispatch) {
-      const after = exit.after - size;
-      const tr = state.tr.delete(start, start + size);
-      if (exit.insert) tr.insert(after, paragraph.create());
-      tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
-      dispatch(closeHistory(tr));
-    }
-    if (exit) return true;
-    return splitBlock(state, split, view);
-  }
-  // At the end of the block a plain paragraph starts below it, adding one where the container allows it.
-  if (state.selection.empty && atBlockEnd(state, anchor.depth) && leaveBlock(state, anchor.depth, dispatch)) return true;
-  // In the middle the block splits where it is: a second paragraph inside the quote, a second heading.
   return splitBlock(state, split, view);
 };
 
 /**
- * Backspace at the start of a quote or a heading: it becomes the plain paragraph it wraps, with the caret at its start.
- * A quote holding several blocks, a list item and a fence keep their Backspace, and `false` leaves the key to
- * `baseKeymap`, which is what keeps deleting a character working.
+ * Backspace at the start of an empty heading, or of a quote or a note holding one empty paragraph: it becomes the plain
+ * paragraph it wraps, with the caret at its start. Only an empty textblock is this key's, so a Backspace that would
+ * delete typed text is never an exit; a quote holding several blocks, a list item and a fence keep their own Backspace,
+ * and `false` leaves the key to `baseKeymap`, which is what keeps deleting a character working.
  */
 export const exitBlockBackward: Command = (state, dispatch) => {
   const { $from } = state.selection;
   if (!state.selection.empty || !$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+  if ($from.parent.content.size !== 0) return false;
   if ($from.parentOffset !== 0 || listItemDepth(state) !== undefined) return false;
   if ($from.parent.type === schemaNode(state.schema, "heading")) return toParagraph(state, dispatch);
   const anchor = blockAnchor(state);
@@ -448,14 +392,94 @@ export const exitBlockBackward: Command = (state, dispatch) => {
 };
 
 /**
- * ArrowDown at the end of a quote's or a heading's last line leaves it for the paragraph after it, adding one when the
- * block ends its container. A list keeps today's arrow, and a fence's end is `exitCodeBlockDown`'s.
+ * What Backspace on an empty line takes out, and where the caret lands: the range inside the block that goes, and the
+ * position after the block where a plain paragraph takes the caret, added there when the block ends its container.
  */
-export const exitBlockDown: Command = (state, dispatch) => {
-  if (!state.selection.empty) return false;
-  const anchor = blockAnchor(state);
-  if (!anchor || !atBlockEnd(state, anchor.depth)) return false;
-  return leaveBlock(state, anchor.depth, dispatch);
+type EmptyLineExit = { from: number; to: number; after: number; insert: boolean };
+
+/** The depth of the innermost quote or note holding the caret's textblock, when there is one and no list item is. */
+function innermostContainer(state: EditorState): number | undefined {
+  const { $from } = state.selection;
+  if (!$from.parent.isTextblock || $from.parent.type.spec.code) return undefined;
+  if (listItemDepth(state) !== undefined) return undefined;
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    if (CONTAINER_EXITS.has($from.node(depth).type.name)) return depth;
+  }
+  return undefined;
+}
+
+/**
+ * The exit a quote's or a note's empty last line is, when the caret sits at its start: the empty paragraphs the gesture
+ * left go and the block keeps the content before them. `undefined` when the caret is not on such a line, when an empty
+ * line is all the block holds (a join, or `exitBlockBackward`'s empty block), and when no paragraph can follow the block.
+ */
+function containerEmptyLine(state: EditorState): EmptyLineExit | undefined {
+  const { selection } = state;
+  if (!selection.empty) return undefined;
+  const { $from } = selection;
+  const paragraph = schemaNode(state.schema, "paragraph");
+  if ($from.parent.type !== paragraph || $from.parent.content.size !== 0) return undefined;
+  if ($from.parentOffset !== 0) return undefined;
+  const depth = innermostContainer(state);
+  // The caret's paragraph is the container's own child, so an empty line of a nested block is not this one's.
+  if (depth === undefined || $from.depth !== depth + 1) return undefined;
+  const container = $from.node(depth);
+  // Only the container's last block is a trailing empty line: one with a block after it is a join.
+  const index = $from.index(depth);
+  if (index !== container.childCount - 1) return undefined;
+  // Walk back over the empty paragraphs the gesture left, which are the block's trailing empty lines.
+  let kept = index;
+  while (kept > 0) {
+    const before = container.child(kept - 1);
+    if (before.type !== paragraph || before.content.size !== 0) break;
+    kept -= 1;
+  }
+  // Nothing typed is nothing to keep: a block of empty lines is a join, never this exit.
+  if (kept === 0 || container.child(kept - 1).content.size === 0) return undefined;
+  const below = paragraphBelow(state, depth);
+  if (!below) return undefined;
+  let from = $from.start(depth);
+  for (let child = 0; child < kept; child += 1) from += container.child(child).nodeSize;
+  return { from, to: $from.end(depth), after: below.after, insert: below.insert };
+}
+
+/**
+ * The exit a fence's empty last line is, when the caret ends the block's text and that text ends in newlines with text
+ * before them: those newlines go and the caret moves to the paragraph below. `undefined` at any other end of a fence, so
+ * Backspace keeps deleting characters and a fence holding nothing but newlines is never left this way.
+ */
+function codeEmptyLine(state: EditorState): EmptyLineExit | undefined {
+  const { selection } = state;
+  if (!selection.empty) return undefined;
+  const { $from } = selection;
+  if (!$from.parent.type.spec.code) return undefined;
+  if ($from.parentOffset !== $from.parent.content.size) return undefined;
+  const text = $from.parent.textContent;
+  const kept = text.replace(/\n+$/u, "");
+  if (kept === text || kept.length === 0) return undefined;
+  const below = paragraphBelow(state, $from.depth);
+  if (!below) return undefined;
+  const end = $from.end();
+  return { from: end - (text.length - kept.length), to: end, after: below.after, insert: below.insert };
+}
+
+/**
+ * Backspace on the empty line Enter left, in a quote, a note or a fence: that line goes and the caret moves to a plain
+ * paragraph below the block, the block's own content kept. One transaction, closed from the typed text's history event,
+ * so one undo brings the block and the empty line back. `false` everywhere else, and in particular wherever the caret
+ * would delete typed text, so `baseKeymap` goes on deleting a character as it always did.
+ */
+export const exitEmptyLineBackward: Command = (state, dispatch) => {
+  const exit = containerEmptyLine(state) ?? codeEmptyLine(state);
+  if (!exit) return false;
+  if (dispatch) {
+    const tr = state.tr.delete(exit.from, exit.to);
+    const after = exit.after - (exit.to - exit.from);
+    if (exit.insert) tr.insert(after, schemaNode(state.schema, "paragraph").create());
+    tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
+    dispatch(closeHistory(tr));
+  }
+  return true;
 };
 
 /**
@@ -766,11 +790,11 @@ export { redo, selectAll, undo };
 
 /**
  * The composer's key bindings, for the view to install: Enter follows `enterPolicy` (sending through `onSend`),
- * Shift+Enter hard-breaks, ArrowDown leaves a fence, and then a quote or a heading, at its end, Backspace leaves a quote
- * or a heading at its start, Tab and Shift+Tab indent code or change a list's depth, and the formatting chords and
- * history are bound to the commands above. `formatting` says whether the chords act; while it is false a chord is
- * consumed without a transaction. A consumed key is handled, so the view prevents its default action and the browser's
- * own bold, italic or code command does not run for it.
+ * Shift+Enter hard-breaks, ArrowDown leaves a fence at its end, Backspace on the empty line Enter left leaves a quote, a
+ * note or a fence and Backspace at an empty heading's or container's start makes it prose, Tab and Shift+Tab indent code
+ * or change a list's depth, and the formatting chords and history are bound to the commands above. `formatting` says
+ * whether the chords act; while it is false a chord is consumed without a transaction. A consumed key is handled, so the
+ * view prevents its default action and the browser's own bold, italic or code command does not run for it.
  */
 export function richKeymap(options: { onSend: () => void; formatting?: () => boolean }): Plugin {
   const formatting = options.formatting ?? (() => true);
@@ -779,8 +803,8 @@ export function richKeymap(options: { onSend: () => void; formatting?: () => boo
     Enter: (state, dispatch, view) => enterPolicy(state) === "send" ? (options.onSend(), true) : enterKey(state, dispatch, view),
     "Shift-Enter": chainCommands(codeBlockNewline, newline),
     "Mod-Enter": sendKey(options.onSend),
-    ArrowDown: chainCommands(exitCodeBlockDown, exitBlockDown),
-    Backspace: exitBlockBackward,
+    ArrowDown: exitCodeBlockDown,
+    Backspace: chainCommands(exitEmptyLineBackward, exitBlockBackward),
     Tab: chainCommands(indentCodeBlock, tabInList),
     "Shift-Tab": chainCommands(outdentCodeBlock, shiftTabInList),
     "Mod-b": chord(toggleStrong),
