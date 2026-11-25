@@ -4,6 +4,8 @@ import { test } from "vitest";
 import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
 import { renderBotPanel, renderBotRoster, type BotPanelProps, type BotRosterProps } from "./bots.ts";
 import type { BotView } from "../lib/bots/bots.ts";
+import { botWorkQueue, botWorkQueues, EMPTY_WORK_QUEUE } from "../lib/bots/work-queue.ts";
+import type { SessionView } from "../api/sessions.ts";
 import type { AutomationRun } from "../api/schema/automation.ts";
 import { formatTimestamp } from "./settings-automation.ts";
 
@@ -37,6 +39,8 @@ test("routines and overview Activity explain retries and intervention without hi
     triggers: { state: { list: { triggers: [], runs: [] } } },
     settings: { models: [], call: { defaultVoice: "sol" } },
     usage: { botId: "", error: "" },
+    work: { queue: EMPTY_WORK_QUEUE, expanded: false, onToggle: () => {} },
+    onOpenSession: () => {},
   } as unknown as BotPanelProps;
   for (const view of ["routines", "overview"] as const) {
     const retryPage = markup(renderBotPanel({ ...props, view }));
@@ -64,6 +68,8 @@ test("the overview totals a bot's cost, its memory summaries' included, and list
     triggers: { state: { list: { triggers: [], runs: [] } } },
     settings: { models: [], call: { defaultVoice: "sol" } },
     usage: { botId: "b1", error: "", usage: { sessions: 3, costUsd: 1.254, unavailable: [], models: [{ model: "openai/mini", tokens: 90, costUsd: 0.004 }, { model: "anthropic/opus", tokens: 9, costUsd: 1.25 }] } },
+    work: { queue: EMPTY_WORK_QUEUE, expanded: false, onToggle: () => {} },
+    onOpenSession: () => {},
   } as unknown as BotPanelProps;
   const page = markup(renderBotPanel(props));
   assert.match(page, /<summary[^>]*>.*Total.*\$1\.75/su);
@@ -254,8 +260,8 @@ test("the roster's Edit opens the bot's chat with its panel on Settings, docked 
 test("the panel opens on the bot's overview, whose rows open its pages with a way back; Ctrl+Shift+, toggles Settings", () => {
   const source = read("./bots.ts");
   const overview = between(source, "function renderOverview(", "function renderPanelView(");
-  const order = ["renderProfile(props)", "renderRoutinesSummary(props)", "renderTriggersSummary(props, now)", "renderActivity(props, now)", "renderSetup(props)"].map((part) => overview.indexOf(part));
-  assert.ok(order.every((at, index) => at > (order[index - 1] ?? -1)), "who it is, what it does on its own, then how it is set up");
+  const order = ["renderProfile(props)", "renderWorkSummary(props, now)", "renderRoutinesSummary(props)", "renderTriggersSummary(props, now)", "renderActivity(props, now)", "renderSetup(props)"].map((part) => overview.indexOf(part));
+  assert.ok(order.every((found, index) => found > (order[index - 1] ?? -1)), "who it is, what it started, what it does on its own, then how it is set up");
   assert.match(between(source, "function renderPanelHeader(", "/** The panel beside the bot's chat"), /bot-panel__back" aria-label=\$\{`Back to \$\{props\.bot\.name\}`\}/u, "every page has a way back");
   assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md/iu, "no tabs or Soul editor");
 });
@@ -336,4 +342,113 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   const deleting = source.slice(source.indexOf("export function renderBotDeleteDialog("));
   assert.match(deleting, /its memory and its folder\$\{bot\.worker \? ` on \$\{bot\.worker\.name\}` : ""\} \(SOUL\.md and every file in it\) go/u, "its folder on the worker");
   assert.match(deleting, /bot\.status === "disconnected" \? `; HUI is not connected to \$\{bot\.worker\.name\} now, so those go there when it reconnects` : ""/u, "and when they go while the worker is offline");
+});
+
+/* ── a bot's own work ─────────────────────────────────────────────────────── */
+
+const at = (minute: number) => `2026-11-20T09:${String(minute).padStart(2, "0")}:00.000Z`;
+const NOW = Date.parse(at(10));
+
+function startedSession(id: string, title: string, overrides: Partial<SessionView> = {}): SessionView {
+  return {
+    id, title, group: "g", cwd: "/work", displayCwd: "/work", tool: "durable", status: "idle",
+    stage: "investigation", stageOrigin: "default", createdAt: at(0), updatedAt: at(0), ...overrides,
+  } as SessionView;
+}
+
+function botView(id: string, overrides: Partial<BotView> = {}): BotView {
+  return { id, handle: id, name: id, cwd: `/bots/${id}`, sessionId: `chat-${id}`, createdAt: at(0), updatedAt: at(0), status: "idle", soul: false, unread: false, routines: 0, ...overrides } as BotView;
+}
+
+/** Only the overview's Work section is under test here; the other pages' reads and actions are not invoked. */
+function overviewProps(work: BotPanelProps["work"]): BotPanelProps {
+  return {
+    id: "bot-panel", view: "overview", width: 400, timezone: "UTC",
+    bot: { id: "b1", name: "Ada", handle: "ada", sessionId: "chat-b1", cwd: "/bots/b1", status: "idle" },
+    routines: { automation: { scheduler: { enabled: true, activeRuns: 0 }, tasks: [], runs: [] } },
+    triggers: { state: { list: { triggers: [], runs: [] } } },
+    settings: { models: [], call: { defaultVoice: "sol" } },
+    usage: { botId: "", error: "" },
+    work,
+    onOpenSession: () => {},
+  } as unknown as BotPanelProps;
+}
+
+test("the roster's row counts the sessions it has in flight and, opened, lists its chat and the work it started", () => {
+  const boss = botView("boss", { name: "Boss", status: "running", updatedAt: at(1) });
+  const quiet = botView("quiet", { name: "Quiet", updatedAt: at(2) });
+  const work = botWorkQueues(new Map([["boss", [
+    startedSession("s-wait", "Answer the review", { status: "waiting", updatedAt: at(9) }),
+    startedSession("s-run", "Ship the rail", { status: "running", updatedAt: at(8) }),
+    startedSession("s-done", "Read the old logs", { updatedAt: at(5) }),
+  ]]]));
+  const render = (expandedSessions: ReadonlySet<string>) => markup(renderBotRoster({
+    bots: [boss, quiet], query: "", showHidden: false, showArchived: false, activeBotId: "", menuFor: "", pendingId: "", now: NOW,
+    work, expandedSessions, onToggleSessions: () => {},
+  } as unknown as BotRosterProps, { navigate: () => {}, dialog: () => {} }));
+  const collapsed = render(new Set());
+  // The count is in the accessible name, and in the row's top line; a row with nothing in flight carries neither.
+  assert.match(collapsed, /aria-label=Boss, working, 2 sessions in flight/u);
+  assert.match(collapsed, /aria-label=Quiet, sleeping/u);
+  assert.doesNotMatch(collapsed, /Quiet, sleeping, .*in flight/u);
+  assert.equal(collapsed.match(/class="bot-row__inflight" aria-hidden="true">2</gu)?.length, 1);
+  assert.doesNotMatch(collapsed, /bot-row-children/u, "a collapsed bot lists nothing");
+  assert.match(collapsed, /class="bot-row-expander" aria-expanded=false/u);
+  assert.match(collapsed, /aria-label=Expand sessions of Boss/u);
+  assert.doesNotMatch(collapsed, /Expand sessions of Quiet/u, "a bot with nothing started has nothing to open");
+
+  // Expanded: its own chat first, then what it started in lane order, each with its own time.
+  const expanded = render(new Set(["boss"]));
+  assert.match(expanded, /class="bot-row-expander" aria-expanded=true/u);
+  assert.match(expanded, /aria-label=Collapse sessions of Boss/u);
+  assert.match(expanded, /<ul class="bot-row-children" aria-label=Sessions Boss started>/u);
+  const order = ["Chat with Boss", "Answer the review", "Ship the rail", "Read the old logs"].map((title) => expanded.indexOf(title));
+  assert.ok(order.every((found, index) => found > (order[index - 1] ?? -1)), "the chat, then Needs you, Working and Recent");
+  assert.match(expanded, /datetime=2026-11-20T09:01:00.000Z>9m<\/time>/u, "the chat's own time");
+  assert.match(expanded, /datetime=2026-11-20T09:08:00.000Z>2m<\/time>/u, "a started session's time");
+  assert.equal(expanded.match(/class="bot-row-child(?: bot-row-child--chat)?"/gu)?.length, 4, "one row for the chat and each session");
+});
+
+test("a hidden bot offers no count and no sessions, even while it started some", () => {
+  const hidden = botView("boss", { name: "Boss", hidden: true, status: "running" });
+  const page = markup(renderBotRoster({
+    bots: [hidden], query: "", showHidden: true, showArchived: false, activeBotId: "", menuFor: "", pendingId: "", now: NOW,
+    work: botWorkQueues(new Map([["boss", [startedSession("s-run", "Ship the rail", { status: "running" })]]])),
+    expandedSessions: new Set(["boss"]), onToggleSessions: () => {},
+  } as unknown as BotRosterProps, { navigate: () => {}, dialog: () => {} }));
+  assert.match(page, /data-bot-id=boss/u);
+  assert.doesNotMatch(page, /bot-row__inflight|bot-row-expander|bot-row-children/u);
+});
+
+test("the overview opens on Work: its counts, Needs you, Working and Recent in lane order, eight rows and Show more", () => {
+  // The panel reads its own clock, so the times are built against it: ten seconds past a whole minute keeps "2m"
+  // stable for the length of the test.
+  const recent = new Date(Date.now() - 2 * 60_000 - 10_000).toISOString();
+  const sessions = [
+    startedSession("s-wait", "Answer the review", { status: "waiting", updatedAt: at(9) }),
+    startedSession("s-run", "Ship the rail", { status: "running", updatedAt: recent }),
+    ...Array.from({ length: 7 }, (_, index) => startedSession(`s-done-${index}`, `Finished ${index}`, { updatedAt: at(index) })),
+  ];
+  const props = overviewProps({ queue: botWorkQueue(sessions), expanded: false, onToggle: () => {} });
+  const page = markup(renderBotPanel(props));
+  assert.ok(page.indexOf(">Work<") < page.indexOf(">Routines<"), "Work is the first section of what the bot does");
+  assert.match(page, /class="bot-overview__counts">1 needs you · 1 working · 7 recent</u);
+  const lanes = ["Needs you", "Working", "Recent"].map((label) => page.indexOf(`>${label}</h4>`));
+  assert.ok(lanes.every((found, index) => found > (lanes[index - 1] ?? -1)), "Needs you, Working, Recent");
+  assert.equal(page.match(/class="bot-overview__row bot-work__row"/gu)?.length, 8, "eight rows across the queue");
+  assert.match(page, />Show 1 more</u);
+  assert.match(page, /aria-expanded=false/u);
+  assert.match(page, /href=\/sessions\/s-run\?open=app/u, "a plain click opens it in the app");
+  assert.ok(page.includes(`datetime=${recent}>2m</time>`), "a row says how long ago it last moved");
+
+  const expanded = markup(renderBotPanel({ ...props, work: { ...props.work, expanded: true } }));
+  assert.equal(expanded.match(/class="bot-overview__row bot-work__row"/gu)?.length, 9, "Show more draws the rest in place");
+  assert.match(expanded, />Show less</u);
+  assert.match(expanded, /aria-expanded=true/u);
+});
+
+test("a bot that started nothing says so in one calm hint", () => {
+  const page = markup(renderBotPanel(overviewProps({ queue: EMPTY_WORK_QUEUE, expanded: false, onToggle: () => {} })));
+  assert.match(page, /class="bot-panel__hint">Nothing yet\. Sessions Ada starts show here\.</u);
+  assert.doesNotMatch(page, /bot-work__lane|bot-overview__counts/u);
 });

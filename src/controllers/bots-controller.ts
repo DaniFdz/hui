@@ -2,7 +2,8 @@
  * `BotsController` keeps the bot roster outside `hui-app.ts`: the list, its loading and error state, and the gateway's
  * bot stream that pushes it, with reads by GET as the fallback for a gateway without
  * the stream. It also owns the sidebar's Agents | Bots choice, the bot panel's state with the browser-remembered open
- * state and width, the Settings page's saves, and the roster's actions: creating a bot, hiding, archiving (with its
+ * state and width, which of a bot's started sessions the roster and the panel list in place, the Settings page's saves,
+ * and the roster's actions: creating a bot, hiding, archiving (with its
  * confirmation and its Restore toast), restoring and deleting one, and whether GPT-Live calls can run. A top-level app
  * only: an embedded pane never reads bots.
  */
@@ -59,6 +60,9 @@ export class BotsController implements ReactiveController {
   panelOpenedFrom = "";
   /** Wide screens: the panel fills the bot's view, its chat hidden underneath. Never remembered. */
   panelExpanded = false;
+  /** The panel's Work queue shows every row instead of its first eight. Browser-local, and reset when another bot
+   * opens. */
+  panelWorkExpanded = false;
   /** Narrow layouts open the panel as a sheet only on request; never remembered. */
   sheetOpen = false;
   /** The Settings page's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
@@ -67,6 +71,9 @@ export class BotsController implements ReactiveController {
   #savesQueue: Promise<void> = Promise.resolve();
   showHidden = false;
   showArchived = false;
+  /** The bots whose started sessions the roster lists under their row, opened in place. Browser-local, and a bot that
+   * leaves the roster takes its id with it. */
+  expandedSessions: ReadonlySet<string> = new Set();
   /** The roster row whose hide, restore or delete is on its way; another waits for it. */
   pendingId = "";
   /** + is creating a bot; another press waits for it. */
@@ -107,6 +114,12 @@ export class BotsController implements ReactiveController {
 
   adopt(bots: readonly BotView[]): void {
     this.list = bots;
+    // A bot that left the roster (deleted, archived) keeps no expanded row behind it.
+    if (this.expandedSessions.size) {
+      const known = new Set(bots.filter((bot) => !bot.archived).map((bot) => bot.id));
+      const kept = [...this.expandedSessions].filter((id) => known.has(id));
+      if (kept.length !== this.expandedSessions.size) this.expandedSessions = new Set(kept);
+    }
     this.#host.requestUpdate();
   }
 
@@ -202,12 +215,13 @@ export class BotsController implements ReactiveController {
     writeBotPanel(this.panel);
   }
 
-  /** Another bot opens on its overview, docked. */
+  /** Another bot opens on its overview, docked, with its Work queue folded back to its first rows. */
   resetPanel(): void {
     this.sheetOpen = false;
     this.panelView = "overview";
     this.panelOpenedFrom = "";
     this.panelExpanded = false;
+    this.panelWorkExpanded = false;
     this.#host.requestUpdate();
   }
 
@@ -259,6 +273,20 @@ export class BotsController implements ReactiveController {
     this.panelExpanded = expanded;
     this.#host.requestUpdate();
   }
+
+  /** Show more of the open bot's Work queue, or fold it back to its first rows. */
+  togglePanelWork = (): void => {
+    this.panelWorkExpanded = !this.panelWorkExpanded;
+    this.#host.requestUpdate();
+  };
+
+  /** Show a bot's started sessions under its roster row, or hide them again. */
+  toggleSessions = (botId: string): void => {
+    const next = new Set(this.expandedSessions);
+    if (!next.delete(botId)) next.add(botId);
+    this.expandedSessions = next;
+    this.#host.requestUpdate();
+  };
 
   savesOf(botId: string): BotSettingsSaves {
     return this.#saves.get(botId) ?? NO_BOT_SETTINGS_SAVES;

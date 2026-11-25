@@ -1,6 +1,6 @@
-/* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the
- * roster and the bot view with its panel (the overview and its Routines, Triggers, Tools and Settings pages; Tools'
- * and Triggers' own rules are in bot-tools.css and bot-triggers.css).
+/* Bots tab (PR "Bots tab UI"): the sidebar's Agents | Bots switch, the roster (with what each bot started in flight
+ * and, opened, the sessions it started) and the bot view with its panel (the overview, Work first, and its Routines,
+ * Triggers, Tools and Settings pages; Tools' and Triggers' own rules are in bot-tools.css and bot-triggers.css).
  * Rows, menus, inputs and dialogs reuse the shell/session/settings classes;
  * only what bots add lives here, on the shared tokens. */
 
@@ -228,6 +228,80 @@
   .app-shell .bot-row .bot-row__text,
   .app-shell .bot-row:is(:hover, :focus-within) .bot-row__text { padding-inline-end: 46px; }
   .app-shell .bot-row .bot-row__time { visibility: visible; }
+}
+/* The sessions a bot has in flight, in the row's top line: a count that never widens the row, because the name gives
+ * way and the time keeps its place. */
+.app-shell .bot-row__inflight {
+  flex: none;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-strong));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.6;
+}
+/* A bot's started sessions open from its row's trailing toggle, as a subagent tree does, so the actions aside moves
+ * aside for it; the list itself is a sibling of the row, never inside its hover and focus styles. */
+.app-shell .sidebar-recent-session:has(> .bot-row-expander) > .sidebar-recent-session__aside {
+  right: calc(var(--session-tree-toggle-width, 24px) + 2px);
+}
+.app-shell .bot-row-expander {
+  display: inline-flex;
+  flex: 0 0 var(--session-tree-toggle-width, 24px);
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .app-shell .bot-row-expander:hover { color: var(--text); background: var(--bg-hover); }
+}
+.app-shell .bot-row-expander:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.app-shell .bot-row-expander__chevron { display: flex; }
+.app-shell .bot-row-expander svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.app-shell .bot-row-expander[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.app-shell .bot-row-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.app-shell .bot-row-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 10px 4px 26px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: calc(12px * var(--control-ui-text-scale));
+  text-decoration: none;
+}
+.app-shell .bot-row-child--chat { color: var(--text); }
+.app-shell .bot-row-child__icon { display: flex; flex: none; }
+.app-shell .bot-row-child__icon svg { width: 13px; height: 13px; }
+.app-shell .bot-row-child__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .bot-row-child__time { flex: none; font-variant-numeric: tabular-nums; }
+@media (hover: hover) {
+  .app-shell .bot-row-child:hover { color: var(--text); background: var(--bg-hover); }
+}
+.app-shell .bot-row-child:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 80%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .bot-row-expander svg { transition: none; }
+}
+@media (pointer: coarse) {
+  .app-shell .bot-row-expander,
+  .app-shell .bot-row-child { min-height: 44px; }
 }
 .app-shell .bot-roster__empty,
 .app-shell .bot-roster__state {
@@ -506,6 +580,16 @@
 .bot-overview__section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .bot-overview__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
 .bot-overview__head .bot-panel__heading { margin: 0; }
+/* What a section counts, at the head's far end: it shrinks before it would widen the panel. */
+.bot-overview__counts {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .bot-overview__add svg { width: 15px; height: 15px; }
 /* One card per section, its rows divided like Settings rows. */
 .bot-overview__list {
@@ -563,6 +647,41 @@
 .bot-overview__setup .bot-overview__name { flex: none; }
 .bot-overview__value { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: var(--control-ui-text-xs); text-align: end; text-overflow: ellipsis; white-space: nowrap; }
 .bot-overview__setup > svg { flex: none; width: 14px; height: 14px; color: var(--muted); }
+
+/* ── Work: the sessions the bot started, Needs you first ── */
+.bot-work__lane { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bot-work__lane-label { margin: 0; padding-inline-start: 2px; color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 600; }
+.bot-work__row { padding-inline-end: 0; }
+/* A session's row: its dot, its title and when it last moved, never wider than the panel. */
+.bot-work__link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.bot-work__link:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 80%, transparent); }
+@media (hover: hover) {
+  .bot-work__link:hover { background: color-mix(in srgb, var(--bg-hover) 70%, transparent); }
+}
+.bot-work__dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--muted); }
+.bot-work__dot[data-work-tone="question"] { background: var(--warn); }
+.bot-work__dot[data-work-tone="error"] { background: var(--danger); }
+.bot-work__dot[data-work-tone="busy"] { background: var(--accent); animation: bot-work-pulse 1.4s ease-in-out infinite; }
+.bot-work__title { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-strong); font-size: var(--control-ui-text-sm); font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.bot-work__time { flex: none; color: var(--muted); font-size: var(--control-ui-text-xs); font-variant-numeric: tabular-nums; }
+.bot-work__more { display: inline-flex; align-self: flex-start; align-items: center; gap: 4px; color: var(--muted); }
+.bot-work__more .bot-work__chevron { display: flex; }
+.bot-work__more svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.bot-work__more[aria-expanded="true"] svg { transform: rotate(180deg); }
+@keyframes bot-work-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .bot-work__dot[data-work-tone="busy"] { animation: none; }
+  .bot-work__more svg { transition: none; }
+}
 
 /* ── routines ── */
 .bot-routines,

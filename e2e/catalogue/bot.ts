@@ -782,6 +782,26 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "BOT-080",
+    title: "See the work a bot started in its panel",
+    behaviour: "The panel's overview opens on Work, the sessions the bot started, in three lanes: Needs you (Waiting for your answer, Error, Disconnected, or a run that failed and left it idle), Working (Running, Starting, Reconnecting) and Recent, each session in one lane and listed once. Its header counts the lanes it has (\"1 needs you · 1 working · 7 recent\"), a lane with nothing is left out, and a bot that started nothing says \"Nothing yet. Sessions <name> starts show here.\" A row shows a status dot, the session's title and how long ago it last moved, and a plain click opens that session's chat at /sessions/<id>. Eight rows show and \"Show N more\" draws the rest in place (\"Show less\" folds them back) without leaving the bot; another bot starts folded.",
+    spec: ["SPEC.md#a-bots-panel-shows-the-work-it-started-2026-11-25", "SPEC.md#a-bots-chat-lists-the-sessions-it-started-2026-11-22"],
+    surfaces: ["route:GET /__hui/sessions"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "BOT-081",
+    title: "See what a bot has in flight from its roster row",
+    behaviour: "A Bots tab row counts in its top line the sessions its bot has in Needs you or Working (Recent never counts), hidden at zero and never moving the time or widening the row; the row's accessible name says \"1 session in flight\" or \"2 sessions in flight\" while it does. \"Expand sessions of <name>\" adds under the row, outside its hover and focus styles, its own chat (\"Chat with <name>\", opening /bots/<id>, with the time of its latest activity) and then the sessions it started with their times, each once; \"Collapse sessions of <name>\" hides them. A bot that started nothing has no disclosure, and a hidden or archived bot has neither count nor disclosure.",
+    spec: ["SPEC.md#a-bots-roster-row-counts-and-lists-the-work-it-started-2026-11-25"],
+    surfaces: ["route:GET /__hui/sessions", "nav:bot"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;
