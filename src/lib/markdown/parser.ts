@@ -22,9 +22,13 @@ import { parseSessionQuery } from "../session/session-reference-store.ts";
 const DISALLOWED_LINK_SCHEME_RE = /^(?!(?:https?|mailto):)[a-z][a-z0-9+.-]*:/i;
 const INLINE_DATA_IMAGE_RE = /^data:image\/[a-z0-9.+-]+;base64,/i;
 const CJK_RE = /[\u2e80-\u2fff\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff01-\uff60]/;
-const ALERT_MARKER_RE = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/iu;
-const ALERT_LABELS = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" } as const;
-type AlertType = keyof typeof ALERT_LABELS;
+/** The marker that opens a GitHub alert, with the whitespace the transcript drops after it. The composer reads its own
+ * draft with this too (`../composer/rich/markdown.ts`), so a note's marker is one rule in both places. */
+export const ALERT_MARKER_RE = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/iu;
+/** What an alert's title reads, the callout's one label map. A note's kind is the attribute the wire derives from it. */
+export const ALERT_LABELS = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" } as const;
+/** The five GitHub alerts. */
+export type AlertType = keyof typeof ALERT_LABELS;
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -180,7 +184,13 @@ function installMath(parser: MarkdownItParser): void {
   parser.renderer.rules.hui_math_inline = (tokens, index) => `<hui-math class="markdown-math markdown-math--inline" data-display="inline" role="math"><template>${escapeHtml(tokens[index]?.content ?? "")}</template></hui-math>`;
 }
 
-function installAlerts(parser: MarkdownItParser): void {
+/**
+ * GitHub alerts: a blockquote whose first line is `> [!NOTE]` (and the four other kinds) becomes the callout the chat
+ * draws, `<aside class="markdown-alert markdown-alert--note" aria-label="Note">`. The blockquote tokens keep their type
+ * and carry the kind in `meta.huiAlert`, so a client that reads tokens knows one without parsing HTML; the composer's own
+ * tokenizer installs this rule too and renames those tokens into its `note` node.
+ */
+export function installAlerts(parser: MarkdownItParser): void {
   parser.core.ruler.after("inline", "hui_markdown_alerts", (state) => {
     for (let index = 0; index < state.tokens.length; index += 1) {
       const open = state.tokens[index];

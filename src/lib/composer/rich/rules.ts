@@ -5,9 +5,11 @@
  * becomes strong text with the markers gone, while `2 * 3 * 4`, `a * b`, `read_text_file`, a lone `*` and an unmatched
  * `**` stay exactly as typed. A star may open inside a word (`a*b*` is emphasis in Markdown), an underscore may not
  * (`read_text_file` is a name), no run's content may start or end with whitespace, and no rule fires inside a code mark
- * or a code block. Block rules (heading, quote, bullet, ordered item, fence) fire only in a paragraph, so `# ` typed
+ * or a code block. Block rules (heading, quote, note, bullet, ordered item, fence) fire only in a paragraph, so `# ` typed
  * inside a heading stays text instead of silently converting it; a fence opens on the space after it here, or on the
- * Enter that follows it (`keys.ts`' `openCodeFence`). A literal draft (see `editor.ts`) has no rules: the plugin's
+ * Enter that follows it (`keys.ts`' `openCodeFence`). A quote becomes a note when a `[!NOTE]` marker and the space after
+ * it complete a blockquote holding that one paragraph: the marker goes and the quote's node becomes the note of that
+ * kind, which is what `> [!NOTE]` is on the wire. A literal draft (see `editor.ts`) has no rules: the plugin's
  * `enabled` check is off there, so its markers stay text.
  *
  * Undo is exact. The typed character is dispatched as its own ordinary edit first and the conversion second, marked
@@ -18,7 +20,8 @@
 import { InputRule, textblockTypeInputRule, wrappingInputRule } from "prosemirror-inputrules";
 import { closeHistory } from "prosemirror-history";
 import type { MarkType, NodeType, Schema } from "prosemirror-model";
-import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
+import { Plugin, TextSelection, type EditorState, type Transaction } from "prosemirror-state";
+import type { AlertType } from "../../markdown/parser.ts";
 import { schemaMark, schemaNode } from "./schema.ts";
 
 /** The view surface the rules read and write: a whole `EditorView` satisfies it, and so does a test double. */
@@ -36,6 +39,42 @@ type RuleParts = { match: RegExp; handler: RuleConversion };
 
 function partsOf(rule: InputRule): RuleParts {
   return rule as unknown as RuleParts;
+}
+
+/** The marker that turns a quote into a note, with the one space that completes it: `[!NOTE]`, and the four other kinds. */
+const NOTE_MARKER_RE = /(?<=^|\s)\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\] $/iu;
+
+/**
+ * The quote around the marker becomes a note of `kind`, with the marker and the space that completed it deleted: one
+ * transaction, which the caller closes with `closeHistory` so one undo restores the quote and the literal marker byte for
+ * byte. `undefined` when there is no blockquote at `start`, or when the quote cannot be a note where it sits: the same
+ * check a conversion makes before it changes a block (`keys.ts`' `openingFence`).
+ */
+export function noteFromMarker(state: EditorState, start: number, end: number, kind: AlertType): Transaction | null {
+  const $start = state.doc.resolve(start);
+  const depth = $start.depth;
+  if (depth < 2) return null;
+  if ($start.node(depth - 1).type !== schemaNode(state.schema, "blockquote")) return null;
+  const note = schemaNode(state.schema, "note");
+  const index = $start.index(depth - 2);
+  if (!$start.node(depth - 2).canReplaceWith(index, index + 1, note)) return null;
+  const tr = state.tr.delete(start, end);
+  tr.setNodeMarkup($start.before(depth - 1), note, { kind });
+  tr.setSelection(TextSelection.create(tr.doc, start)).scrollIntoView();
+  return tr;
+}
+
+/** A marker completes a quote of one paragraph into a note of its kind; anywhere else the marker stays text. */
+function noteInputRule(): InputRule {
+  return new InputRule(NOTE_MARKER_RE, (state, match, start, end) => {
+    const kind = (match[1] ?? "note").toLowerCase() as AlertType;
+    const $start = state.doc.resolve(start);
+    const depth = $start.depth;
+    if (depth < 2) return null;
+    const quote = $start.node(depth - 1);
+    if (quote.type !== schemaNode(state.schema, "blockquote") || quote.childCount !== 1) return null;
+    return noteFromMarker(state, start, end, kind);
+  });
 }
 
 /** How much text before the cursor a rule may look at, the same window `prosemirror-inputrules` uses. */
@@ -93,6 +132,8 @@ function rulesOf(schema: Schema): RuleTable {
     inParagraph(textblockTypeInputRule(/^```([A-Za-z0-9_+.#-]*)\s$/u, codeBlock, (match) => ({ language: match[1] ?? "" }))),
     inParagraph(textblockTypeInputRule(/^(#{1,6})\s$/u, heading, (match) => ({ level: (match[1] ?? "#").length }))),
     inParagraph(wrappingInputRule(/^\s*>\s$/u, blockquote)),
+    // A quote holding one paragraph turns into the note its marker names, the marker gone (`noteFromMarker`).
+    inParagraph(noteInputRule()),
     inParagraph(wrappingInputRule(/^\s*-\s$/u, bulletList)),
     inParagraph(wrappingInputRule(/^\s*(\d{1,9})[.)]\s$/u, orderedList, (match) => ({ order: Number(match[1]) }))),
     markInputRule(/(?<!\*)\*\*([^\s*](?:[^*]*[^\s*])?)\*\*$/u, strong),

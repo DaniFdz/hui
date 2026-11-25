@@ -1,16 +1,24 @@
 /**
  * The rich composer's document schema: exactly the Markdown the composer draws and the transcript's
- * `renderAgentMarkdown` renders back — paragraphs, headings, blockquotes, bullet and ordered lists, fenced code,
- * hard breaks, emphasis, strong, strikethrough, inline code and links. It is hand-written rather than one of
- * ProseMirror's example schemas because the dialect is the product contract: `markdown.ts` parses into it and writes
- * its canonical Markdown, and every node and mark carries the `toDOM`/`parseDOM` pair an HTML paste needs.
+ * `renderAgentMarkdown` renders back — paragraphs, headings, blockquotes, GitHub alert notes, bullet and ordered lists,
+ * fenced code, hard breaks, emphasis, strong, strikethrough, inline code and links. It is hand-written rather than one of
+ * ProseMirror's example schemas because the dialect is the product contract: `markdown.ts` parses into it and writes its
+ * canonical Markdown, and every node and mark carries the `toDOM`/`parseDOM` pair an HTML paste needs.
+ *
+ * A note is the transcript's alert callout: `> [!NOTE]` and its four other kinds are the only state the wire carries, and
+ * the title is presentation from the transcript's own label map (`../markdown/parser.ts`), never document content. The
+ * element it draws is the one the transcript renders (`aside.markdown-alert`), so the composer shows the same callout —
+ * and a pasted one reads back that way: only the callout's body arrives as content, so the title it draws is drawn once.
+ * That title is no part of the document either, and it is drawn `contenteditable="false"`: a selection across the note
+ * copies the body alone, and Cut never takes away text the document does not hold.
  *
  * Images, horizontal rules, tables, task lists and math have no node here on purpose. They are not unrenderable by the
  * transcript, but the composer cannot edit them as rich content, so `sourceMode` loads a draft holding one as literal
  * text instead of dropping or corrupting it.
  */
-import { Schema, type DOMOutputSpec, type MarkSpec, type MarkType, type NodeSpec, type NodeType } from "prosemirror-model";
+import { DOMParser, Schema, type DOMOutputSpec, type MarkSpec, type MarkType, type NodeSpec, type NodeType } from "prosemirror-model";
 import { bulletList, listItem, orderedList } from "prosemirror-schema-list";
+import { ALERT_LABELS, type AlertType } from "../../markdown/parser.ts";
 
 /** The `language-…` class a pasted `<pre><code>` carries, which becomes the code block's `language` attribute. */
 function pastedCodeLanguage(dom: HTMLElement): string {
@@ -41,6 +49,52 @@ const blockquote: NodeSpec = {
   defining: true,
   parseDOM: [{ tag: "blockquote" }],
   toDOM: (): DOMOutputSpec => ["blockquote", 0],
+};
+
+/** The kind a pasted callout carries in its `markdown-alert--…` class, or the default when it names none. */
+function pastedAlertKind(dom: HTMLElement): AlertType {
+  const kind = /(?:^|\s)markdown-alert--([a-z]+)/u.exec(dom.className)?.[1];
+  return kind !== undefined && kind in ALERT_LABELS ? (kind as AlertType) : "note";
+}
+
+/**
+ * The element a pasted callout's content sits in: the body the transcript renders. A callout pasted without one keeps
+ * what the aside itself holds, so a paste never loses text to a missing wrapper.
+ */
+function pastedAlertBody(dom: HTMLElement): HTMLElement {
+  return dom.querySelector<HTMLElement>("div.markdown-alert__body") ?? dom;
+}
+
+/**
+ * A GitHub alert, `> [!NOTE]` and its four other kinds (`markdown.ts` parses and writes them). Its `toDOM` is the
+ * transcript's own callout, so the composer draws the title, the tone and the body the chat draws; the title comes from
+ * the label map and is never content.
+ */
+const note: NodeSpec = {
+  attrs: { kind: { default: "note" } },
+  content: "block+",
+  group: "block",
+  defining: true,
+  // Only the body is content: the title element is the one `toDOM` draws from `kind`, so parsing it would leave a
+  // pasted callout labelled twice. `getContent` replaces the default child walk rather than stripping text, so a body of
+  // several blocks keeps all of them.
+  parseDOM: [{
+    tag: "aside.markdown-alert",
+    getAttrs: (dom) => ({ kind: pastedAlertKind(dom as HTMLElement) }),
+    getContent: (dom, schema) => DOMParser.fromSchema(schema).parse(pastedAlertBody(dom as HTMLElement)).content,
+  }],
+  toDOM: (node): DOMOutputSpec => {
+    const kind = String(node.attrs.kind) as AlertType;
+    const label = ALERT_LABELS[kind] ?? ALERT_LABELS.note;
+    // The title is drawn `contenteditable="false"`: it sits inside the editable root but is not document content, so a
+    // selection across the note copies its body alone and Cut never takes away text the document does not hold.
+    return [
+      "aside",
+      { class: `markdown-alert markdown-alert--${kind}`, "aria-label": label },
+      ["div", { class: "markdown-alert__title", contenteditable: "false" }, label],
+      ["div", { class: "markdown-alert__body" }, 0],
+    ];
+  },
 };
 
 const codeBlock: NodeSpec = {
@@ -109,6 +163,7 @@ export const richSchema = new Schema({
     paragraph,
     heading,
     blockquote,
+    note,
     // The list specs come from prosemirror-schema-list, so its sink/lift/split commands apply to these nodes. A list is
     // tight by default, which is the canonical form: the serializer writes no blank line between items, and the
     // Markdown reader tells them apart only for rendering.

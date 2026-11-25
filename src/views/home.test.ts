@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test, vi } from "vitest";
 import type { PowerStatus } from "../api/schema/power.ts";
+import { stripPointer } from "../lib/composer/rich/editor.ts";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -459,6 +460,65 @@ test("the rich composer's styles take the composer's own tokens", () => {
   assert.doesNotMatch(styles, /hui-draft-|composer-mirror|data-composer-markdown/u);
   // The operator-only fence rule the transcript needs moved into this sheet unchanged.
   assert.match(styles, /\.chat-group\.user:not\(\.chat-group--peer\) \.chat-text :is\(\.code-block-wrapper pre, pre code\)/u);
+});
+
+test("the selection toolbar is a fixed popover inside the viewport, never a row of the composer", () => {
+  const rich = readFileSync(new URL("../styles/composer-rich.css", import.meta.url), "utf8");
+  const toolbar = readFileSync(new URL("../lib/composer/rich/toolbar.ts", import.meta.url), "utf8");
+  const editor = readFileSync(new URL("../lib/composer/rich/editor.ts", import.meta.url), "utf8");
+  const home = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+
+  // It draws in the top layer at two coordinates of its own: the UA's popover box is cleared, and it is fixed, so the
+  // composer's overflow, fade mask and container query can never clip it and it never takes a line of the draft.
+  assert.match(rich, /\.composer-toolbar \{\s*position: fixed;\s*inset: auto;\s*margin: 0;/u);
+  assert.match(rich, /\.composer-toolbar \{[^}]*max-width: calc\(100vw - 16px\);/su, "the cap the placement clamps to");
+  assert.match(rich, /\.composer-toolbar \{[^}]*flex-wrap: wrap;/su, "a phone's strip wraps rather than overflowing");
+  assert.match(rich, /\.composer-toolbar \{[^}]*padding: 8px;/su);
+  // Closed is closed: the strip's own `display` never outranks the popover's, so nothing of it draws until it opens.
+  assert.match(rich, /\.composer-toolbar\[hidden\] \{\s*display: none;/u);
+  assert.match(rich, /\.composer-toolbar:not\(:popover-open\) \{\s*display: none;/u);
+  // A pressed action is the accent, an unavailable one is muted, and the buttons keep a real hit area.
+  assert.match(rich, /\.composer-toolbar__item \{[^}]*min-width: 28px;[^}]*min-height: 28px;/su);
+  assert.match(rich, /\.composer-toolbar__item\[aria-pressed="true"\] \{[^}]*color: var\(--accent\);/su);
+  assert.match(rich, /\.composer-toolbar__item:disabled \{[^}]*color: var\(--muted\);/su);
+  assert.match(rich, /\.composer-toolbar__separator \{/u, "the groups are drawn apart");
+  assert.match(rich, /@media \(forced-colors: active\) \{[\s\S]*\.composer-toolbar \{/u);
+  // The strip is built and placed by the toolbar module, appended to the body as a manual popover.
+  assert.match(toolbar, /export const TOOLBAR_PADDING = 8;/u, "8px inside the viewport, as the sheet's cap assumes");
+  assert.match(toolbar, /document\.body\.append\(this\.#root\);/u);
+  assert.match(toolbar, /this\.#root\.setAttribute\("popover", "manual"\);/u);
+  assert.match(toolbar, /this\.#root\.showPopover\(\);/u);
+  assert.match(toolbar, /window\.visualViewport/u, "the placement follows the visual viewport");
+  assert.match(toolbar, /this\.#root\.style\.left = `\$\{left\}px`;/u);
+  // The editor mounts one per editor and only draws it on a secondary click over a selection, on a fine pointer.
+  assert.match(editor, /this\.#toolbar = new ComposerToolbar\(\{/u);
+  assert.match(editor, /this\.#toolbar\.destroy\(\);/u);
+  assert.match(editor, /window\.matchMedia\?\.\("\(pointer: fine\)"\)\.matches === true/u);
+  assert.match(editor, /contextmenu: \(_view, event\) => this\.#contextMenu\(event as MouseEvent\),/u);
+  // A touch laptop or a tablet with a trackpad matches a fine pointer as well, and a long press there is still the
+  // platform's own menu: the gate is the fine match and no touch at all, never the fine match alone.
+  assert.equal(stripPointer({ fine: true, coarse: true }), false, "a touch device draws no strip, whatever its pointer matches");
+  assert.equal(stripPointer({ fine: true, coarse: false }), true, "a mouse or a trackpad is what the strip is for");
+  assert.equal(stripPointer({ fine: false, coarse: true }), false, "a phone keeps its own long-press menu");
+  assert.match(editor, /stripPointer\(\{ fine: window\.matchMedia\?\.\("\(pointer: fine\)"\)\.matches === true, coarse: coarsePointer\(\) \}\)/u,
+    "the gate reads the coarse match it already had, so any touch keeps the platform's menu");
+  // An action of the strip's own re-places it over the result; only opening reads the clipboard.
+  assert.match(editor, /this\.#toolbar\.reanchor\(rect, this\.#formatState\(\)\);/u, "an action re-places the strip without reading the clipboard again");
+  // No permanent row, no Aa button and no hint strip: nothing of the composer's own markup carries the strip.
+  assert.doesNotMatch(home, /composer-toolbar/u);
+  assert.doesNotMatch(home, /Format selection/u);
+});
+
+test("the composer's note block keeps the transcript's callout and tightens it to the draft", () => {
+  const rich = readFileSync(new URL("../styles/composer-rich.css", import.meta.url), "utf8");
+  const transcript = readStyles("../styles/openclaw-chat.css");
+
+  // The tone and the title's colour are the transcript's: the composer only takes the room a six-line draft has.
+  assert.match(transcript, /\.markdown-alert--note \{ --markdown-alert-accent: #3b82f6; \}/u);
+  assert.match(transcript, /\.markdown-alert__title \{[^}]*color: var\(--markdown-alert-accent\);/su);
+  assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror \.markdown-alert \{[^}]*margin: 0 0 0\.45em;[^}]*padding: 4px 8px;/su);
+  assert.doesNotMatch(rich, /\.markdown-alert__title \{[^}]*color:/u, "the title's colour stays the transcript's");
+  assert.match(rich, /\.agent-chat__composer-combobox > \.ProseMirror \.markdown-alert__body > :last-child \{\s*margin-bottom: 0;/u);
 });
 
 test("long user prompts collapse and user rows offer Copy prompt", async () => {
