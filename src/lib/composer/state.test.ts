@@ -4,6 +4,7 @@ import {
   canSubmitComposer,
   composerEnterMode,
   composerPlaceholder,
+  promptHasContent,
   questionAnswer,
   queueRows,
   restoreRejectedSubmission,
@@ -40,9 +41,16 @@ test("a busy composer names the steer and queue shortcuts for its platform", () 
 });
 
 test("composer preserves work while disconnected or sending", () => {
-  assert.equal(canSubmitComposer({ draft: "hello", hasImage: false, opening: false, sending: false, connection: "live" }), true);
-  assert.equal(canSubmitComposer({ draft: "hello", hasImage: false, opening: false, sending: false, connection: "reconnecting" }), false);
-  assert.equal(canSubmitComposer({ draft: "hello", hasImage: false, opening: false, sending: true, connection: "live" }), false);
+  assert.equal(canSubmitComposer({ draft: "hello", attachments: [], opening: false, sending: false, connection: "live" }), true);
+  assert.equal(canSubmitComposer({ draft: "hello", attachments: [], opening: false, sending: false, connection: "reconnecting" }), false);
+  assert.equal(canSubmitComposer({ draft: "hello", attachments: [], opening: false, sending: true, connection: "live" }), false);
+});
+
+test("an empty draft with one file is a submittable prompt on a live connection", () => {
+  const file = [{ kind: "file" as const, name: "notes.txt", mimeType: "text/plain", dataBase64: "" }];
+  assert.equal(promptHasContent("", file), true, "the runtime hands the agent the file's path");
+  assert.equal(canSubmitComposer({ draft: "", attachments: file, opening: false, sending: false, connection: "live" }), true);
+  assert.equal(canSubmitComposer({ draft: "", attachments: [], opening: false, sending: false, connection: "live" }), false);
 });
 
 test("a late prompt acknowledgement cannot re-lock an already settled turn", () => {

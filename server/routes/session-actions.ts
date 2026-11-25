@@ -138,9 +138,10 @@ export function createSessionActionRoutes(deps: {
           try {
             prepared = await readAttachments(id, body["attachments"]);
             const attachments = prepared.attachments;
-            // An image on its own is a valid prompt; a file on its own is not,
-            // because the agent needs to be told what to do with it.
-            if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
+            // An attachment of any accepted kind is a valid prompt on its own: a
+            // file's path reaches the agent in the message HUI builds, so the agent
+            // reads it with its own tool without being told what to do with it.
+            if (!text.trim() && attachments.length === 0) {
               throw new AttachmentInputError("A prompt is required.");
             }
             if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${id}`);

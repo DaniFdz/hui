@@ -86,14 +86,19 @@ export function streamingAfterSubmission(
   return status === "running" || status === "waiting";
 }
 
+/** A prompt may carry text, attachments or both: the runtime names every attached file in the payload. */
+export function promptHasContent(draft: string, attachments: readonly Attachment[]): boolean {
+  return Boolean(draft.trim() || attachments.length);
+}
+
 export function canSubmitComposer(input: {
   draft: string;
-  hasImage: boolean;
+  attachments: readonly Attachment[];
   opening: boolean;
   sending: boolean;
   connection: SessionConnection;
 }): boolean {
-  return Boolean(input.draft.trim() || input.hasImage) && !input.opening && !input.sending && input.connection === "live";
+  return promptHasContent(input.draft, input.attachments) && !input.opening && !input.sending && input.connection === "live";
 }
 
 /**
