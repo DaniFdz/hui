@@ -1,10 +1,19 @@
 /**
  * The banner saying the Mac stays awake with its lid closed. It only decides whether the banner shows; the gateway
- * reports the power state, and turning it off goes back through the app.
+ * reports the power state, and turning it off goes back through the app. The chat draws it in flow under its header,
+ * so a phone browser's notch does not cover it.
  */
 import { html, nothing } from "lit";
 import type { PowerStatus } from "../api/schema/power.ts";
 import { icons } from "../lib/icons.ts";
+
+/** What the notice shows and what its two buttons ask the app to do. */
+export type PowerNoticeProps = {
+  power: PowerStatus | null | undefined;
+  dismissed: boolean;
+  onTurnOff(): void;
+  onDismiss(): void;
+};
 
 /** Shown whenever the lid switch is on and the Mac is actually held awake. */
 export function lidAwakeNoticeShown(power: PowerStatus | null | undefined): boolean {
@@ -12,13 +21,7 @@ export function lidAwakeNoticeShown(power: PowerStatus | null | undefined): bool
 }
 
 /** Shares the update notice's anatomy and styling. */
-export function renderPowerNotice(props: {
-  power: PowerStatus | null | undefined;
-  dismissed: boolean;
-  inert: boolean;
-  onTurnOff(): void;
-  onDismiss(): void;
-}) {
+export function renderPowerNotice(props: PowerNoticeProps & { inert: boolean }) {
   if (props.dismissed || !lidAwakeNoticeShown(props.power)) return nothing;
   return html`<aside class="hui-update-notice" aria-label="Sleep prevention" ?inert=${props.inert}>
     <span class="hui-update-notice__message" role="status">

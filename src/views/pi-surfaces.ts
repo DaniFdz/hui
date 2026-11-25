@@ -223,7 +223,7 @@ function renderConfig(props: PiSurfaceProps) {
       ${section(
         "HUI-owned",
         "HUI writes presentation preferences and HUI-only runtime policy.",
-        html`${row("Appearance and local preferences", "Stored under HUI's XDG configuration directory.", link("Open Appearance", "appearance"))}
+        html`${row("Appearance", "Kept by this device, in its own storage: the gateway stores none of it.", link("Open Appearance", "appearance"))}
           ${row("Skill availability", "Disable a skill for HUI without changing its PI installation.", link("Open Skills", "skills"))}
           ${row("Plugin availability", "Exclude packages and extensions before the PI SDK loads resources.", link("Open Plugins", "plugins"))}`,
       )}

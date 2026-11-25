@@ -7,7 +7,7 @@ import { isPiSurface } from "./pi-surfaces.ts";
 
 const source = readFileSync(new URL("./pi-surfaces.ts", import.meta.url), "utf8");
 
-test("the HUI-05 through HUI-07 capabilities use PI-backed surfaces", () => {
+test("retained capabilities use PI-backed surfaces", () => {
   const expected = [
     "config",
     "connection",

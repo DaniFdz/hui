@@ -25,13 +25,24 @@ export function labelDropdown(event: Event) {
   }
 }
 
-/** WA selects handle Escape on document, after enclosing view handlers run. */
-export function hasOpenWebAwesomePopup(event: Event): boolean {
-  return event.composedPath().some((target) => {
+/**
+ * WA popups handle Escape on document, after enclosing view handlers run.
+ *
+ * A select or dropdown closes itself only when the press comes from inside it, so its own path says so. An open
+ * `wa-popover` counts from anywhere in the page: the chat header's Run status panel gives focus back to the composer
+ * while it shows, so its Escape would otherwise reach the pane's Stop path and abort the turn the panel reports on. A
+ * native dialog on top keeps the press for itself, as the command palette and every modal do. `scope` is injectable so
+ * the DOM-free tests can hand it a document.
+ */
+export function hasOpenWebAwesomePopup(event: Event, scope: Document | undefined = typeof document === "undefined" ? undefined : document): boolean {
+  const inPath = event.composedPath().some((target) => {
     const element = target as Partial<HTMLElement> & { open?: boolean };
     return (element.localName === "wa-select" || element.localName === "wa-dropdown")
       && element.open === true;
   });
+  if (inPath || !scope) return inPath;
+  if (scope.querySelector("dialog[open]")) return false;
+  return [...scope.querySelectorAll<Element & { open?: boolean }>("wa-popover")].some((popover) => popover.open === true);
 }
 
 /** A `wa-after-show` listener: Web Awesome 3.14 still finishes opening a dropdown that closed meanwhile, focusing the

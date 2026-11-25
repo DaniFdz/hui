@@ -1,9 +1,10 @@
-/** The Work pane's shared terminals: opening one from the chat header, running a command, a second independent shell,
+/** The Work pane's shared terminals: opening one from its + menu, running a command, a second independent shell,
  * the agent's tool reaching the same shells, ending one, the narrow key bar and scrolling back (WORK-024, 025, 026, 027,
  * 029, 032, 033). Gespenst paints into a canvas, so the shell's own output is read from the gateway's replay of the
  * terminal the pane is connected to. */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { backToChat, openWork, reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -45,37 +46,33 @@ const run = async (hui: Hui, screen: Screen, command: string) => {
  * width, so what a tab holds is proved by its output, which always starts on a line of its own. */
 const assign = (name: string, value: string) => `${name}=${value}; printf 'SET %s\\n' "$${name}"`;
 
-test("Open terminal in the chat header shows the conversation's terminal in the Work pane", { tags: ["WORK-024"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New terminal in the Work pane opens the conversation's shell in its directory, which the chat header never offers", { tags: ["WORK-024"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
-  const session = await hui.createSession({ title: "Open terminal", cwd: repository.path });
+  const session = await hui.createSession({ title: "Terminal in the Work pane", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const open = screen.getByRole("button", "Open terminal");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await open.tap();
+  await openWork(screen, "New terminal");
 
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   await expect(pane.getByText(repository.path, { exact: true })).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   expect(await terminals(hui, session.id)).toHaveLength(1);
+  // The sidebar is a drawer a phone opens over the chat, which the full-screen Work destination is not.
+  await backToChat(screen);
   await hui.sessionList();
-  expect((await hui.glyph("Open terminal")).animated).toBe(false);
+  await expect(screen.getByRole("button", "Open terminal")).toHaveCount(0);
 
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  // Coming back to the conversation leaves the drawer behind and restores its Work views, so the terminal it already
+  // has is the tab the pane shows again.
+  await hui.open(`/sessions/${session.id}`);
+  await reopenWork(screen, "Terminal 1");
+  await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
+  await openWork(screen, "Files");
   await expect(pane.getByRole("tab", "Files")).toHaveAttribute("aria-selected", "true");
-  await open.tap();
+  await reopenWork(screen, "Terminal 1");
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   expect(await terminals(hui, session.id)).toHaveLength(1);
-
-  const other = await hui.createSession({ title: "Reuse the running shell", cwd: repository.path });
-  const shell = (await hui.api<{ terminal: Terminal }>("POST", `/__hui/sessions/${other.id}/terminals`, {})).terminal;
-  await hui.open(`/sessions/${other.id}`);
-  await open.tap();
-  await expect(pane.getByRole("tab", shell.title)).toHaveAttribute("aria-selected", "true");
-  await expect(pane.getByText("Shared · Connected")).toBeVisible();
-  expect(await terminals(hui, other.id)).toHaveLength(1);
 });
 
 test("typing a command into the terminal runs it in a real shell and its output, colours included, reaches the terminal", { tags: ["WORK-025"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -83,9 +80,8 @@ test("typing a command into the terminal runs it in a real shell and its output,
   const session = await hui.createSession({ title: "Run a command", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
@@ -96,8 +92,11 @@ test("typing a command into the terminal runs it in a real shell and its output,
   expect(printed).toContain("\u001b[31mRED\u001b[0m plain");
 
   await hui.prompt(session, "E2E_REPLY:V2hhdCBhIHNoZWxs");
-  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  // A phone shows the Work destination instead of the chat, so the reply is read after leaving it; the terminal
+  // stays mounted and connected behind the chat either way.
+  await backToChat(screen);
+  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(screen.getByLabel("Message")).toBeVisible();
   await expect(screen.getByTestId("transcript")).toBeVisible();
 });
@@ -107,9 +106,8 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   const session = await hui.createSession({ title: "Two terminals", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   const first = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, first.id);
@@ -142,9 +140,8 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   const session = await hui.createSession({ title: "Share a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
@@ -152,6 +149,7 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect.poll(() => replay(hui, session.id, id)).toContain("SET hello-from-operator");
 
   await hui.prompt(session, "E2E_SHARED_TERMINAL");
+  await backToChat(screen);
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
   await expect.poll(() => replay(hui, session.id, id)).toContain("Shared variable: hello-from-operator");
   expect(await replay(hui, session.id, id)).toContain("PI_SHARED_TERMINAL");
@@ -174,9 +172,8 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const session = await hui.createSession({ title: "End a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   await screen.getByRole("button", "Open Work view").tap();
   await item(screen, "T").first().tap();
@@ -222,7 +219,7 @@ test("below 1100px the key bar interrupts a running program, locks Ctrl on a dou
 
   await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   const keys = screen.getByLabel("Terminal keys");
   const key = (name: string) => keys.getByRole("button", name);
   for (const name of ["Escape", "Tab", "Control for next keystroke", "Up arrow", "Down arrow", "Left arrow", "Right arrow"]) {
@@ -256,9 +253,8 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   const terminal = screen.getByLabel("Shared terminal input", { visible: true });
   const jump = screen.getByLabel("Jump to bottom");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(screen.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
@@ -268,7 +264,8 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   await expect(jump).toHaveAttribute("aria-hidden", "true");
 
   await run(hui, screen, "for i in $(seq 1 40); do echo LATE$i; sleep 0.2; done");
-  await hui.wheel(terminal, -2_000);
+  // Exercise the terminal's real touch adapter rather than bypassing it with a synthetic wheel.
+  await hui.touch(terminal, { drag: 2_000 });
   await expect(jump).toHaveAttribute("aria-hidden", "false");
   await expect.poll(() => replay(hui, session.id, id)).toContain("LATE40");
   await expect(jump).toHaveAttribute("aria-hidden", "false");

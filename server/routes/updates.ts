@@ -1,7 +1,8 @@
 /**
  * `GET/POST /__hui/update` (the installed release's status, and installing the stable version an update check
  * returned) and `GET/POST /__hui/update/check`, over `updates.ts`. `hui.ts` applies the `x-hui` guard before
- * dispatching here.
+ * dispatching here, and answers this route's own cross-origin preflight and `Access-Control-Allow-Origin` header, so a
+ * client can probe another gateway's identity (docs/api.md).
  */
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { UpdateSnapshot, UpdateError } from "../api/updates.ts";

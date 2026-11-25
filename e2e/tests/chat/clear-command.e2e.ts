@@ -1,4 +1,4 @@
-/** /clear empties a session's transcript in place, keeps the old one on disk and refuses arguments, attachments, active work and a bot's chat (CHAT-041). */
+/** /clear empties a session's transcript in place, keeps the old one on disk, refuses arguments, attachments and active work, and empties a bot's chat too (CHAT-041). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -73,15 +73,24 @@ test("/clear refuses attachments", { tags: ["CHAT-041"], platforms: ["web"] }, a
   await expect(transcript.getByText("Seed before refusing 5c1d")).toBeVisible();
 });
 
-test("a bot's chat neither lists nor runs /clear", { tags: ["CHAT-041"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a bot's chat lists /clear and runs it: the transcript and the bot's memory start again", { tags: ["CHAT-041"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
+  const transcript = screen.getByTestId("transcript");
   const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Keeper", soul: "Keeper, a fixture bot." });
   await hui.open(`/bots/${bot.id}`);
+  await message.fill("Remember the blue door 4c9e");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
   await message.fill("/");
   const menu = screen.getByLabel("Commands and paths");
   await expect(menu.getByText("/reload", { exact: true })).toBeVisible();
-  await expect(menu.getByText("/clear", { exact: true })).toBeHidden();
+  await expect(menu.getByText("/clear", { exact: true })).toBeVisible();
+  await expect(menu.getByText("/compact", { exact: true })).toBeHidden();
   await message.fill("/clear");
   await screen.getByRole("button", "Send message").tap();
-  await expect(screen.getByText("A bot keeps one permanent chat, so /clear is not available here. Its memory summarizes older messages by itself.")).toBeVisible();
+  await expect(screen.getByText("Session context cleared.")).toBeVisible();
+  await expect(screen.getByText("Say hi to Keeper")).toBeVisible();
+  await expect(transcript.getByText("Remember the blue door 4c9e")).toBeHidden();
 });

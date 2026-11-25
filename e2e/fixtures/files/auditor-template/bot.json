@@ -1,0 +1,26 @@
+{
+  "format": "hui-bot",
+  "version": 2,
+  "bot": {
+    "name": "Auditor",
+    "title": "Fixture reviewer",
+    "description": "Reviews pull requests before the fixture team reads them.",
+    "avatar": { "shape": "sprout", "ears": "antenna", "color": "#3b82f6" },
+    "thinking": "low",
+    "tagging": "mention"
+  },
+  "routines": [
+    { "name": "Morning check", "prompt": "Check the build and report what is red.", "schedule": { "kind": "every", "everyMs": 86400000 } }
+  ],
+  "triggers": [
+    { "name": "Pull requests", "filter": { "prLinks": true }, "prompt": "Read the pull request and say whether it is ready.", "cooldownSeconds": 300 },
+    { "name": "Merged·twice", "prompt": "Two names, one trigger." }
+  ],
+  "disabledTools": ["bash"],
+  "disabledSkills": [],
+  "skills": ["verify"],
+  "open": [
+    { "kind": "ask", "where": "SOUL.md", "question": "Which repositories should I watch for pull requests?", "excerpt": "acme/widgets" }
+  ],
+  "needs": ["The GitHub CLI signed in, with access to the repositories it reviews"]
+}

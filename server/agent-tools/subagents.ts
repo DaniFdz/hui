@@ -12,14 +12,22 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import {
   readRegistry,
   updateRegistry,
+  type SessionGroupConfig,
   type SessionRecord,
   type SubagentStatus,
 } from "../sessions/sessions.ts";
 import { AgentToolInputError, rootSessionId } from "../sessions/session-tree.ts";
+import { projectDirectory } from "../sessions/group-session-defaults.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { piThinking } from "../runtimes/model-controls.ts";
 import { isThinkingLevel } from "../sessions/thinking.ts";
-import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "./subagent-completion.ts";
+import {
+  classifySubagentEnd,
+  formatSubagentCompletionEvent,
+  reportedSubagentEnd,
+  SUBAGENT_COMPLETION_MARKER,
+  type SubagentCompletionItem,
+} from "./subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;
 /** Collected children of one session tree (OpenClaw's Swarm defaults): at most this many start or run at once… */
@@ -27,7 +35,8 @@ const MAX_RUNNING_COLLECTED = 32;
 /** …and at most this many are queued, starting or running; more are refused. */
 const MAX_LIVE_COLLECTED = 50;
 const MAX_WAIT_IDS = 100;
-const READY_TIMEOUT_MS = 30_000;
+/** A boot after a restart waits for Durable's resume, which holds every start for up to 30 seconds. */
+const READY_TIMEOUT_MS = 60_000;
 const CARD_SUMMARY_CHARS = 280;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
@@ -46,9 +55,11 @@ type SessionAccess = Pick<
   | "followUp"
   | "models"
   | "subagentRoutes"
+  | "subagentWorktree"
   | "notifySnapshot"
   | "prompt"
   | "release"
+  | "resumesRun"
   | "setSubagentSnapshotProvider"
   | "snapshot"
   | "status"
@@ -96,7 +107,9 @@ function integer(
 
 function visibleTree(records: readonly SessionRecord[], callerId: string): SessionRecord[] {
   const root = rootSessionId(records, callerId);
-  return records.filter((record) => rootSessionId(records, record.id) === root);
+  const caller = records.find((record) => record.id === callerId);
+  const watched = new Set(caller?.watches ?? []);
+  return records.filter((record) => rootSessionId(records, record.id) === root || watched.has(record.id));
 }
 
 /** The session and its ancestors. */
@@ -129,10 +142,9 @@ function truncate(value: string, maximum: number): string {
   return value.length <= maximum ? value : `${value.slice(0, maximum - 1)}…`;
 }
 
-function lastAssistant(entries: readonly TranscriptEntry[]): string {
-  const entry = entries.findLast((item) => item.kind === "message" && item.role === "assistant");
-  return entry?.kind === "message" ? entry.text.trim() : "";
-}
+/** What a child's run left: its status, the error that explains a failure, and the error its runtime reported during
+ * the run (kept apart because a settle can replace the history that held it). */
+type RunOutcome = { status: SubagentStatus; error?: string; runtimeError?: string };
 
 function boundedHistory(entries: readonly TranscriptEntry[], limit: number): TranscriptEntry[] {
   const selected: TranscriptEntry[] = [];
@@ -172,6 +184,12 @@ export class SubagentService {
    * reaches the model only once the tool round ends, so it does not end another wait of the same round (a script
    * waiting in a loop would spin). */
   #steeredWaits = new Map<string, string>();
+  /**
+   * The group a chat's bot belongs to, by its bot id: a chief works in its own folder, so the child it starts belongs to
+   * the project and machine the group states (`group-session-defaults.ts`). `services.ts` answers from its registries;
+   * a host without them leaves this, and every child stays in its caller's folder.
+   */
+  botGroup: (botId: string) => Promise<Pick<SessionGroupConfig, "cwd" | "worker"> | undefined> = async () => undefined;
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -196,7 +214,7 @@ export class SubagentService {
   async initialize(): Promise<void> {
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) =>
-      record.subagent && ACTIVE_STATUSES.has(record.subagent.status)
+      record.subagent && ACTIVE_STATUSES.has(record.subagent.status) && !this.sessions.resumesRun(record)
         ? {
             ...record,
             subagent: {
@@ -211,8 +229,31 @@ export class SubagentService {
         : record,
     ));
     this.#replaceCache(records);
+    this.#resumeChildren(records);
     // Startup must not wait for a parent model/runtime to become available.
     this.#scheduleDelivery();
+  }
+
+  /** A child whose runtime continues its run across a gateway restart stays active, and the end of that run reaches
+   * the parent as any other result. A queued collected child goes back to the queue that saves it as `starting`. */
+  #resumeChildren(records: readonly SessionRecord[]): void {
+    for (const record of records) {
+      const subagent = record.subagent;
+      if (!subagent || !ACTIVE_STATUSES.has(subagent.status) || !this.sessions.resumesRun(record)) continue;
+      // No run marker: the task never reached the runtime, so it starts now, as the spawn would have.
+      if (!record.runStartedAt) {
+        if (subagent.collect) {
+          this.#queue.set(subagent.taskId, { child: record, root: rootSessionId(records, record.id), runTimeoutSeconds: 0 });
+          continue;
+        }
+        if (this.sessions.ensure(record)) void this.#run(record, 0);
+        continue;
+      }
+      if (!this.sessions.ensure(record)) continue;
+      if (subagent.collect) this.#running.set(subagent.taskId, rootSessionId(records, record.id));
+      void this.#resumeRun(record);
+    }
+    this.#pump();
   }
 
   dispose(): void {
@@ -281,6 +322,7 @@ export class SubagentService {
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
     const collect = params["collect"] === true;
+    const worktree = params["worktree"] === true;
     if (route && model) {
       throw new AgentToolInputError("Pass route or model, not both: a route already names a model.");
     }
@@ -291,7 +333,25 @@ export class SubagentService {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
     const picked = route ? await this.#resolveRoute(route) : undefined;
-    const childModel = picked?.model ?? model;
+    const chat = (await this.registryReader()).find((record) => record.id === callerId);
+    if (!chat) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
+    // A chief's chat works in its own folder; the child belongs to the project its group states, on the group's machine.
+    // Without one (a lead, or a chat of no bot) the caller's own checkout and machine stand, as they always did.
+    const group = chat.bot ? await this.botGroup(chat.bot) : undefined;
+    const cwd = projectDirectory(group, undefined, chat.cwd);
+    const worker = group?.worker ?? chat.worker;
+    // Before a child exists: a checkout that cannot be made refuses the spawn, and the caller can retry.
+    let createdWorktree: { cwd: string; branch: string; rollback: () => Promise<void> } | undefined;
+    if (worktree) {
+      createdWorktree = await this.sessions.subagentWorktree(
+        { ...chat, cwd, ...(worker ? { worker } : {}) },
+        label ?? truncate(task.replace(/\s+/g, " "), 72),
+      ).catch((error: unknown) => {
+        throw new AgentToolInputError(error instanceof Error ? error.message : "Could not create a worktree for the subagent.");
+      });
+    }
+    // A route without a model inherits the caller's, as an omitted route does.
+    const childModel = picked?.model || model;
     const childThinking = thinking ?? picked?.thinking;
     if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();
@@ -299,58 +359,67 @@ export class SubagentService {
     const now = this.now().toISOString();
     let child: SessionRecord | undefined;
     let root = "";
-    const records = await this.registryUpdater((current) => {
-      const caller = current.find((record) => record.id === callerId);
-      if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
-      root = rootSessionId(current, callerId);
-      // Ordinary and collected children have separate limits.
-      const active = current.filter((record) =>
-        record.subagent && ACTIVE_STATUSES.has(record.subagent.status) &&
-        (record.subagent.collect === true) === collect &&
-        rootSessionId(current, record.id) === root,
-      ).length;
-      if (collect) {
-        // One level of collected children: their caps and the parent's lane assume a flat group.
-        if (lineage(current, callerId).some((record) => record.subagent?.collect)) {
-          throw new AgentToolInputError("A collected subagent cannot spawn collected subagents of its own; return the work to its parent.");
+    let records: readonly SessionRecord[];
+    try {
+      records = await this.registryUpdater((current) => {
+        const caller = current.find((record) => record.id === callerId);
+        if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
+        root = rootSessionId(current, callerId);
+        // Ordinary and collected children have separate limits.
+        const active = current.filter((record) =>
+          record.subagent && ACTIVE_STATUSES.has(record.subagent.status) &&
+          (record.subagent.collect === true) === collect &&
+          rootSessionId(current, record.id) === root,
+        ).length;
+        if (collect) {
+          // One level of collected children: their caps and the parent's lane assume a flat group.
+          if (lineage(current, callerId).some((record) => record.subagent?.collect)) {
+            throw new AgentToolInputError("A collected subagent cannot spawn collected subagents of its own; return the work to its parent.");
+          }
+          if (active >= MAX_LIVE_COLLECTED) {
+            throw new AgentToolInputError(`At most ${MAX_LIVE_COLLECTED} collected subagents may be queued or running in one session tree.`);
+          }
+        } else if (active >= MAX_ACTIVE_SUBAGENTS) {
+          throw new AgentToolInputError(`At most ${MAX_ACTIVE_SUBAGENTS} subagents may run in one session tree.`);
         }
-        if (active >= MAX_LIVE_COLLECTED) {
-          throw new AgentToolInputError(`At most ${MAX_LIVE_COLLECTED} collected subagents may be queued or running in one session tree.`);
-        }
-      } else if (active >= MAX_ACTIVE_SUBAGENTS) {
-        throw new AgentToolInputError(`At most ${MAX_ACTIVE_SUBAGENTS} subagents may run in one session tree.`);
-      }
-      child = {
-        id: sessionId,
-        title: label ?? truncate(task.replace(/\s+/g, " "), 72),
-        group: caller.group,
-        ...(caller.archived ? { archived: true } : {}),
-        cwd: caller.cwd,
-        // A remote session's children run on the same worker.
-        ...(caller.worker ? { worker: caller.worker } : {}),
-        tool: caller.tool,
-        model: childModel ?? caller.model,
-        // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
-        thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
-        parentId: caller.id,
-        subagent: {
-          taskId,
-          task,
-          ...(label ? { label } : {}),
-          status: "starting",
-          startedAt: now,
+        child = {
+          id: sessionId,
+          title: label ?? truncate(task.replace(/\s+/g, " "), 72),
+          group: caller.group,
+          ...(caller.archived ? { archived: true } : {}),
+          cwd: createdWorktree?.cwd ?? cwd,
+          // A subagent of a bot's chat loads the bot's own skills, and so do its own children (the staff pack).
+          ...(caller.bot ?? caller.botSkills ? { botSkills: caller.bot ?? caller.botSkills } : {}),
+          // A remote session's children run on the same worker.
+          ...(worker ? { worker } : {}),
+          tool: caller.tool,
+          model: childModel ?? caller.model,
+          // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
+          thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
+          parentId: caller.id,
+          subagent: {
+            taskId,
+            task,
+            ...(label ? { label } : {}),
+            status: "starting",
+            startedAt: now,
+            updatedAt: now,
+            ...(collect ? { collect: true as const } : {}),
+          },
+          createdAt: now,
           updatedAt: now,
-          ...(collect ? { collect: true as const } : {}),
-        },
-        createdAt: now,
-        updatedAt: now,
-        source: "hui",
-      };
-      return [
-        ...current.map((record) => record.id === caller.id ? { ...record, updatedAt: now } : record),
-        child,
-      ];
-    });
+          source: "hui",
+        };
+        return [
+          ...current.map((record) => record.id === caller.id ? { ...record, updatedAt: now } : record),
+          child,
+        ];
+      });
+    } catch (error) {
+      // A worktree exists for a child HUI never registered: put the checkout back.
+      await createdWorktree?.rollback().catch(() => undefined);
+      throw error;
+    }
     if (collect) this.#queue.set(taskId, { child: child!, root, runTimeoutSeconds });
     this.#replaceCache(records);
     if (collect) this.#pump();
@@ -430,7 +499,7 @@ export class SubagentService {
     try {
       await this.#waitUntilReady(child.id);
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
-      // Only from `starting`: a task cancelled meanwhile stays cancelled.
+      // Only an active task: one cancelled meanwhile stays cancelled.
       if (!(await this.#markRunning(child.id))) {
         completion.cancel();
         return;
@@ -444,12 +513,7 @@ export class SubagentService {
           throw error;
         }
       }
-      const outcome = await completion.promise;
-      if (outcome.status === "cancelled") return; // #cancel records it
-      const summary = outcome.status === "completed"
-        ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
-        : "";
-      await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+      await this.#settleTask(child, await completion.promise);
     } catch (error) {
       await this.#finishTask(
         child.id,
@@ -463,14 +527,47 @@ export class SubagentService {
     }
   }
 
-  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number): {
-    promise: Promise<{ status: SubagentStatus; error?: string }>;
+  /** A child whose runtime resumed its run: wait for that run to end, with no timeout left to honour, and record its
+   * result as this gateway would have. */
+  async #resumeRun(child: SessionRecord): Promise<void> {
+    const taskId = child.subagent!.taskId;
+    try {
+      await this.#settleTask(child, await this.#waitForCompletion(child, 0, true).promise);
+    } catch (error) {
+      await this.#finishTask(child.id, "failed", "", error instanceof Error ? error.message : "The subagent failed.");
+    } finally {
+      this.#controls.delete(taskId);
+      if (this.#running.delete(taskId)) this.#pump();
+    }
+  }
+
+  /** Records how a child's run ended. A cancel recorded itself. */
+  async #settleTask(child: SessionRecord, outcome: RunOutcome): Promise<void> {
+    if (outcome.status === "cancelled") return;
+    if (outcome.status !== "completed") {
+      await this.#finishTask(child.id, outcome.status, "", outcome.error);
+      return;
+    }
+    const end = classifySubagentEnd(this.sessions.transcript(child.id), outcome.runtimeError);
+    await this.#finishTask(
+      child.id,
+      end.status,
+      end.status === "completed" ? truncate(end.summary, 20_000) : "",
+      end.status === "failed" ? end.error : "",
+    );
+  }
+
+  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number, resumed = false): {
+    promise: Promise<RunOutcome>;
     cancel: () => void;
   } {
     let unsubscribe = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
-    let resolvePromise!: (value: { status: SubagentStatus; error?: string }) => void;
+    // A Durable run's error lives in the history only until settling refreshes it, and a run that answers after one
+    // has recovered: this holds the run's latest error for the settle that needs it.
+    let runtimeError: string | undefined;
+    let resolvePromise!: (value: RunOutcome) => void;
     const cleanup = () => {
       unsubscribe();
       if (timer) {
@@ -479,25 +576,33 @@ export class SubagentService {
       }
       this.#controls.delete(child.subagent!.taskId);
     };
-    const settle = (status: SubagentStatus, error?: string) => {
+    const settle = (status: SubagentStatus, error?: string, runError?: string) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolvePromise({ status, ...(error ? { error } : {}) });
+      resolvePromise({ status, ...(error ? { error } : {}), ...(runError ? { runtimeError: runError } : {}) });
     };
-    const promise = new Promise<{ status: SubagentStatus; error?: string }>((resolve) => {
+    const promise = new Promise<RunOutcome>((resolve) => {
       resolvePromise = resolve;
       const watched = this.sessions.watch(child.id, (message) => {
-        if (message.kind === "event" && message.event.type === "settled") settle("completed");
+        if (message.kind === "event" && message.event.type === "error") runtimeError = message.event.message;
+        else if (message.kind === "event" && message.event.type === "text" && message.event.delta.trim()) {
+          // The run kept answering after that error, so it recovered.
+          runtimeError = undefined;
+        } else if (message.kind === "event" && message.event.type === "settled") settle("completed", undefined, runtimeError);
         else if (message.kind === "status" && message.status === "error") {
           settle("failed", "The subagent runtime failed.");
         } else if (message.kind === "status" && message.status === "disconnected") {
           settle("failed", "HUI is disconnected from the machine the subagent runs on.");
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
+        } else if (resumed && message.kind === "status" && message.status === "idle") {
+          settle("completed", undefined, runtimeError);
         }
       });
       unsubscribe = watched.unsubscribe;
+      // A run that ended while this gateway was away reports no settle, so the state it left says so.
+      if (resumed && watched.snapshot.status === "idle") settle("completed", undefined, runtimeError);
       if (runTimeoutSeconds > 0) {
         timer = setTimeout(() => {
           settle("timed_out", `The subagent exceeded ${runTimeoutSeconds} seconds.`);
@@ -651,12 +756,15 @@ export class SubagentService {
       return true;
     });
     if (!remaining.length || this.#disposed) return;
-    const items: SubagentCompletionItem[] = remaining.map((record) => ({
-      sessionId: record.id, title: record.title, task: record.subagent!.task,
-      status: record.subagent!.status, startedAt: record.subagent!.startedAt,
-      ...(record.subagent!.endedAt ? { endedAt: record.subagent!.endedAt } : {}),
-      result: record.subagent!.summary || record.subagent!.error || `Subagent ended with status ${record.subagent!.status}.`,
-    }));
+    const items: SubagentCompletionItem[] = remaining.map((record) => {
+      const end = reportedSubagentEnd(record.subagent!);
+      return {
+        sessionId: record.id, title: record.title, task: record.subagent!.task,
+        status: end.status, startedAt: record.subagent!.startedAt,
+        ...(record.subagent!.endedAt ? { endedAt: record.subagent!.endedAt } : {}),
+        result: end.summary || end.error || `Subagent ended with status ${end.status}.`,
+      };
+    });
     const ids = remaining.map((record) => record.subagent!.taskId);
     const message = formatSubagentCompletionEvent(items).replace(SUBAGENT_COMPLETION_MARKER,
       `${SUBAGENT_COMPLETION_MARKER}\ndelivery_ids: ${JSON.stringify(ids)}`);
@@ -959,14 +1067,17 @@ export class SubagentService {
     if (steeredBy !== undefined) this.#steeredWaits.set(callerId, steeredBy);
     const pending = records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId);
     return {
-      completed: done.map((record) => ({
-        taskId: record.subagent!.taskId,
-        sessionKey: record.id,
-        label: record.title,
-        status: record.subagent!.status,
-        ...(record.subagent!.summary ? { result: record.subagent!.summary } : {}),
-        ...(record.subagent!.error ? { error: record.subagent!.error } : {}),
-      })),
+      completed: done.map((record) => {
+        const end = reportedSubagentEnd(record.subagent!);
+        return {
+          taskId: record.subagent!.taskId,
+          sessionKey: record.id,
+          label: record.title,
+          status: end.status,
+          ...(end.summary ? { result: end.summary } : {}),
+          ...(end.error ? { error: end.error } : {}),
+        };
+      }),
       pending,
       ...(steeredBy !== undefined && pending.length
         ? { interrupted: "A new message is waiting for you. You see it only once this tool call returns, or once the script returns when a codemode script called this. Return now, and call agents_wait again for the pending tasks if they still matter." }
@@ -1016,8 +1127,9 @@ export class SubagentService {
     let started = false;
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) => {
-      if (record.id !== sessionId || record.subagent?.status !== "starting") return record;
+      if (record.id !== sessionId || !record.subagent || !ACTIVE_STATUSES.has(record.subagent.status)) return record;
       started = true;
+      if (record.subagent.status === "running") return record;
       return { ...record, subagent: { ...record.subagent, status: "running" as const, updatedAt: now }, updatedAt: now };
     }));
     this.#replaceCache(records);

@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { fetchJson, fetchWithResponseDeadline, GatewayHttpError, gatewayRequestError, isGatewayUnavailable } from "./request.ts";
+import { fetchEventStream, fetchJson, fetchWithResponseDeadline, GatewayHttpError, gatewayRequestError, isGatewayUnavailable } from "./request.ts";
 
-/** Answers after `headersMs`; its body then streams for `bodyMs` more. */
-function slowGateway(headersMs: number, bodyMs: number) {
+/** Answers when the test releases it with `answer()`, the way a gateway that got round to it would; its body then
+ * streams for `bodyMs` more, so a slow body outlasts the response deadline without waiting out a duration. */
+function slowGateway(bodyMs: number) {
   const seen: (AbortSignal | undefined)[] = [];
+  let release = () => {};
   const fetcher = (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
     const signal = init?.signal ?? undefined;
     seen.push(signal);
     const fail = () => reject(signal!.reason);
     signal?.addEventListener("abort", fail, { once: true });
-    setTimeout(() => {
+    release = () => {
       signal?.removeEventListener("abort", fail);
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -25,20 +27,25 @@ function slowGateway(headersMs: number, bodyMs: number) {
         },
       });
       resolve(new Response(body, { headers: { "content-type": "application/json" } }));
-    }, headersMs);
+    };
   });
-  return { fetcher, seen };
+  /** The gateway answers now: a gateway that answered is the state this test starts from. */
+  const answer = () => release();
+  return { fetcher, seen, answer };
 }
 
 test("a slow body is read to the end once the gateway has answered", async () => {
-  const { fetcher, seen } = slowGateway(5, 120);
-  const response = await fetchWithResponseDeadline(fetcher, "/__hui/sessions/a/open", {}, 40);
+  const { fetcher, seen, answer } = slowGateway(120);
+  const reading = fetchWithResponseDeadline(fetcher, "/__hui/sessions/a/open", {}, 40);
+  answer();
+  const response = await reading;
   assert.deepEqual(await response.json(), { ok: true });
   assert.equal(seen[0]?.aborted, false);
 });
 
 test("a gateway that does not start answering in time fails with a message worth showing", async () => {
-  const { fetcher } = slowGateway(200, 0);
+  // The gateway is asked and never answers: the request's own deadline is what ends it.
+  const { fetcher } = slowGateway(0);
   await assert.rejects(fetchWithResponseDeadline(fetcher, "/__hui/sessions", {}, 30), (error: Error) => {
     assert.equal(error.message, "HUI did not answer within 1 s. Check the connection and try again.");
     assert.equal((error.cause as DOMException).name, "TimeoutError");
@@ -47,14 +54,16 @@ test("a gateway that does not start answering in time fails with a message worth
 });
 
 test("a caller's own signal bounds the whole request instead", async () => {
-  const { fetcher, seen } = slowGateway(1, 0);
+  const { fetcher, seen, answer } = slowGateway(0);
   const own = new AbortController();
-  await fetchWithResponseDeadline(fetcher, "/__hui/update/check", { signal: own.signal }, 30);
+  const reading = fetchWithResponseDeadline(fetcher, "/__hui/update/check", { signal: own.signal }, 30);
+  answer();
+  await reading;
   assert.equal(seen[0], own.signal);
 });
 
 test("a caller's own deadline is not reported as the default one", async () => {
-  const { fetcher } = slowGateway(200, 0);
+  const { fetcher } = slowGateway(0);
   await assert.rejects(fetchWithResponseDeadline(fetcher, "/__hui/pi/skills/install", { signal: AbortSignal.timeout(10) }), (error: Error) => {
     assert.equal(error.message, "HUI did not answer in time. Check the connection and try again.");
     return true;
@@ -132,6 +141,47 @@ test("cancelling a view does not replace the response-header deadline", async ()
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("an event stream whose response headers never arrive is abandoned at the deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let requestSignal: AbortSignal | null | undefined;
+    const fetcher = (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = init?.signal;
+      requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+    });
+    const view = new AbortController();
+    const reading = fetchEventStream(fetcher, "/__hui/sessions/events", { signal: view.signal });
+    const failed = assert.rejects(reading, /HUI did not answer within 20 s/u);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await failed;
+    assert.equal(view.signal.aborted, false, "the view's own cancellation stays untouched");
+    assert.equal(requestSignal?.aborted, true, "the unanswered connection is released for the retry");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("an event stream that answers keeps streaming past the header deadline", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  const fetcher = (async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      body = controller;
+      controller.enqueue(new TextEncoder().encode("event: snapshot\ndata: {\"statuses\":[]}\n\n"));
+    },
+  }), { headers: { "content-type": "text/event-stream" } })) as typeof fetch;
+  const response = await fetchEventStream(fetcher, "/__hui/sessions/events");
+  assert.ok(response.body);
+  const reader = response.body.getReader();
+  await reader.read();
+  await vi.advanceTimersByTimeAsync(60_000);
+  body.enqueue(new TextEncoder().encode("event: status\ndata: {}\n\n"));
+  const next = await reader.read();
+  assert.match(new TextDecoder().decode(next.value), /event: status/u, "an open stream has no total deadline");
+  reader.releaseLock();
 });
 
 test("connection failures read as such; deliberate cancellation passes through", () => {

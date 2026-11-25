@@ -1,4 +1,4 @@
-/** Every sidebar row reads its session's live status without being opened, on the web and on iOS (SESS-017). */
+/** Every sidebar row reads its session's live status without being opened (SESS-017). */
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
@@ -18,6 +18,7 @@ test("rows read running, waiting and failed sessions and a parent's watcher or s
 
   try {
     await hui.open("/");
+    await hui.sessionList();
     await expect(row("Runs a turn", "idle")).toBeVisible();
 
     await hui.prompt(runs, "E2E_REPLAY");

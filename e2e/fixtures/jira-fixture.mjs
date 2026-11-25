@@ -2,7 +2,10 @@
 /** Deterministic Jira Cloud REST v3 subset for Browser E2E.
  * Usage: HUI_E2E_JIRA_PORT=43128 node e2e/fixtures/jira-fixture.mjs
  * Accepts only `Basic base64(e2e@hui.test:e2e-token)` and keeps created work
- * items in memory. GET /control/created lists what HUI created. */
+ * items in memory. GET /control/created lists what HUI created. Answers the
+ * queries HUI makes: `issue in issueHistory()` (the session's picker), the
+ * board's `assignee = currentUser() AND statusCategory = "To Do"` (three items,
+ * two of them To Do), free text and a project's epics. */
 import { createServer } from "node:http";
 
 const port = Number(process.env.HUI_E2E_JIRA_PORT ?? 43128);
@@ -30,8 +33,8 @@ const issues = new Map([
       { type: "bulletList", content: ["Retry wrappers surface the first failure", "Flake dashboard per repository", "Quarantine list with owners", "Weekly flake review", "Alert on retry storms", "Document the retry policy"].map((text) => ({ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text }] }] })) },
       ...Array.from({ length: 6 }, (_, index) => ({ type: "paragraph", content: [{ type: "text", text: `Milestone ${index + 1}: agree scope, land the change behind a flag, measure for a week and roll out to the remaining pipelines once the flake rate drops.` }] })),
     ] } }],
-  ["CI-2", { project: "CI", summary: "Developer tooling polish", type: "10", status: ["To Do", "new"], description: null }],
-  ["OPS-1", { project: "OPS", summary: "On-call hygiene", type: "10", status: ["To Do", "new"], description: null }],
+  ["CI-2", { project: "CI", summary: "Developer tooling polish", type: "10", status: ["To Do", "new"], assigned: true, description: null }],
+  ["OPS-1", { project: "OPS", summary: "On-call hygiene", type: "10", status: ["To Do", "new"], assigned: true, description: null }],
 ]);
 const created = [];
 let next = 41;
@@ -80,6 +83,12 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && meta) return json(response, 200, { issueTypes });
   if (route === "POST /rest/api/3/search/jql") {
     if (/issueHistory\(\)/u.test(body.jql)) return json(response, 200, { issues: [...issues.keys()].reverse().slice(0, body.maxResults ?? 20).map(view) });
+    // The board's Backlog (server/backlog.ts's ASSIGNED_TODO_JQL): this site's work in the To Do status category, assigned
+    // to the connected account. `assigned: true` is what a real Jira would show as the item's assignee being that account.
+    if (/assignee = currentUser\(\)/u.test(body.jql) && /statusCategory = "To Do"/u.test(body.jql)) {
+      const todo = [...issues.keys()].filter((key) => issues.get(key).assigned && issues.get(key).status[1] === "new");
+      return json(response, 200, { issues: todo.slice(0, body.maxResults ?? 20).map(view) });
+    }
     const text = body.jql.match(/^text ~ "((?:[^"\\]|\\.)*)"/u)?.[1];
     if (text !== undefined) {
       const terms = text.replace(/\\(.)/gu, "$1").replace(/\*$/u, "").toLowerCase().split(/\s+/u).filter(Boolean);

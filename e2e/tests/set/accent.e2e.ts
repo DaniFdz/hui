@@ -1,4 +1,4 @@
-/** An accent recolours highlights and the keyboard focus ring over any theme and Current accent names it; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007, SET-083). */
+/** An accent recolours highlights and the keyboard focus ring over any theme and Current accent names it, stored on this device; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007, SET-083). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -29,6 +29,8 @@ test("an accent recolours the highlights over any theme, Current accent names it
   await expect(swatch("Blue")).toBeVisible();
   await expect(swatch("Theme default", false)).toBeVisible();
   await expect(screen.getByTestId("settings-current-accent")).toHaveText("Blue");
+  await expect.poll(async () => (await hui.storedAppearance())?.accent).toBe("#5b9cf6");
+  expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings")).accent).toBeUndefined();
   await expect.poll(async () => (await hui.look(title)).color).toEqual([91, 156, 246]);
   expect((await hui.look(swatch("Blue"))).background).toEqual([91, 156, 246]);
 

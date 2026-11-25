@@ -1,4 +1,4 @@
-# Browser journey: HUI-04 chat and composer
+# Browser journey: chat and composer
 
 This journey uses the real installed PI RPC process with a deterministic local
 Anthropic-compatible provider. It requires no external credential or network
@@ -56,9 +56,14 @@ page errors before starting. Use fresh snapshots after every rerender.
 
 The shared tests in `e2e/tests/chat/` cover the attachment limits (CHAT-014), a reload
 mid-turn (CHAT-015), the run error card (CHAT-020), Sending… (CHAT-066), a send the
-gateway rejects (CHAT-012) and Copy response (CHAT-030), so their steps are gone from here.
+gateway rejects (CHAT-012), Copy response (CHAT-030), a fence opened and left on the
+keyboard (CHAT-095), a note written and left the same way (CHAT-096) and the selection
+toolbar a secondary click opens (CHAT-097), so their steps are gone from here. The
+composer's own Enter is theirs to prove: it only sends from prose, it never sends from
+inside a quote, a note, a heading, a list item or a code block, and the gesture that
+leaves those blocks is Backspace on the empty line Enter added.
 
-1. Create `HUI-04 Browser E2E` with **Project directory** set to the isolated
+1. Create `Browser E2E chat and composer` with **Project directory** set to the isolated
    workspace. Wait for `Idle` and model `HUI E2E Fixture`.
 2. Send `E2E_RICH`. Assert **Running**, visible thinking, a running then
    completed `read` tool card with `fixture contents`, the final `Tool complete`
@@ -94,6 +99,10 @@ gateway rejects (CHAT-012) and Copy response (CHAT-030), so their steps are gone
 
 - labels: `Project directory`, `Message`, `Attach images or files`, `Model`
 - buttons: `Start session`, `Send`, `Stop`, `Copy response`, `Steer`, `Follow up`
+- the composer's callout: the `Note` aside and its title
+- the selection toolbar: role `toolbar` named `Format selection`, with `Bold`, `Italic`,
+  `Strikethrough`, `Inline code`, `Quote`, `Note`, `Bullet list`, `Code block`, `Text`,
+  `Cut`, `Copy` and `Paste`
 - attachment removal: `Remove <filename>`
 - tool cards: accessible name `Tool <name>: running|succeeded|failed`
 - thinking: accessible name `Thinking`

@@ -1,6 +1,7 @@
 /** A routine run that needs the operator reads "Needs attention" on the Routines page, the overview's Activity and Automations, with the guidance for its kind of failure and the original error (BOT-046). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { panelOverview } from "./bot-panel.ts";
 
 const GUIDANCE = "Check the provider's quota or billing, then run again when it is available.";
 
@@ -11,6 +12,7 @@ test("a routine run that needs the operator reads Needs attention on the Routine
     schedule: { kind: "cron", expression: "0 8 * * *", timezone: "UTC" },
   });
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, "Solo");
   await screen.getByRole("button", "Add routine").tap();
   await screen.getByRole("button", "Run now: Quota check").tap();
   const latestRuns = screen.getByLabel("Latest runs");

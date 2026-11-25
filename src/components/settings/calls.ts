@@ -1,5 +1,5 @@
 /**
- * Settings → Models → Calls (HUI-18): calls with bots run on GPT-Live; this sets its default voice and says which
+ * Settings → Models → Calls: calls with bots run on GPT-Live; this sets its default voice and says which
  * ChatGPT login calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and
  * never carries a token.
  */
@@ -16,7 +16,7 @@ export function chatGptLoginSummary(status: CallsStatus["chatgpt"] | undefined, 
   if (!status) return "Checking the ChatGPT login…";
   if (status.account) return `Calls use ${status.account.name}${status.account.email ? ` (${status.account.email})` : ""}, the first ChatGPT account not waiting for its quota.`;
   if (status.signedIn && status.waitingUntil && status.waitingUntil > now) return `Every ChatGPT account is waiting for its quota until ${new Date(status.waitingUntil).toLocaleString()}.`;
-  return "No ChatGPT login yet. Sign in under Providers above: OpenAI Codex, with your ChatGPT Plus or Pro account.";
+  return "No ChatGPT login yet. Sign in under Providers above: OpenAI → ChatGPT account.";
 }
 
 export class HuiCallSettings extends LitElement {

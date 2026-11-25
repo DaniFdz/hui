@@ -10,4 +10,4 @@ export type UpdateJob = { "id": string; "pid": number; "status": ("running") | (
 
 export type UpdateRequest = { "version": string; };
 
-export type UpdateSnapshot = { "currentVersion": (string) | (null); "check": (UpdateCheck) | (null); "job": (UpdateJob) | (null); };
+export type UpdateSnapshot = { "name": string; "currentVersion": (string) | (null); "check": (UpdateCheck) | (null); "job": (UpdateJob) | (null); };

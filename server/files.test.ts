@@ -227,12 +227,17 @@ test("an upload past its cap or interrupted mid-body leaves the folder as it was
   await files.upload("src", "exact.bin", bodyOf(Buffer.alloc(8)), false, 8);
   await refused(files.upload("src", "big.bin", bodyOf(Buffer.alloc(6), Buffer.alloc(6)), false, 8), 413);
   await refused(files.upload("src", "big.bin", bodyOf(Buffer.alloc(8), Buffer.alloc(1)), false, 8), 413);
+  // A refused body leaves no temporary file beside the target and creates nothing there.
+  assert.deepEqual((await readdir(join(root, "src"))).filter((name) => name.startsWith(".hui-files-")), []);
+  await assert.rejects(stat(join(root, "src", "big.bin")), { code: "ENOENT" });
   const gone = async function* () {
     yield Buffer.from("half");
     throw new Error("the client went away");
   };
   await assert.rejects(files.upload("src", "gone.bin", gone(), false), /the client went away/u);
   await assert.rejects(files.upload("src", "keep.bin", gone(), true), /the client went away/u);
+  // The interrupted body never creates its own target and never deletes or replaces the one it was sent over.
+  await assert.rejects(stat(join(root, "src", "gone.bin")), { code: "ENOENT" });
   assert.equal(await readFile(join(root, "src", "keep.bin"), "utf8"), "before");
   assert.equal((await stat(join(root, "src", "keep.bin"))).mode & 0o777, 0o640);
   // No temporary file is left beside the target, and nothing half-written appears in a listing.

@@ -68,7 +68,8 @@ test("the overview totals a bot's cost, its memory summaries' included, and list
   const page = markup(renderBotPanel(props));
   assert.match(page, /<summary[^>]*>.*Total.*\$1\.75/su);
   assert.match(page, /anthropic\/opus.*\$1\.25.*openai\/mini.*<\$0\.01/su);
-  assert.match(page, /Memory summaries, since HUI started.*\$0\.50/su);
+  assert.match(page, />Memory summaries<.*\$0\.50/su);
+  assert.doesNotMatch(page, /Memory summaries, since HUI started/u);
   assert.match(page, /Includes 2 subagents/);
   const remote = markup(renderBotPanel({ ...props, bot: { ...props.bot, worker: { id: "w", name: "Box" } } }));
   assert.match(remote, /cost is kept on Box/);
@@ -198,7 +199,7 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
   const home = read("./home.ts");
-  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
+  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall, labelled: Boolean\(props\.mobileNavLayout\) \}\)/u, "the phone button, with its word beside the glyph");
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 

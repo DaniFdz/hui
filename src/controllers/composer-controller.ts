@@ -2,31 +2,34 @@
  * `ComposerController` owns the open conversation's composer outside `hui-app.ts`: its draft and attachments, kept
  * per session through `lib/composer/drafts.ts`, with the sessions that hold a draft (the sidebar's pencil); the slash
  * command menu and the commands it lists; local path and bot mention completion; sending a prompt, a steer, a
- * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat), with the first prompt
+ * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat view), with the first prompt
  * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
- * target and answering a question; and the session's message queue, with the edit of one queued message and the
+ * target, answering a question and requesting a fresh progress card; and the session's message queue, with the edit of one queued message and the
  * requests that edit, remove, move and steer queued messages, or send the steered ones now. The shell reads its
- * props, measures its textarea and hands it the queue from the conversation's snapshots and events.
+ * props, hands it the queue from the conversation's snapshots and events, and points it at the mounted rich editor
+ * (`lib/composer/rich/editor.ts`), whose control is where a completion reads and writes the draft.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
-import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
+import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, recomputeSessionProgress, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
-import { attachmentPreview, readAttachment, validateAttachmentTotal } from "../lib/attachments.ts";
+import { attachmentPreview, attachmentRefusal, readAttachment, validateAttachmentTotal, type AttachmentRefusalOptions } from "../lib/attachments.ts";
 import type { BotView } from "../lib/bots/bots.ts";
-import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft } from "../lib/composer/drafts.ts";
+import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft, type ComposerDraft } from "../lib/composer/drafts.ts";
 import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
+import { clearSideChat, settleSideChat, startSideChat } from "../lib/session/side-chat-store.ts";
 import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, parseGoalCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
+import type { ComposerEditor } from "../lib/composer/rich/editor.ts";
 import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { GoalPanelState, HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
-/** The goal pill's detail block starts closed. */
-const CLOSED_GOAL_PANEL: GoalPanelState = { expanded: false, editing: false, error: "" };
+/** The goal editor starts closed; the Run status popover reads it. */
+const CLOSED_GOAL_PANEL: GoalPanelState = { editing: false, error: "" };
 
 type ComposerDeps = {
   conversation: ConversationController;
@@ -38,7 +41,8 @@ type ComposerDeps = {
   draftCommands: () => readonly RuntimeCommand[];
   defaultCwd: () => string | undefined;
   mentionable: () => readonly BotView[];
-  textarea: () => HTMLTextAreaElement | null;
+  /** The mounted rich editor of the composer this draft belongs to, when it is on screen. */
+  editor: () => ComposerEditor | null;
   launching: () => boolean;
 };
 
@@ -46,12 +50,9 @@ type ComposerHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
 export class ComposerController {
   /** The composer's live text, deliberately not rendered from: a keystroke only
-   * changes what its own textarea already shows, so typing must not re-render
-   * the transcript behind it. Code-owned changes go through `setDraft`. */
+   * changes what its own editor already shows, so typing must not re-render the
+   * transcript behind it. Code-owned changes go through `setDraft`, which does. */
   draft = "";
-  /** Bumped by `setDraft` so the shell measures a textarea whose value code
-   * replaced, never one the operator is typing into. */
-  draftRevision = 0;
   /** Picked but not yet sent; cleared on send and on switching session. */
   attachments: readonly Attachment[] = [];
   draftSessionIds: ReadonlySet<string> = new Set();
@@ -77,7 +78,6 @@ export class ComposerController {
   rewindPending = false;
   /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
   forkTarget: ForkTarget | undefined;
-  sideChat: HomeProps["sideChat"];
   /** First prompt composed on New Session, released only after PI reports idle. */
   pendingLaunchPrompt = "";
   pendingLaunchAttachments: readonly Attachment[] = [];
@@ -88,6 +88,8 @@ export class ComposerController {
   readonly #sendRequests = new SendRequests();
   #draftIndicatorRevision = 0;
   #commandsLoaded = false;
+  #progressRefreshRequest = 0;
+  progressRefresh: HomeProps["progressRefresh"] = { pending: false, error: undefined };
   #commandsRequest = 0;
   #localPathsRequest = 0;
   #localPathCwd = "";
@@ -131,12 +133,16 @@ export class ComposerController {
     });
   }
 
-  switchDraft(key: string): void {
+  /** Loads `key`'s draft into the composer. `seed` is text that came with the address (a share from another app):
+   * it goes ahead of what the key already holds, never over it, so a draft the operator was writing survives below it
+   * and both are stored once. */
+  switchDraft(key: string, seed?: string): void {
     if (!mayUseComposerDraftKey(this.#deps.embeddedPane(), key)) return;
     if (key === this.draftKey && this.draftHydrated) return;
     if (key !== this.draftKey) {
       void this.persistDraft();
       this.goalPanel = CLOSED_GOAL_PANEL;
+      this.#resetProgressRefresh();
     }
     this.draftKey = key;
     this.draftHydrated = true;
@@ -146,8 +152,11 @@ export class ComposerController {
     this.attachments = [];
     void readComposerDraft(key).then((draft) => {
       if (load !== this.draftLoad || edit !== this.draftEdit || key !== this.draftKey) return;
-      this.setDraft(draft.text);
-      this.attachments = draft.attachments;
+      // The seed is merged, not typed: bumping `draftEdit` for it would discard the stored draft instead.
+      const merged = seed ? mergeComposerDraft(draft, { text: seed, attachments: [] }) : draft;
+      this.setDraft(merged.text);
+      this.attachments = merged.attachments;
+      if (merged !== draft) void this.persistDraft(key, merged.text, merged.attachments);
     });
   }
 
@@ -162,11 +171,11 @@ export class ComposerController {
     void this.persistDraft();
   };
 
-  /** A draft HUI set, not one typed into the textarea: it has to reach the
-   * value, the controls derived from it and the textarea's measured height. */
+  /** A draft HUI set, not one typed into the editor: it reaches the editor's own document at once, so a rewind or a
+   * recovered send shows without waiting for the render, and the controls derived from it follow on the next one. */
   setDraft(draft: string): void {
     this.draft = draft;
-    this.draftRevision += 1;
+    this.#deps.editor()?.setMarkdown(draft);
     this.#host.requestUpdate();
   }
 
@@ -210,11 +219,15 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  browseCommands(textarea: HTMLTextAreaElement): void {
+  /** Opens the command menu on the draft's own end: a launched `/` draft or the Browse commands button. */
+  browseCommands(): void {
     this.pendingCommandBrowse = false;
-    textarea.focus();
-    textarea.setSelectionRange(this.draft.length, this.draft.length);
-    this.#setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
+    const control = this.#deps.editor()?.control;
+    if (!control) return;
+    control.focus();
+    control.caretAtEnd();
+    const { end } = control.selection();
+    this.#setCommandQuery(slashCommandQuery(control.text(), end, end));
   }
 
   #requestCommands = () => {
@@ -222,7 +235,6 @@ export class ComposerController {
     if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
     const request = ++this.#commandsRequest;
     const current = () => this.#conversation.selected?.id === session.id && request === this.#commandsRequest;
-    const returnFocus = document.activeElement?.closest(".slash-menu") !== null;
     this.commandsLoading = true;
     this.commandsError = "";
     this.#host.requestUpdate();
@@ -231,9 +243,6 @@ export class ComposerController {
       this.commands = commands;
       this.#commandsLoaded = true;
       this.slashActiveIndex = 0;
-      if (returnFocus) void this.#host.updateComplete.then(() => {
-        if (current() && this.slashQuery !== null) this.#deps.textarea()?.focus();
-      });
     }).catch((error: unknown) => {
       if (current()) this.commandsError = error instanceof Error ? error.message : "Could not load commands.";
     }).finally(() => {
@@ -241,6 +250,18 @@ export class ComposerController {
       this.commandsLoading = false;
       this.#host.requestUpdate();
     });
+  };
+
+  #retryCommands = () => {
+    const control = this.#deps.editor()?.control;
+    if (control) {
+      // Touch can blur the editor without focusing Retry. Restore its query and
+      // focus before loading replaces that button, not after the reply arrives.
+      control.focus();
+      const { start, end } = control.selection();
+      this.#setCommandQuery(slashCommandQuery(control.text(), start, end));
+    }
+    this.#requestCommands();
   };
 
   #runtimeCommands(): readonly RuntimeCommand[] {
@@ -268,21 +289,22 @@ export class ComposerController {
   };
 
   #selectSlashCommand = (command: ComposerCommand) => {
-    const completed = completeCommandReference(this.draft, command, this.#runtimeCommands(), this.slashQuery?.start ?? 0);
-    this.updateDraft(completed.text);
+    const control = this.#deps.editor()?.control;
+    const start = this.slashQuery?.start ?? 0;
+    const text = control?.text() ?? this.draft;
+    const completed = completeCommandReference(text, command, this.#runtimeCommands(), start);
+    if (control) {
+      // One replacement of the token the menu was opened on: the draft follows through the editor's own onChange.
+      control.replaceRange(start, Math.max(start, control.selection().end), completed.text.slice(start, completed.caret), completed.caret);
+    }
     this.resetLocalPaths();
     this.slashQuery = null;
-    void this.#host.updateComplete.then(() => {
-      const textarea = this.#deps.textarea();
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-    });
+    this.#host.requestUpdate();
   };
 
   #commandKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
+    const control = this.#deps.editor()?.control;
+    if (this.slashQuery === null || event.isComposing || !control?.isTarget(event.target instanceof Node ? event.target : null)) return;
     const commands = this.#menuCommands();
     const paths = this.localPathQuery ? this.localPaths : [];
     const count = commands.length + paths.length;
@@ -364,10 +386,11 @@ export class ComposerController {
 
   #selectLocalPath = (suggestion: LocalPathSuggestion) => {
     const query = this.localPathQuery;
-    if (!query) return;
+    const control = this.#deps.editor()?.control;
+    if (!query || !control) return;
     this.slashQuery = null;
-    const completed = completeLocalPath(this.draft, query, suggestion);
-    this.updateDraft(completed.text);
+    const completed = completeLocalPath(control.text(), query, suggestion);
+    control.replaceRange(query.start, Math.max(query.start, control.selection().end), completed.text.slice(query.start, completed.caret), completed.caret);
     if (suggestion.kind === "directory") {
       this.#setLocalPathQuery({
         input: suggestion.path,
@@ -378,20 +401,13 @@ export class ComposerController {
     } else {
       this.resetLocalPaths();
     }
-    void this.#host.updateComplete.then(() => {
-      const textarea = this.#deps.textarea();
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-      if (suggestion.kind !== "directory") {
-        requestAnimationFrame(() => this.resetLocalPaths());
-      }
-    });
+    this.#host.requestUpdate();
   };
 
   #localPathKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery !== null || !this.localPathQuery || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
+    const control = this.#deps.editor()?.control;
+    if (this.slashQuery !== null || !this.localPathQuery || event.isComposing
+      || !control?.isTarget(event.target instanceof Node ? event.target : null)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -418,31 +434,47 @@ export class ComposerController {
     }
   };
 
+  /** What a refusal may offer: the Files pane takes a file the chat will not carry, but a conversation on a remote
+   * worker has none, because its files live on that machine and the pane answers 409. Naming it there would point at a
+   * way out that does not exist, so that conversation is told the limit alone. */
+  #refusalOptions(): AttachmentRefusalOptions {
+    return { filesPane: !this.#conversation.selected?.worker };
+  }
+
   #addAttachments = (files: readonly File[]) => {
     const key = this.draftKey;
     if (this.sending || this.#deps.launching()) {
+      // The pick is dropped on purpose, but dropping it silently reads as a broken picker.
+      this.#deps.showNote(
+        this.sending
+          ? "Wait for this message to be sent before adding attachments."
+          : "Wait for the session to start before adding attachments.",
+        "error",
+      );
       return;
     }
-    void Promise.all(files.map((file) => readAttachment(file)))
+    // The refusal is about the pick, so its way out is settled with the conversation the operator picked in: a switch
+    // that lands while the file is read must not change what this pick is told.
+    const refusalOptions = this.#refusalOptions();
+    void Promise.all(files.map((file) => readAttachment(file, refusalOptions)))
       .then(async (added) => {
         if (key !== this.draftKey) {
           const stored = await readComposerDraft(key);
           const attachments = [...stored.attachments, ...added];
-          validateAttachmentTotal(attachments);
+          validateAttachmentTotal(attachments, refusalOptions);
           await this.persistDraft(key, stored.text, attachments);
           return;
         }
         const next = [...this.attachments, ...added];
-        validateAttachmentTotal(next);
+        validateAttachmentTotal(next, refusalOptions);
         this.draftEdit += 1;
         this.attachments = next;
         this.#host.requestUpdate();
         await this.persistDraft();
       })
       .catch((error: unknown) => {
-        if (key !== this.draftKey) {
-          return;
-        }
+        // The operator picked the file, so a failure is reported even once the composer moved to another draft: it
+        // stays a fact about that pick either way.
         this.#deps.showNote(error instanceof Error ? error.message : "Could not read that file.", "error");
       });
   };
@@ -518,12 +550,12 @@ export class ComposerController {
   }
 
   resetSession(): void {
+    this.#resetProgressRefresh();
     this.resetCommands();
     this.resetLocalPaths();
     this.pendingCommandBrowse = false;
     this.sending = false;
     this.adoptQueue(EMPTY_QUEUE);
-    this.sideChat = undefined;
   }
 
   clearSession(): void {
@@ -531,16 +563,6 @@ export class ComposerController {
     this.pendingLaunchPrompt = "";
     this.pendingLaunchAttachments = [];
     this.rewindPending = false;
-    this.#host.requestUpdate();
-  }
-
-  closeSideChat(): void {
-    this.sideChat = undefined;
-    this.#host.requestUpdate();
-  }
-
-  #showSideChat(sideChat: NonNullable<HomeProps["sideChat"]>): void {
-    this.sideChat = sideChat;
     this.#host.requestUpdate();
   }
 
@@ -568,6 +590,14 @@ export class ComposerController {
     if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
       return;
     }
+    // The picker refuses before a file enters the composer, so only state restored elsewhere is refused here (a draft
+    // stored before the limits, or a launch prompt): one action never shows the same refusal twice.
+    const refusal = attachmentRefusal(attachments, { filesPane: !session.worker });
+    if (refusal) {
+      this.#deps.showNote(refusal, "error");
+      if (!this.#holdsAttachments(attachments)) void this.#restoreSentDraft(session.id, text, attachments);
+      return;
+    }
     const action = composerSendAction(trimmed, {
       bot: Boolean(session.bot),
       attachments: attachments.length,
@@ -591,7 +621,7 @@ export class ComposerController {
         ? clearSession(session.id).then((snapshot) => {
           if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
           this.#conversation.applySnapshot(snapshot);
-          this.closeSideChat();
+          clearSideChat(session.id);
           this.#deps.showNote("Session context cleared.");
         })
         : reloadSession(session.id).then(() => {
@@ -639,22 +669,13 @@ export class ComposerController {
       this.draftEdit += 1;
       this.setDraft("");
       void this.persistDraft(sessionDraftKey(session.id), "", []);
-      this.#showSideChat({ question: sideQuestion, answer: "", model: "", loading: true, error: "" });
-      void askSideQuestion(session.id, sideQuestion).then((result) => {
-        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
-          this.#showSideChat({ ...result, loading: false, error: "" });
-        }
-      }).catch((error: unknown) => {
-        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
-          this.#showSideChat({
-            question: sideQuestion,
-            answer: "",
-            model: "",
-            loading: false,
-            error: error instanceof Error ? error.message : "The side question failed.",
-          });
-        }
-      });
+      // The exchange belongs to the conversation, so it stays when the answer arrives after focus moves away.
+      startSideChat(session.id, sideQuestion);
+      void askSideQuestion(session.id, sideQuestion)
+        .then((result) => settleSideChat(session.id, result))
+        .catch((error: unknown) => settleSideChat(session.id, {
+          error: error instanceof Error ? error.message : "The side question failed.",
+        }));
       return;
     }
     const pendingId = localTranscriptId("user");
@@ -698,18 +719,13 @@ export class ComposerController {
       })
       .catch(async (error: unknown) => {
         this.#sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
-        const stillSelected = isSelectedSession(session.id, this.#conversation.selected?.id);
-        if (stillSelected && mode === "prompt") this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
+        if (isSelectedSession(session.id, this.#conversation.selected?.id) && mode === "prompt") {
+          this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
+        }
         this.#host.requestUpdate();
-        const stored = stillSelected
-          ? { text: this.draft, attachments: this.attachments }
-          : await readComposerDraft(sessionDraftKey(session.id));
-        const restored = mergeComposerDraft(stored, { text, attachments });
-        await this.persistDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
-        if (!stillSelected) return;
-        this.draftEdit += 1;
-        this.setDraft(restored.text);
-        this.attachments = restored.attachments;
+        // A failed send is a refused one, so it goes back the same way: into this session's composer while it is shown,
+        // and into that session's own draft key once the operator moved on.
+        if (!await this.#restoreSentDraft(session.id, text, attachments)) return;
         this.#conversation.streaming = streamingAfterSubmission(
           this.#conversation.streaming,
           mode,
@@ -748,9 +764,34 @@ export class ComposerController {
       });
   };
 
-  /** The goal pill's detail block; the row and its chevron toggle it, and a session switch closes it. */
+  #resetProgressRefresh(): void {
+    this.#progressRefreshRequest += 1;
+    this.progressRefresh = { pending: false, error: undefined };
+  }
+
+  /** Requests a confirmed progress update without sending a turn; snapshots own the resulting card. */
+  recomputeProgress = () => {
+    const session = this.#conversation.selected;
+    if (!session || this.progressRefresh.pending || this.#conversation.opening || this.#conversation.connection !== "live"
+      || (session.status !== "idle" && session.status !== "running")) return;
+    const request = ++this.#progressRefreshRequest;
+    this.progressRefresh = { pending: true, error: undefined };
+    this.#host.requestUpdate();
+    void recomputeSessionProgress(session.id)
+      .catch((error: unknown) => {
+        if (request !== this.#progressRefreshRequest || !isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.progressRefresh = { pending: true, error: error instanceof Error ? error.message : "Could not recompute progress." };
+      })
+      .finally(() => {
+        if (request !== this.#progressRefreshRequest || !isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.progressRefresh = { ...this.progressRefresh, pending: false };
+        this.#host.requestUpdate();
+      });
+  };
+
+  /** The goal editor; a completed change and a session switch close it. */
   goalPanel: GoalPanelState = CLOSED_GOAL_PANEL;
-  /** `/goal`, the goal pill and the Goal dialog all land here. `typed` is the command line to put back if the gateway
+  /** `/goal`, the Run status popover and the Goal dialog all land here. `typed` is the command line to put back if the gateway
    * refuses, and a refusal answers where the operator made the change: in the dialog's own field while it edits. */
   changeGoal = (action: "start" | "pause" | "resume" | "clear", objective?: string, typed?: string) => {
     const session = this.#conversation.selected;
@@ -795,20 +836,15 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  #toggleGoal = () => {
-    if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel(this.goalPanel.expanded ? CLOSED_GOAL_PANEL : { expanded: true, editing: false, error: "" });
-  };
-
   #editGoal = () => {
     if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel({ expanded: true, editing: true, error: "" });
+    this.#setGoalPanel({ editing: true, error: "" });
   };
 
-  #cancelGoalEdit = () => this.#setGoalPanel({ ...this.goalPanel, editing: false, error: "" });
+  #cancelGoalEdit = () => this.#setGoalPanel({ editing: false, error: "" });
 
   /** Replacing the objective is the `/goal <objective>` path: the new objective starts the goal and is sent as its
-   * next turn. A refusal stays in the pill's editor, where the operator is still typing. */
+   * next turn. A refusal stays in the popover's editor, where the operator is still typing. */
   #saveGoal = (objective: string) => {
     const text = objective.trim();
     if (!text) {
@@ -881,20 +917,43 @@ export class ComposerController {
     });
   }
 
-  /** Puts a refused command back into the composer, merged with anything typed
-   * since. True while that session is still selected. */
+  /** Whether the composer still shows exactly these attachments: putting that draft back would duplicate them. */
+  #holdsAttachments(attachments: readonly Attachment[]): boolean {
+    return attachments.length === this.attachments.length && attachments.every((item, at) => item === this.attachments[at]);
+  }
+
+  /** Puts a refused command back into the composer, merged with anything typed since. True while that session is
+   * still selected.
+   *
+   * The composer is shown before the draft is written, and never after a wait, so a keystroke or a switch to another
+   * session landing meanwhile can never be overwritten by a merge read from older state. Moving on does not drop the
+   * refusal either: it is written to the refused session's own key, where reopening that session shows it again. */
   async #restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
-    const stillSelected = isSelectedSession(sessionId, this.#conversation.selected?.id);
-    const stored = stillSelected
-      ? { text: this.draft, attachments: this.attachments }
-      : await readComposerDraft(sessionDraftKey(sessionId));
-    const restored = mergeComposerDraft(stored, { text, attachments });
-    await this.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
-    if (!stillSelected) return false;
+    const refused = { text, attachments };
+    /** What the composer holds now, refused text ahead of anything typed after it. */
+    const live = () => mergeComposerDraft({ text: this.draft, attachments: this.attachments }, refused);
+    if (isSelectedSession(sessionId, this.#conversation.selected?.id)) {
+      await this.#restoreIntoComposer(sessionId, live());
+      return true;
+    }
+    const stored = mergeComposerDraft(await readComposerDraft(sessionDraftKey(sessionId)), refused);
+    // Reading the stored draft waits, and the operator may have come back while it did: the composer is then newer
+    // than what was read, so that is what the refusal merges into rather than the stale read.
+    if (isSelectedSession(sessionId, this.#conversation.selected?.id)) {
+      await this.#restoreIntoComposer(sessionId, live());
+      return true;
+    }
+    await this.persistDraft(sessionDraftKey(sessionId), stored.text, stored.attachments);
+    return false;
+  }
+
+  /** Shows a recovered draft at once and stores it after: a keystroke that lands meanwhile queues its own write behind
+   * this one, so the composer never waits on storage for what it displays and never loses what was typed over it. */
+  async #restoreIntoComposer(sessionId: string, restored: ComposerDraft): Promise<void> {
     this.draftEdit += 1;
     this.setDraft(restored.text);
     this.attachments = restored.attachments;
-    return true;
+    await this.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
   }
 
   #rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
@@ -914,8 +973,9 @@ export class ComposerController {
         await this.persistDraft();
         await this.#host.updateComplete;
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
-        this.#deps.textarea()?.focus();
-        this.#deps.textarea()?.setSelectionRange(text.length, text.length);
+        const control = this.#deps.editor()?.control;
+        control?.focus();
+        control?.caretAtEnd();
         this.#deps.showNote("Message restored to the composer. The previous branch is kept.", "info");
       })
       .catch((error: unknown) => {
@@ -960,15 +1020,13 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "progressRefresh" | "onRecomputeProgress" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
       sending,
       rewindPending: this.rewindPending,
       forkPending: Boolean(this.forkTarget),
-      sideChat: this.sideChat,
-      onCloseSideChat: () => this.closeSideChat(),
       onSendPrompt: this.send,
       onContinueInterrupted: this.continueStoppedRun,
       onAbort: this.abort,
@@ -979,7 +1037,8 @@ export class ComposerController {
       onAnswerQuestion: this.#answerQuestion,
       onGoalChange: (action) => this.changeGoal(action),
       goalPanel: this.goalPanel,
-      onGoalToggle: this.#toggleGoal,
+      progressRefresh: this.progressRefresh,
+      onRecomputeProgress: this.recomputeProgress,
       onGoalEdit: this.#editGoal,
       onGoalSave: this.#saveGoal,
       onGoalCancelEdit: this.#cancelGoalEdit,
@@ -1001,7 +1060,7 @@ export class ComposerController {
         error: this.commandsError,
         streaming: conversation.streaming,
         onSelect: this.#selectSlashCommand,
-        onRetry: this.#requestCommands,
+        onRetry: this.#retryCommands,
       },
       onCommandQuery: this.#setCommandQuery,
       onCommandKeydown: this.#commandKeydown,

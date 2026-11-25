@@ -2,8 +2,10 @@
  * One of a session's shared terminals, drawn by Gespenst (Ghostty's VT in WebAssembly) inside a Work pane tab.
  * Gespenst parses and paints in a dedicated worker (WebGL2, falling back to Canvas 2D). The PTY lives in the gateway:
  * this element replays its snapshot, writes the socket's binary output straight into Gespenst as bytes, sends input
- * over the terminal socket and reconnects with backoff. It never fits the grid while the Work pane hides it and
- * resizes the PTY only once a measurable size has settled. It also owns the terminal's HUI theme colors (recolored
+ * over the terminal socket, and reconnects with backoff: at most `MAX_RETRIES` attempts after a drop, and for as long
+ * as the gateway itself is unreachable (a restart), which it undoes on its own while offering Reconnect. It never
+ * fits the grid while the Work pane hides it and resizes the PTY only once a measurable size has settled. It also
+ * owns the terminal's HUI theme colors (recolored
  * live), its fonts in the worker, link clicks, clipboard shortcuts, touch scrolling, the narrow/touch key bar and the
  * jump-to-bottom affordance. Hiding the tab or the pane leaves the terminal running; only "End terminal" stops it.
  * Tabs, closing and launching belong to the Work pane (`components/work-pane.ts`, `views/work/terminal.ts`).
@@ -18,6 +20,7 @@ import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontFaces, terminalFon
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { connectTerminal, endTerminal } from "../api/terminals.ts";
+import { isGatewayUnavailable } from "../api/request.ts";
 import type { TerminalView } from "../api/schema/terminals.ts";
 import type { TerminalInput } from "../api/terminals.ts";
 import { createTerminalStreamReader } from "../api/terminals.ts";
@@ -40,6 +43,8 @@ function loadTerminal() {
 const RESIZE_SETTLE_MS = 150;
 const SCROLLBACK_LINES = 10_000;
 const FONT_WAIT_MS = 1500;
+/** Drops of one connection this view undoes by itself before it shows Reconnect instead. */
+const MAX_RETRIES = 5;
 
 let colorProbe: CanvasRenderingContext2D | null | undefined;
 /** Any CSS color (oklch, color-mix, …) as sRGB channels, by painting one pixel; transparent yields the fallback. */
@@ -90,7 +95,10 @@ export class TerminalPane extends HuiElement {
   /** Typed input held while the socket connects or the replay is written, then sent in order. */
   private pendingInput: string[] = [];
   private retry: ReturnType<typeof setTimeout> | undefined;
+  /** Drops of one connection this view has tried to undo, up to `MAX_RETRIES` before it waits for the operator. */
   private retries = 0;
+  /** Times this view asked an unreachable gateway for the same terminal: bounded by the gateway answering, not by a count. */
+  private unreachable = 0;
   /** The size the PTY was last given (by a snapshot, a state frame or this view). */
   private sentSize = { cols: 0, rows: 0 };
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -368,7 +376,21 @@ export class TerminalPane extends HuiElement {
   }
 
   private async connect(generation: number) {
-    const socket = await connectTerminal(this.ownerSessionId, this.terminalId);
+    let socket: WebSocket;
+    try {
+      socket = await connectTerminal(this.ownerSessionId, this.terminalId);
+    } catch (error) {
+      if (generation !== this.generation) return;
+      // The gateway is not answering (a restart, a dropped network): the tab says it lost the connection, offers
+      // Reconnect, and keeps asking in the background the way the chat's stream does. An answer it did get (this
+      // conversation has no such terminal any more) is final and stops the asking.
+      if (!isGatewayUnavailable(error)) throw error;
+      this.ready = false;
+      this.status = "Disconnected";
+      this.error = error instanceof Error ? error.message : "Reconnect failed.";
+      this.reconnect(generation, ++this.unreachable);
+      return;
+    }
     if (generation !== this.generation || !this.isConnected) { socket.close(); return; }
     this.socket = socket;
     const read = createTerminalStreamReader({
@@ -376,6 +398,7 @@ export class TerminalPane extends HuiElement {
         const terminal = this.terminal;
         if (!terminal) return;
         this.retries = 0;
+        this.unreachable = 0;
         this.replaying = true;
         // The replay rebuilds the screen and scrollback from the start.
         terminal.reset();
@@ -414,18 +437,30 @@ export class TerminalPane extends HuiElement {
       if (generation !== this.generation) return;
       this.ready = false;
       this.status = "Disconnected";
-      if (++this.retries <= 5) {
+      if (++this.retries <= MAX_RETRIES) {
         this.status = "Reconnecting…";
-        this.retry = setTimeout(() => { void this.connect(generation).catch((error: unknown) => {
-          if (generation !== this.generation) return;
-          this.status = "Disconnected";
-          this.error = error instanceof Error ? error.message : "Reconnect failed.";
-        }); }, Math.min(1000 * 2 ** (this.retries - 1), 10_000));
+        this.reconnect(generation, this.retries);
+        return;
       }
+      // Out of attempts: the tab says so and offers Reconnect instead of retrying for ever.
+      this.retries = 0;
     };
     socket.onerror = () => {
       if (generation === this.generation) this.error = "Terminal connection lost. Input is disabled until reconnected.";
     };
+  }
+
+  /** Tries the terminal again after the `attempt`th backoff step of one losing streak. */
+  private reconnect(generation: number, attempt: number) {
+    clearTimeout(this.retry);
+    this.retry = setTimeout(() => {
+      if (generation !== this.generation) return;
+      void this.connect(generation).catch((error: unknown) => {
+        if (generation !== this.generation) return;
+        this.status = "Disconnected";
+        this.error = error instanceof Error ? error.message : "Reconnect failed.";
+      });
+    }, Math.min(1000 * 2 ** (attempt - 1), 10_000));
   }
 
   private run = async (operation: () => Promise<void>) => {

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { inspectWorkspaces, parseWorktreePorcelain } from "./control-surfaces.ts";
+import { effectiveGatewayName, inspectWorkspaces, parseWorktreePorcelain, readGatewayHealth } from "./control-surfaces.ts";
+import { DEFAULT_SETTINGS, HUI_SETTINGS_FILE, readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
+import { CONFIG_DIR } from "./paths.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 
 function session(id: string, cwd: string): SessionRecord {
@@ -121,4 +123,21 @@ test("OpenClaw-owned memory stays excluded when ~/.openclaw is a symlink", async
 
   assert.deepEqual(result.memory, []);
   assert.match(result.diagnostics[0] ?? "", /OpenClaw-owned memory was excluded/u);
+});
+
+test("a gateway reports its saved name, or this machine's hostname when it has none", async () => {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  await rm(HUI_SETTINGS_FILE, { force: true });
+  assert.equal((await readGatewayHealth("build-box")).name, "build-box", "empty falls back to the hostname");
+  assert.equal(effectiveGatewayName("", ""), "HUI", "a machine that reports no hostname still names itself");
+  assert.equal(effectiveGatewayName("  ", "build-box"), "build-box");
+  assert.equal(effectiveGatewayName(" Studio Mac ", "build-box"), "Studio Mac", "the saved name wins");
+
+  await writeHuiSettings({ name: "Studio Mac" });
+  assert.equal((await readGatewayHealth("build-box")).name, "Studio Mac", "the same health payload carries it");
+  assert.equal(DEFAULT_SETTINGS.name, "", "the setting itself is never filled in with the fallback");
+  assert.equal((await readHuiSettings()).name, "Studio Mac", "and the saved file keeps what the operator typed");
+
+  await rm(HUI_SETTINGS_FILE, { force: true });
+  assert.equal((await readGatewayHealth("build-box")).name, "build-box", "removing the name restores the fallback");
 });

@@ -1,10 +1,11 @@
 /**
- * Browser client for HUI's managed, agent-only browser: its status, start and stop, tab previews and the
- * live-view socket for a conversation's tabs. The gateway owns the browser process; this module only crosses
- * `/__hui/` routes to reach it.
+ * Browser client for HUI's managed, agent-only browser: its status, start and stop, tab previews, the live-view socket
+ * for a conversation's tabs and `POST /__hui/browser/cookies`, which hands the gateway the absolute path of an exported
+ * login and gets back a count of what it read. The gateway owns the browser process and the file; this module only
+ * crosses `/__hui/` routes to reach it, and no cookie name or value comes back.
  */
 import { normalizeBrowserStatus } from "../lib/browser-status.ts";
-import type { BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
+import type { BrowserCookieImportReport, BrowserHandoff, BrowserSecretView, BrowserSecrets, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
 import { fetchJson } from "./request.ts";
 
 const BROWSER_URL = "/__hui/browser";
@@ -31,6 +32,15 @@ function tabRef(value: unknown): string | null {
   return typeof value === "string" && TAB_ID.test(value) ? value : null;
 }
 
+/** The tab waiting for the operator, or null. A message is required: a banner with nothing to do is worse than none. */
+function handoff(value: unknown): BrowserHandoff | null {
+  if (!isRecord(value)) return null;
+  const tabId = tabRef(value["tabId"]);
+  const message = text(value["message"], 500).trim();
+  if (!tabId || !message) return null;
+  return { tabId, message, since: text(value["since"], 64), by: value["by"] === "operator" ? "operator" : "agent" };
+}
+
 
 export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | undefined {
   if (!isRecord(raw)) return undefined;
@@ -44,7 +54,11 @@ export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | unde
       current: tabRef(raw["current"]),
       watching: tabRef(raw["watching"]),
       following: raw["following"] !== false,
+      handoff: handoff(raw["handoff"]),
     };
+  }
+  if (raw["type"] === "clipboard" && typeof raw["text"] === "string") {
+    return { type: "clipboard", text: text(raw["text"], 64_000) };
   }
   if (raw["type"] === "action" && typeof raw["tabId"] === "string" && TAB_ID.test(raw["tabId"]) && typeof raw["text"] === "string") {
     const point = isRecord(raw["point"]) && Number.isFinite(raw["point"]["x"]) && Number.isFinite(raw["point"]["y"])
@@ -90,6 +104,21 @@ export async function controlBrowser(action: "start" | "stop"): Promise<BrowserS
   }));
 }
 
+/**
+ * The login another browser exported, read on the gateway's machine from the path given here: a Playwright
+ * `storageState` file or a list of cookies. The report counts what was read and names its domains, and the sentence it
+ * carries is the one to show. Reading a file up to 4 MiB can outlast the default 5-second ceiling, so the caller owns
+ * the whole deadline.
+ */
+export async function importBrowserCookies(path: string): Promise<BrowserCookieImportReport> {
+  return fetchJson<BrowserCookieImportReport>(`${BROWSER_URL}/cookies`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+    signal: AbortSignal.timeout(30_000),
+  });
+}
+
 /** One-use live view of a conversation's tabs: JSON state/actions and binary frames. */
 export async function connectBrowserView(sessionId: string): Promise<WebSocket> {
   const result = await fetchJson<BrowserViewConnection>(`/__hui/sessions/${encodeURIComponent(sessionId)}/browser/connect`, {
@@ -111,4 +140,38 @@ export async function previewBrowserTab(id: string): Promise<string> {
   });
   if (typeof body.image !== "string" || !body.image.startsWith("data:image/")) throw new Error("The preview was not an image.");
   return body.image;
+}
+
+/** The operator's stored site secrets: names and origins only, never a value. */
+export function secretViews(body: unknown): BrowserSecretView[] {
+  const secrets = isRecord(body) ? body["secrets"] : undefined;
+  return Array.isArray(secrets) ? secrets.filter(isRecord).flatMap((entry) => {
+    const name = text(entry["name"], 60);
+    const origin = text(entry["origin"], 300);
+    if (!name || !origin) return [];
+    return [{ name, origin, createdAt: text(entry["createdAt"], 64) }];
+  }) : [];
+}
+
+export async function loadBrowserSecrets(): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets"));
+}
+
+/** A stored value never comes back: the response is the list of names and origins. */
+export async function saveBrowserSecret(input: { name: string; origin: string; value: string }): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(15_000),
+  }));
+}
+
+export async function removeBrowserSecret(name: string): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets/remove", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+    signal: AbortSignal.timeout(15_000),
+  }));
 }

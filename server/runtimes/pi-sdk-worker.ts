@@ -25,6 +25,8 @@ type Launch = {
   /** Utility calls: the cheapest reasoning level the model is actually sent. */
   lowestThinking?: boolean;
   disabledPluginIds?: string[];
+  /** The gateway's `~/.agents/skills`, as the worker host's mirror holds it. */
+  hostSkillPaths?: string[];
   bundledSkillPaths?: string[];
   /** Settings → Tools → Browser; absent means the default (on). */
   browserTool?: boolean;
@@ -81,8 +83,8 @@ async function main() {
       settingsManager,
       resourceLoaderOptions: {
         // PI appends additional paths after user/project/package resources,
-        // retaining its own first-name-wins override precedence.
-        additionalSkillPaths: launch.safeProbe ? [] : launch.bundledSkillPaths ?? [],
+        // retaining its own first-name-wins override precedence; the host's mirrored paths come before HUI's bundled ones.
+        additionalSkillPaths: launch.safeProbe ? [] : [...(launch.hostSkillPaths ?? []), ...(launch.bundledSkillPaths ?? [])],
         noExtensions: launch.safeProbe, noSkills: launch.safeProbe,
         noContextFiles: launch.safeProbe, noPromptTemplates: launch.safeProbe, noThemes: true,
         systemPromptOverride: (base) => base ?? HUI_DEFAULT_PROMPT,

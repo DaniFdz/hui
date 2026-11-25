@@ -7,13 +7,15 @@ import { build } from "vite";
 import { test } from "vitest";
 import { offlineBuild } from "./offline-build.ts";
 
-test("the offline build inventories emitted assets and deferred modules with their actual hashes, excluding its manifests and worker", async (t) => {
+test("the offline build inventories emitted assets and every module the page loads, a second entry included, with their actual hashes, excluding its manifests and worker", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "hui-offline-build-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "public", "fonts"), { recursive: true });
   await mkdir(join(root, "public", "runtime"), { recursive: true });
-  await writeFile(join(root, "index.html"), '<script type="module" src="/entry.js"></script>');
+  // Two module entries, as index.html has: the app, and the boot screen's own recovery before it.
+  await writeFile(join(root, "index.html"), '<script type="module" src="/recovery.js"></script><script type="module" src="/entry.js"></script>');
   await writeFile(join(root, "entry.js"), 'globalThis.huiBuild = __HUI_BUILD_ID__; globalThis.huiDeferred = () => import("./deferred.js");');
+  await writeFile(join(root, "recovery.js"), 'globalThis.huiBootRecovery = "boot recovery proof";');
   await writeFile(join(root, "deferred.js"), 'export const message = "deferred proof";');
   await writeFile(join(root, "public", "fonts", "text.woff2"), "font bytes");
   await writeFile(join(root, "public", "runtime", "engine.wasm"), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
@@ -48,6 +50,9 @@ test("the offline build inventories emitted assets and deferred modules with the
   assert.ok(expected.includes("/runtime/engine.wasm"));
   assert.ok(scripts.length >= 2, "the deferred module is emitted separately");
   assert.ok(scripts.some((source) => source.includes("deferred proof")));
+  // The page's own chunk carries both module entries, as index.html's app and boot recovery do, and is inventoried
+  // above with everything else: a cached shell can start the boot screen's recovery while the gateway is down.
+  assert.ok(scripts.some((source) => source.includes("boot recovery proof")));
   assert.ok(scripts.some((source) => source.includes(marker.build)), "the page and marker share a build identity");
   assert.ok(scripts.every((source) => !source.includes("__HUI_BUILD_ID__")));
   for (const file of inventory.files) {

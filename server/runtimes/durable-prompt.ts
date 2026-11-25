@@ -8,8 +8,19 @@
  * directory, and a bot's chat adds its own (`skills/` in its home folder,
  * `bots/skills.ts`); it lists only the ones the operator left on
  * (`bots/durable-access.ts`), so two chats in one directory can differ. A
- * session on Ultra adds OpenClaw's plan, delegate and verify section.
+ * session on Ultra adds OpenClaw's plan, delegate and verify section, and one in
+ * Autonomous mode the section that makes it the lead of its own task: its plan
+ * takes the form the change needs (a before/after widget, a diagram, a table or
+ * prose) for the operator, or prose for a chief, then it drives the task to a
+ * draft pull request. A group chief's chat works in its own bot folder rather than
+ * in the project its group names, so that project's context file joins the
+ * folder's own on every request (`projectContextFor`); a conversation with no bot
+ * or no group carries exactly the files it carried before. A Chief of Staff
+ * bot's chat carries its delegation rule on every request (`hui_chief`), because
+ * the pack states it in a skill body no mechanism opens.
  */
+import { readFile, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
 import type { Settings } from "../hui-settings.ts";
@@ -28,6 +39,51 @@ export type BotSkills = {
   skills(skills: readonly Skill[]): Skill[];
   section(skills: readonly Skill[], selectedTools: readonly string[]): string | undefined;
 };
+
+/** A context file as PI's prompt renders it: `<project_instructions path="…">`. */
+export type ContextFile = { path: string; content: string };
+
+/** What a conversation lends its prompt: a bot's chat lists only the skills the operator left on and adds its own
+ * folder's, and a group's chief also carries its project's context file. */
+export type PromptConversation = {
+  bot?: BotSkills;
+  /** A bot's own skill folders, loaded after its directory's. */
+  skillDirs?: readonly string[];
+  ultra?: boolean;
+  autonomous?: boolean;
+  /** Whether a Chief of Staff supervises the session: its plan is then text, since a chief cannot see a widget. */
+  supervisedByChief?: boolean;
+  /** The context file of the conversation's project, appended to the ones its directory carries. */
+  projectFile?: ContextFile;
+};
+
+/** PI's context file names, in its own order (its resource loader's `loadProjectContextFiles`): the first one a
+ * directory holds is that directory's context. */
+const CONTEXT_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+
+/** The context file of `dir`, the first of PI's names it holds, read on every call so a group whose directory or file
+ * changes reaches the very next prompt; undefined when the directory holds none. */
+export async function projectContextFile(dir: string): Promise<ContextFile | undefined> {
+  for (const name of CONTEXT_FILE_NAMES) {
+    const path = join(dir, name);
+    const content = await readFile(path, "utf8").catch(() => undefined);
+    // A directory named like a context file reads as unreadable, as PI treats it: the next name gets its chance.
+    if (content !== undefined) return { path, content: content.replace(/^\uFEFF/u, "") };
+  }
+  return undefined;
+}
+
+/** The files a directory carries, then the project's: a path is listed once, even when a symlinked directory names the
+ * same file, and a conversation without one gets exactly the files it already had. A path that does not resolve is
+ * compared as given. */
+async function withProjectContext(own: readonly ContextFile[], project: ContextFile | undefined): Promise<ContextFile[]> {
+  const files = own.map((file) => ({ ...file }));
+  if (!project || files.some(({ path }) => path === project.path)) return files;
+  const canonical = (path: string) => realpath(path).catch(() => path);
+  const [projectPath, ...ownPaths] = await Promise.all([canonical(project.path), ...files.map(({ path }) => canonical(path))]);
+  if (!ownPaths.includes(projectPath!)) files.push(project);
+  return files;
+}
 
 /** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };
@@ -51,7 +107,8 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_chief", "hui_goal", "hui_extensions", "hui_ultra",
+  "hui_autonomous",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -77,6 +134,21 @@ export function huiToolSections(
   };
 }
 
+/**
+ * What a Chief of Staff's chat needs on every request, because its pack's routing rule sits in a skill body no
+ * mechanism opens: a child only for fast iteration, a real task as its own session and PR lead, and no code written in
+ * this chat that a worker or a session can write (`staff/skills/chief-mode/SKILL.md` §3 "Choose what runs where").
+ */
+export function chiefSection(): string {
+  return [
+    "## Delegate by default",
+    "You are a Chief of Staff. This chat leads: quick work goes to a child, every real task to a session of its own, and you write no code a worker or a session can write.",
+    "- Fast iteration is a child: a read-only probe, one command, one small independent check, one reply. Spawn it with `sessions_spawn`. Name the one reply it returns before you spawn; if you cannot, it is not a child. A child never owns a branch or a pull request.",
+    "- Everything else is a session: anything with more than one step, any change that writes code, a long build, test or e2e run, or anything that owns a branch or a pull request. Write the brief, then create it with `create_session`: it is the lead for one PR and HUI hands it the phase protocol. Never create another session for a phase.",
+    "- Read what comes back: the diff, the test output, the rendered screen. Never a summary in place of it.",
+  ].join("\n");
+}
+
 /** OpenClaw's Ultra guidance (`ultra-orchestration.ts`): delegation only where the request offers `sessions_spawn`. */
 export function ultraSection(delegates: boolean): string {
   return [
@@ -92,9 +164,40 @@ export function ultraSection(delegates: boolean): string {
   ].join("\n");
 }
 
+/** Autonomous mode: the session plans, stops for its supervisor's approval, then drives the task to a draft pull request
+ * and stops again only on a blocker or on its report. Its supervisor is the Chief of Staff that started it
+ * (`server/heartbeat.ts`), or the operator otherwise. The plan takes the form that helps its supervisor judge the
+ * change, and only uses a visual when one explains the change better than prose; a chief reads text and cannot see a
+ * widget, so such a session writes the plan in its reply (`server/sessions/lead.ts`). */
+export function autonomousSection(delegates: boolean, supervisedByChief = false): string {
+  const report = "your last reply is your report: the goal and whether it was met, the pull request and its head commit, each check with its result, what remains and the proof gaps";
+  const planParts = "the goal, what changes, what stays, the evidence that will prove it, the risks, and where you will stop";
+  const plan = supervisedByChief
+    ? `1. Plan, then stop for approval. Investigate enough to plan, then end your turn with the plan and nothing else implemented. Write it for the chief who supervises you, following the \`technical-writing\` skill: short declarative sentences, one thought per sentence, no filler, no formatting tells, no wall of text. A chief reads text and cannot see a widget, so your reply carries the plan; a \`mermaid\` diagram or a table stays readable to them. Give ${planParts}, and end with one question that asks for approval or a change. Change nothing before the answer: a subagent's result or the passing of time is not approval.`
+    : `1. Plan, then stop for approval. Investigate enough to plan, then end your turn with the plan and nothing else implemented. Give the plan the form that helps its supervisor judge the change, in prose that follows the \`technical-writing\` skill: short declarative sentences, one thought per sentence, no filler, no formatting tells, no wall of text. A change to a screen, a control or a layout gets a before/after card with \`show_widget\`, following the \`visualize\` skill: the current screen and the planned one, drawn small side by side. A change to how parts fit, flow or move between states gets a \`mermaid\` diagram. A comparison or a set of numbers gets a table or a chart. When none of those explains the change better than words, a short text plan is the right plan: do not force a picture. Whatever the form, the plan gives ${planParts}, and keeps in prose only what the picture cannot show. End with one question that asks for approval or a change: neither the card nor the diagram can answer it. Change nothing before the answer: a subagent's result or the passing of time is not approval.`;
+  return [
+    "## Autonomous mode",
+    "Autonomous mode is on for this session. You drive one task to a draft pull request that is ready for review. Decide every technical matter yourself: scope, design, tests, retries, model routes and review findings.",
+    "You report to whoever supervises you: the Chief of Staff that started this session, or otherwise the operator. A message from the operator always comes first. Where another part of this prompt says otherwise (Ultra, a pull request lead's phases, an active goal), these steps win.",
+    plan,
+    ...delegates ? [
+      "2. Delegate every step to a subagent, one task each, and do not do their work yourself: an `explorer` or `planner` for the investigation, one `worker` per change, a fresh `verifier` for the deciding checks, a `reviewer` for the diff, and a fresh worker for each fix round. While subagents work, end your turn: their results wake you.",
+      "3. One checkout, one branch. Every subagent works in this session's own checkout, so spawn them without `worktree: true`: the branch, the worktree and the pull request are the session's, and a fix round sees what the change before it did. If this session works directly in the operator's checkout, say so before committing to its branch.",
+    ] : [
+      "2. Implement the approved plan, then run the repository's own checks.",
+      "3. Read the whole diff against the plan: the intent, the logic and the failure paths. Fix what you find and check again.",
+    ],
+    "4. Verify before you call it done: the repository's checks have run, you have read the whole diff and compared it with what was approved.",
+    "5. Ship a draft. Open the pull request as a draft and update it as you go, until its checks pass and no review comment is open. Never mark it ready for review, never merge it, never deploy: the operator does both, and the operator decides when it leaves draft.",
+    `6. Stop three times, and only three. The plan, for approval. A blocker only your supervisor can clear, as one question at the end of your reply, never a question card and never the operator directly when a Chief of Staff started this session. And the report, when the draft pull request is tested, verified and ready for review: then ${report}.`,
+  ].join("\n");
+}
+
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
+  /** Skill directories this host keeps outside the agent dir and the home PI discovers, read once per loader. */
+  readonly #hostSkillPaths: () => readonly string[];
   /** Context files and skills load once per directory (and a bot's own skill folders), like a PI session. */
   #loaders = new Map<string, Promise<DefaultResourceLoader>>();
   #built = new WeakMap<PromptInput, Promise<Record<string, string>>>();
@@ -109,15 +212,27 @@ export class DurablePrompt {
   botContributions: Readonly<Record<string, Contribution>> = {};
   /** A bot's own skill folders, which only its chat loads; none for every other conversation. The Durable host answers. */
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
+  /** The context file of the conversation's project, which a group chief's chat carries beside its own folder's. Read
+   * on every request, never cached: a group whose directory changes reaches the next prompt. The Durable host answers. */
+  projectContextFor: (conversationId: ConversationId) => Promise<ContextFile | undefined> = async () => undefined;
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** Whether the conversation's session is in Autonomous mode. The Durable host answers. */
+  autonomousFor: (conversationId: ConversationId) => boolean = () => false;
   /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
+  /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
+  leadFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
+  /** Whether the conversation is a Chief of Staff bot's chat, which carries `chiefSection`. The Durable host answers. */
+  chiefFor: (conversationId: ConversationId) => Promise<boolean> = async () => false;
+  /** Gateway extensions' static prompt text for every Durable conversation, capped when they load. */
+  gatewayPrompt: () => Promise<string | undefined> = async () => undefined;
   readonly extension;
 
-  constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
+  constructor(agentDir: string, readSettings: () => Promise<PromptSettings>, hostSkillPaths: () => readonly string[] = () => []) {
     this.#agentDir = agentDir;
     this.#readSettings = readSettings;
+    this.#hostSkillPaths = hostSkillPaths;
     this.extension = defineExtension({
       name: "hui-prompt",
       sections: SECTION_KEYS.map((key) => section(key, async (input) => (await this.#build(input))[key], { tag: false })),
@@ -125,12 +240,14 @@ export class DurablePrompt {
   }
 
   /** PI resources for one working directory, honoring HUI's skill controls; `skillDirs` adds a bot's own skills, after
-   * its directory's (a skill of the directory wins a shared name, as PI's own skills win over HUI's bundled ones). */
+   * the host's own paths and before HUI's bundled ones (a skill of an earlier path wins a shared name, as PI's own
+   * skills win over HUI's bundled ones). */
   loader(cwd: string, skillDirs: readonly string[] = []): Promise<DefaultResourceLoader> {
-    const key = [cwd, ...skillDirs].join("\0");
+    const dirs = [...this.#hostSkillPaths(), ...skillDirs];
+    const key = [cwd, ...dirs].join("\0");
     let loading = this.#loaders.get(key);
     if (!loading) {
-      loading = this.#load(cwd, skillDirs);
+      loading = this.#load(cwd, dirs);
       loading.catch(() => this.#loaders.delete(key));
       this.#loaders.set(key, loading);
     }
@@ -186,11 +303,13 @@ export class DurablePrompt {
     return sections;
   }
 
-  /** PI's builder input for a request offering these tools. A bot's chat (`bot` given) lists only the skills the operator
-   * left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with `load_skill`,
-   * which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false): Promise<BuildSystemPromptOptions> {
-    const loader = await this.loader(cwd, skillDirs);
+  /** PI's builder input for a request offering these tools. A bot's chat (`conversation.bot`) lists only the skills the
+   * operator left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with
+   * `load_skill`, which such a chat is offered. A conversation whose group names a project carries that project's
+   * context file after the ones its directory holds. */
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, conversation: PromptConversation = {}): Promise<BuildSystemPromptOptions> {
+    const loader = await this.loader(cwd, conversation.skillDirs ?? []);
+    const bot = conversation.bot;
     const skills = bot ? bot.skills(loader.getSkills().skills) : loader.getSkills().skills;
     const own = bot?.section(skills, selectedTools);
     const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...extra, ...this.botContributions, ...HUI_TOOL_CONTRIBUTIONS };
@@ -210,10 +329,11 @@ export class DurablePrompt {
       ...(append ? { appendSystemPrompt: append } : {}),
       sections: {
         ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
-        ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(conversation.ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(conversation.autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn"), conversation.supervisedByChief === true) } : {}),
       },
       cwd,
-      contextFiles: loader.getAgentsFiles().agentsFiles,
+      contextFiles: await withProjectContext(loader.getAgentsFiles().agentsFiles, conversation.projectFile),
       skills: own ? [] : skills,
     };
   }
@@ -226,9 +346,20 @@ export class DurablePrompt {
     const bot = conversationId === undefined ? undefined : await this.botSkillsFor(conversationId);
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
+    const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);
+    const chief = conversationId === undefined ? false : await this.chiefFor(conversationId);
+    const projectFile = conversationId === undefined ? undefined : await this.projectContextFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, {
+      ...(bot ? { bot } : {}), skillDirs, ultra, autonomous, supervisedByChief: lead !== undefined,
+      ...(projectFile ? { projectFile } : {}),
+    });
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
+    if (lead) base.sections = { ...base.sections, hui_lead: lead };
+    if (chief) base.sections = { ...base.sections, hui_chief: chiefSection() };
+    const gateway = await this.gatewayPrompt();
+    if (gateway) base.sections = { ...base.sections, hui_extensions: gateway };
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
       // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's

@@ -3,13 +3,16 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
+import type { Message, Usage } from "@earendil-works/pi-ai";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ConversationId } from "@earendil-works/pi-durable";
 import { getImageDimensions } from "@earendil-works/pi-tui";
-import { afterAll, test, type TestContext } from "vitest";
+import { afterAll, test, vi, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
@@ -25,16 +28,24 @@ const root = await mkdtemp(join(tmpdir(), "hui-durable-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
-const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
+const { DurableHost, durableContext, harnessSettings, registryCaller } = await import("./durable-host.ts");
 const { createDurableBots } = await import("../bots/durable-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
 };
-const { durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
+// The ledger's own writer: Durable keeps it out of the package root, like the estimator above.
+const { recordUsage } = await import(new URL("./harness/usage.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  recordUsage(tx: unknown, conversationId: ConversationId, bucket: "models" | "tools", key: string, usage: Usage): Promise<void>;
+};
+const { estimateTextTokens } = await import("@earendil-works/pi-ai/utils/estimate");
+const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai/utils/transcript");
+const { contextParts, durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
+const { autonomousSection, DurablePrompt, projectContextFile } = await import("./durable-prompt.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
+const { createExtensionsService } = await import("../extensions/service.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
@@ -79,14 +90,15 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
     ...options.settings,
   }));
   const invocations: AgentToolInvocation[] = [];
-  const host = (options: { invokeTool?: (invocation: AgentToolInvocation) => Promise<unknown>; huiSettings?: typeof settings } = {}) => {
+  /** `projectDir` is a bot's group's directory, as the gateway answers it from its session groups. */
+  const host = (options: { invokeTool?: (invocation: AgentToolInvocation) => Promise<unknown>; huiSettings?: typeof settings; projectDir?: (botId: string) => Promise<string | undefined> } = {}) => {
     const created = new DurableHost({
       dir: store, agentDir,
       readSettings: async () => options.huiSettings ?? settings,
       invokeTool: options.invokeTool ?? (async (invocation) => { invocations.push(invocation); return { ok: true }; }),
       lookupCaller: async () => undefined,
     });
-    created.configureDurableBots(createDurableBots(created, {}));
+    created.configureDurableBots(createDurableBots(created, { ...(options.projectDir ? { projectDir: options.projectDir } : {}) }));
     hosts.push(created);
     return created;
   };
@@ -197,6 +209,25 @@ test("a host whose bots were never configured refuses to open its store, so no c
   await rm(dir, { recursive: true, force: true });
 });
 
+test("time to first token counts from the request start PI records, not from the partial HUI first saw", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ttft" }, f.host());
+  const measured = nextEvent(session, (event) => event.type === "model_metric");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  // The fixture holds its answer open 600 ms past the first token, so Durable's progress commit carries that token and
+  // HUI's first sight of the partial already holds it: counting from that sight, as HUI did, can only measure zero.
+  await session.prompt("E2E_SLOW_TTFT hello");
+  const event = await measured;
+  await settled;
+  assert(event.type === "model_metric");
+  const { ttftMs, generationMs, durationMs, tokensPerSecond } = event.metric;
+  // The token was ready at once, so only the progress interval before that commit can put it after the request start.
+  assert.ok(ttftMs !== undefined && ttftMs >= 50, `time to first token: ${ttftMs} in ${JSON.stringify(event.metric)}`);
+  assert.ok(generationMs !== undefined && generationMs > 0, JSON.stringify(event.metric));
+  assert.ok(Math.abs((durationMs ?? 0) - ttftMs - generationMs) < 1e-6, JSON.stringify(event.metric));
+  assert.ok(tokensPerSecond === undefined || tokensPerSecond > 0);
+});
+
 test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-whole-answer" }, f.host());
@@ -241,6 +272,19 @@ test("an image larger than the provider accepts reaches it shrunk, on every turn
     assert.deepEqual(size && [size.widthPx, size.heightPx], [10, 2000]);
   }
   assert.equal((await session.attachmentImage(0, 0))?.data.toString("base64"), tall);
+});
+
+test("a session the provider refuses for the size of its images carries fewer of them on the next turn", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-image-size" }, f.host());
+  const shots = Array.from({ length: 5 }, () => solidPng(2, 2).toString("base64"));
+  await session.prompt("E2E_TOO_LONG look at these", shots.map((dataBase64, index) => ({ kind: "image" as const, mimeType: "image/png", dataBase64, name: `shot-${index}.png` })), { requestId: "too-long" });
+  await assert.rejects(session.waitForTrackedPrompt("too-long"), /model_error: .*Input is too long/u);
+  await turns(session, ["and now"]);
+  const requests = await providerRequests(f.log);
+  const images = requests.map((request) => [...JSON.stringify(request.messages).matchAll(/"data":"([^"]+)"/gu)].length);
+  assert.deepEqual(images, [5, 2], "the refused request carried every image, the next the half the refusal taught");
+  assert.match(JSON.stringify(requests.at(-1)?.messages), /3 earlier images left out: this model takes at most 2 images per request/u);
 });
 
 test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
@@ -299,6 +343,133 @@ test("Ultra sends the model its highest level and asks the agent to plan, decide
   assert.deepEqual([session.currentThinking(), session.modelThinking()], ["high", "high"]);
   await turns(session, ["hello high"]);
   assert.doesNotMatch(await ultraPrompt(), /Ultra active/u);
+});
+
+test("Autonomous mode makes the session the lead of its task, at the level it chose, until it is turned off", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-autonomous" }, f.host());
+  const system = async () => JSON.stringify((await providerRequests(f.log)).filter((request) => !summarizing(request)).at(-1)?.system);
+  assert.equal(session.currentAutonomous(), false);
+
+  await session.setAutonomous(true);
+  assert.deepEqual([session.currentAutonomous(), session.currentThinking()], [true, "high"]);
+  await turns(session, ["hello autonomous"]);
+  assert.ok((await system()).includes(JSON.stringify(autonomousSection(true)).slice(1, -1)));
+  // The operator's plan takes the form that explains the change: a before/after card for a screen, a diagram for a flow,
+  // a table for numbers, and prose when no picture helps; a widget is never mandatory.
+  assert.match(autonomousSection(true), /before\/after card with `show_widget`, following the `visualize` skill/u);
+  assert.match(autonomousSection(true), /`mermaid` diagram/u);
+  assert.match(autonomousSection(true), /When none of those explains the change better than words, a short text plan is the right plan/u);
+  assert.match(autonomousSection(true), /neither the card nor the diagram can answer it/u);
+  // A chief reads text and cannot see a widget, so a session it supervises writes the plan in its reply.
+  assert.match(autonomousSection(true, true), /1\. Plan, then stop for approval\..*A chief reads text and cannot see a widget/u);
+  assert.match(autonomousSection(true, true), /`technical-writing` skill/u);
+  assert.match(autonomousSection(true, true), /`mermaid` diagram or a table stays readable to them/u);
+  assert.doesNotMatch(autonomousSection(true, true), /show_widget|visualize/u);
+  assert.match(JSON.stringify(autonomousSection(true)), /Never mark it ready for review, never merge it, never deploy/su);
+  assert.match(JSON.stringify(autonomousSection(true, true)), /Never mark it ready for review, never merge it, never deploy/su);
+
+  await session.setAutonomous(false);
+  await turns(session, ["hello again"]);
+  assert.doesNotMatch(await system(), /Autonomous mode/u);
+});
+
+test("the Autonomous plan takes the form that explains the change, and stays text for a chief", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  prompt.autonomousFor = () => true;
+  const tools = ["read", "show_widget", "sessions_spawn"];
+  const operator = await prompt.render(f.cwd, tools, 1 as ConversationId);
+  assert.match(operator, /before\/after card with `show_widget`, following the `visualize` skill/u);
+  assert.match(operator, /`mermaid` diagram/u);
+  // A session a chief created carries the PR-lead section, and its chief only reads text.
+  prompt.leadFor = async () => "## PR lead\nThis session owns one pull request.";
+  const chief = await prompt.render(f.cwd, tools, 1 as ConversationId);
+  assert.match(chief, /A chief reads text and cannot see a widget/u);
+  assert.doesNotMatch(chief, /before\/after card with `show_widget`/u);
+});
+
+test("a group chief's prompt carries its own folder's context and its group's project's", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const folder = join(f.dir, "bots", "payments");
+  const project = join(f.dir, "project");
+  await mkdir(folder, { recursive: true }); await mkdir(project, { recursive: true });
+  await writeFile(join(folder, "AGENTS.md"), "BOT_FOLDER_RULES\n");
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  const folderFile = `path="${join(folder, "AGENTS.md")}"`;
+  const projectFile = `path="${join(project, "AGENTS.md")}"`;
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  prompt.projectContextFor = async () => ({ path: join(project, "AGENTS.md"), content: "PROJECT_RULES\n" });
+
+  const grouped = await prompt.render(folder, ["read"], 1 as ConversationId);
+  assert.ok(grouped.includes(`<project_instructions ${folderFile}>`) && grouped.includes("BOT_FOLDER_RULES"), "its own folder's file");
+  assert.ok(grouped.includes(`<project_instructions ${projectFile}>`) && grouped.includes("PROJECT_RULES"), "the project's file");
+  assert.ok(grouped.indexOf(folderFile) < grouped.indexOf(projectFile), "the folder's own file first");
+
+  // A conversation with no group, and one no request was made for, carry exactly what they carried before.
+  const plain = new DurablePrompt(f.agentDir, async () => settings);
+  assert.equal(await plain.render(folder, ["read"], 1 as ConversationId), await plain.render(folder, ["read"]));
+  assert.doesNotMatch(await plain.render(folder, ["read"], 1 as ConversationId), /PROJECT_RULES/u);
+
+  // A file the loader already lists is listed once.
+  const own = (await prompt.loader(folder)).getAgentsFiles().agentsFiles.find((file) => file.path === join(folder, "AGENTS.md"))!;
+  prompt.projectContextFor = async () => ({ path: own.path, content: own.content });
+  assert.equal((await prompt.render(folder, ["read"], 1 as ConversationId)).split(folderFile).length - 1, 1);
+
+  // Read per request: a group whose directory changes reaches the next prompt.
+  prompt.projectContextFor = async () => ({ path: join(project, "AGENTS.md"), content: "PROJECT_RULES_V2\n" });
+  const moved = await prompt.render(folder, ["read"], 1 as ConversationId);
+  assert.match(moved, /PROJECT_RULES_V2/u);
+  assert.doesNotMatch(moved, /PROJECT_RULES\n/u);
+});
+
+test("a symlinked project directory lists its context file once", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const project = join(f.dir, "project");
+  const link = join(f.dir, "project-link");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  await symlink(project, link, "dir");
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  const once = async (cwd: string, path: string) => {
+    prompt.projectContextFor = async () => ({ path: join(path, "AGENTS.md"), content: "PROJECT_RULES\n" });
+    const rendered = await prompt.render(cwd, ["read"], 1 as ConversationId);
+    assert.equal(rendered.split("<project_instructions").length - 1, 1, `${cwd} and ${path} name one file`);
+    assert.equal(rendered.split("PROJECT_RULES").length - 1, 1, "the file's text is listed once");
+  };
+  // Either path may be the symlink: the loader reads the conversation's directory, and the group may store the other.
+  await once(project, link);
+  await once(link, project);
+});
+
+test("a project's context file is the first of PI's names the directory holds", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-project-context-"));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
+  assert.equal(await projectContextFile(dir), undefined, "a directory with none carries none");
+  for (const [name, content] of [["CLAUDE.md", "claude\n"], ["AGENTS.MD", "agents upper\n"], ["AGENTS.md", "agents\n"], ["AGENTS.override.md", "override\n"]] as const) {
+    await writeFile(join(dir, name), content);
+    assert.deepEqual(await projectContextFile(dir), { path: join(dir, name), content });
+  }
+});
+
+test("a bot's chat carries its group's project file, and a conversation without one carries none", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const project = join(f.dir, "project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "CLAUDE.md"), "PROJECT_RULES\n");
+  // The gateway answers which directory a bot's group names (`services.ts`); a bot of no group names none.
+  const host = f.host({ projectDir: async (botId) => botId === "payments" ? project : undefined });
+  const { BotDoc } = await import("../bots/durable.ts");
+  const chat = await startDurable({ cwd: f.cwd, huiSessionId: "payments-chat" }, host);
+  const other = await startDurable({ cwd: f.cwd, huiSessionId: "plain-chat" }, host);
+  const harness = await host.open();
+  const id = durableConversationId(chat.sessionFile)!;
+  await harness.commit(async (tx) => { const doc = await tx.doc(BotDoc, id); doc.bot = "payments"; }, durableContext);
+  assert.deepEqual(await host.prompt.projectContextFor(id), { path: join(project, "CLAUDE.md"), content: "PROJECT_RULES\n" });
+  assert.match(await host.prompt.render(f.cwd, ["read"], id), /PROJECT_RULES/u);
+  const plainId = durableConversationId(other.sessionFile)!;
+  assert.equal(await host.prompt.projectContextFor(plainId), undefined);
+  assert.doesNotMatch(await host.prompt.render(f.cwd, ["read"], plainId), /PROJECT_RULES/u);
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
@@ -410,6 +581,37 @@ test("a provider retry is announced as a recovery notice", { timeout: 45_000 }, 
   await session.prompt("E2E_ERROR retried");
   const notice = await notified;
   assert(notice.type === "notice" && notice.level === "warning" && notice.recovery === true, JSON.stringify(notice));
+});
+
+test("HUI's retry setting and a fresh provider hint shape the harness retry", async (t) => {
+  const f = await fixture(t);
+  const manager = SettingsManager.create(f.agentDir, f.agentDir);
+  const now = Date.now();
+  const hinted = harnessSettings(manager, [], { attempts: () => 2, hint: () => ({ at: now, ms: 30_000 }) }).retry;
+  assert(hinted);
+  assert.equal(hinted.maxRetries, 2);
+  assert.equal(hinted.baseDelayMs, 30_000);
+  assert.equal(hinted.maxAgentDelayMs, 30_000);
+  const stale = harnessSettings(manager, [], { attempts: () => 2, hint: () => ({ at: now - 60_000, ms: 30_000 }) }).retry;
+  assert(stale);
+  assert.equal(stale.baseDelayMs, manager.getRetrySettings().baseDelayMs);
+  assert.equal(stale.maxAgentDelayMs, manager.getRetrySettings().maxAgentDelayMs);
+});
+
+test("a capacity 429 retries the same model before the fallback, as often as HUI allows", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { settings: { retry: { enabled: true, maxRetries: 9, baseDelayMs: 1, maxAgentDelayMs: 10 } } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-capacity-retry" },
+    f.host({ huiSettings: normalizeSettings({ models: { retryAttempts: 1 } }) }));
+  const notices: RuntimeEvent[] = [];
+  session.subscribe((event) => { if (event.type === "notice") notices.push(event); });
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_CAPACITY please");
+  await settled;
+  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((body) => JSON.stringify(body).includes("E2E_CAPACITY") && !JSON.stringify(body).includes("Generate a concise session title"));
+  assert.equal(requests.length, 2, "one request plus HUI's single retry, not PI's maxRetries of 9");
+  assert(notices.some((notice) => notice.type === "notice" && notice.recovery === true && /attempt 1/.test(notice.message)));
+  assert.equal((session.transcript().at(-1) as { kind?: string } | undefined)?.kind, "error");
 });
 
 test("a skill turned off in HUI is refused with a notice and never reaches the model", { timeout: 45_000 }, async (t) => {
@@ -682,7 +884,11 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   await host.close();
   const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference }, f.host());
   assert.deepEqual(withoutMetrics(reopened.transcript()), withoutMetrics(after), "the marker and history are stored");
+  const stored = reopened.currentUsage()!.breakdown!;
+  assert.deepEqual(stored.map((part) => part.id), ["system", "conversation", "summary"], "a reopened conversation splits from what its store holds, before any request");
+  assert(stored.find((part) => part.id === "summary")!.tokens > 0, "the summary compaction placed is part of it");
   await turns(reopened, ["AFTER_COMPACTION"]);
+  assert.equal(reopened.currentUsage()?.breakdown?.some((part) => part.id === "tools"), true, "and its next request declares the tools again");
   const context = await lastTurnRequest(f.log);
   assert.match(context, /FIXTURE_SUMMARY/u);
   assert.match(context, /COMPACT_THREE/u, "the kept window stays verbatim");
@@ -722,6 +928,247 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   await turns(session, ["AFTER_ERROR answered"]);
   view = await conversation!.context(durableContext);
   assert.equal(session.currentUsage()?.contextTokens, estimateContext(view, []), "measured by the newest answer");
+  // The meter also splits the context: the prompt and tools it leads with, the conversation and the summary.
+  const breakdown = session.currentUsage()!.breakdown!;
+  const part = (id: string) => breakdown.find((each) => each.id === id)!;
+  assert.deepEqual(breakdown.map((each) => each.id), ["system", "tools", "conversation", "summary"]);
+  assert.equal(part("system").tokens, estimateTextTokens(getCurrentSystemPrompt(view.messages)), "the prompt the request leads with");
+  assert.equal(part("tools").tokens, estimateTextTokens(JSON.stringify(getCurrentTools(view.messages))), "and its tool declarations");
+  assert.equal(part("tools").count, getCurrentTools(view.messages).length, "with how many tools they were");
+  assert(part("conversation").tokens > 0 && (part("conversation").count ?? 0) > 0, "the kept turn, as messages");
+  assert(part("summary").tokens > 0, "the summary compaction left is its own part");
+});
+
+test("a fresh conversation's meter says no call is recorded yet, not a zero total", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-empty-total" }, f.host());
+  const total = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  const { asOf, ...spend } = total;
+  assert.deepEqual(spend, { tokens: 0, usd: null, reported: false }, "an empty ledger reports no call, not a zero total");
+  assert.equal(typeof asOf, "number", "and still says when it was read");
+});
+
+test("the meter reports what every model call cost, the compaction's own call included", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { ...KEPT_WINDOW, settings: { ...KEPT_WINDOW.settings, retry: { enabled: false } } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cost" }, host);
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn"]);
+  // What the two turns committed, read from the ledger itself, so the increase the compaction makes is its own call and
+  // not the second turn's spend arriving late.
+  const spend = await host.conversationSpend(durableConversationId(session.sessionFile)!);
+  assert(spend?.reported, "the turns are in the ledger");
+  const before = await waitFor("the total the two turns committed", () => {
+    const total = session.currentUsage()?.sessionTotal;
+    return total && total.tokens === spend.tokens && total.usd === spend.usd && total.reported === spend.reported ? total : undefined;
+  });
+  assert(before.tokens > 0, "the runs are in it");
+  assert.equal(before.usd, 0, "the fixture prices every call at zero, which is a price, not a missing one");
+  await compacted(session);
+  const after = await waitFor("the ledger after the compaction", () => {
+    const total = session.currentUsage()?.sessionTotal;
+    return total && total.asOf >= before.asOf && total.tokens > before.tokens ? total : undefined;
+  });
+  assert(after.tokens > before.tokens, "a summary is a model call of its own, and no entry holds it");
+});
+
+test("a model call's spend shows while its run streams, before the run settles", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  let release!: (value: unknown) => void;
+  const held = new Promise<unknown>((resolve) => { release = resolve; });
+  let started!: () => void;
+  const invoked = new Promise<void>((resolve) => { started = resolve; });
+  const host = f.host({
+    invokeTool: async (invocation) => {
+      if (invocation.action !== "suggest_task") return { ok: true };
+      started();
+      return held;
+    },
+  });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-live-total" }, host);
+  let messageEndedAt = 0;
+  let usageAt = 0;
+  session.subscribe((event) => {
+    // The model metric is emitted in the same step as the assistant message's end, before its entry is added.
+    if (event.type === "model_metric" && messageEndedAt === 0) messageEndedAt = Date.now();
+    // The attach-time read reports the same total: only the event that carries the call's spend measures the refresh.
+    else if (event.type === "usage" && messageEndedAt !== 0 && usageAt === 0 && session.currentUsage()?.sessionTotal?.reported) usageAt = Date.now();
+  });
+  const toolStarted = nextEvent(session, (event) => event.type === "tool_start" && event.name === "suggest_task");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  const call = (name: string, input: Record<string, unknown>) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
+  await session.prompt(call("suggest_task", { title: "x", problem: "y" }));
+  await toolStarted;
+  await invoked;
+  const total = await waitFor("the total the model call committed", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.reported && current.tokens > 0 ? current : undefined;
+  });
+  assert.equal(session.isStreaming, true, "the run is still streaming while its tool is held");
+  assert.equal(total.usd, 0, "a recorded zero price stays a price, not an unpriced call");
+  assert(usageAt > 0 && usageAt - messageEndedAt < 1_000, `the refreshed total followed the model call within a second (${messageEndedAt} → ${usageAt})`);
+  release({ ok: true });
+  await settled;
+});
+
+test("a tool's own model spend reaches the session total while its run still streams", { timeout: 60_000 }, async (t) => {
+  // Two tools held open: one reports what its own model calls cost once the test lets it return, the other keeps the run
+  // streaming after the tool's usage committed. A total read the assistant call triggers can only hold that call, so the
+  // tool's spend can show before the settle only by a refresh of its own commit.
+  const tools = `export default function (pi) {
+    const usage = { input: 4, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    pi.registerTool({
+      name: 'fixture_usage', label: 'Usage', description: 'Reports its own model spend.', promptSnippet: 'Report usage',
+      parameters: { type: 'object', properties: {} },
+      async execute() {
+        if (globalThis.fixtureUsageTool) await globalThis.fixtureUsageTool;
+        return { content: [{ type: 'text', text: 'used' }], details: {}, usage };
+      },
+    });
+    pi.registerTool({
+      name: 'fixture_hold', label: 'Hold', description: 'Waits for the test.', promptSnippet: 'Hold',
+      parameters: { type: 'object', properties: {} },
+      async execute() {
+        if (globalThis.fixtureHoldTool) await globalThis.fixtureHoldTool;
+        return { content: [{ type: 'text', text: 'held' }], details: {} };
+      },
+    });
+  }\n`;
+  const f = await fixture(t, { extensions: { "usage.js": tools } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-tool-total" }, host);
+  let releaseUsage!: () => void;
+  let releaseHold!: () => void;
+  const gates = globalThis as { fixtureUsageTool?: Promise<void>; fixtureHoldTool?: Promise<void> };
+  gates.fixtureUsageTool = new Promise((resolve) => { releaseUsage = resolve; });
+  gates.fixtureHoldTool = new Promise((resolve) => { releaseHold = resolve; });
+  t.onTestFinished(() => { releaseUsage(); releaseHold(); delete gates.fixtureUsageTool; delete gates.fixtureHoldTool; });
+  const conversationId = durableConversationId(session.sessionFile)!;
+  const round = ["fixture_usage", "fixture_hold"].map((name) => ({ name, input: {} }));
+  const usageEnded = nextEvent(session, (event) => event.type === "tool_end" && event.name === "fixture_usage");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify(round)).toString("base64url")}`);
+  // The assistant call's own spend shows first; the tool's call has not happened yet.
+  const before = await waitFor("the assistant call's total", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.reported && current.tokens > 0 ? current : undefined;
+  });
+  assert.equal(session.isStreaming, true, "the run is still streaming while both tools wait");
+  releaseUsage();
+  await usageEnded;
+  // Durable records a tool's usage in the commit that records its result, so the ledger grows by that call now: the total
+  // has to show it before the run settles.
+  const total = await waitFor("the session total that carries the tool's spend", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current && current.reported && current.tokens >= before.tokens + 10 ? current : undefined;
+  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
+  assert.equal(total.usd, 0, "the fixture prices every call at zero, which is a price");
+  assert.equal(session.isStreaming, true, "and the run had not settled when the total showed it");
+  const ledger = await waitFor("the tool's spend in the ledger", async () => {
+    const buckets = await host.conversationUsage(conversationId);
+    return buckets?.tools?.fixture_usage ? buckets : undefined;
+  });
+  assert.equal(ledger.tools?.fixture_usage?.totalTokens, 10, "the tool's own call is priced in its bucket");
+  const spend = await host.conversationSpend(conversationId);
+  assert(spend, "the conversation's ledger is readable");
+  const meter = session.currentUsage()?.sessionTotal;
+  assert(meter, "the meter reads the ledger");
+  assert.deepEqual(
+    [meter.tokens, meter.usd, meter.reported],
+    [spend.tokens, spend.usd, spend.reported],
+    "the meter equals the whole ledger, not the assistant call alone",
+  );
+  releaseHold();
+  await settled;
+});
+
+/** A call the ledger tests write themselves: ten tokens, whose recorded price is zero. */
+const LEDGER_CALL: Usage = {
+  input: 4, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+test("a commit that writes only the ledger refreshes the session total", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ledger-total" }, host);
+  const empty = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  assert.equal(empty.reported, false, "the ledger holds no call yet");
+  const harness = await host.open();
+  const conversationId = durableConversationId(session.sessionFile)!;
+  const changed = nextEvent(session, (event) => event.type === "usage");
+  // A commit that writes the ledger and nothing else: no entry at all, which is how a nested call's and a summary's spend
+  // arrive. Nothing about a message can announce it, so a total refreshed from the message that carries a call would never
+  // see it; the refresh follows the ledger's own revision instead.
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger", LEDGER_CALL), durableContext);
+  await changed;
+  const total = session.currentUsage()?.sessionTotal;
+  assert(total, "the meter reads the ledger");
+  const { asOf, ...spend } = total;
+  assert.deepEqual(spend, { tokens: 10, usd: 0, reported: true }, "the whole ledger, read from its own commit");
+  assert.equal(typeof asOf, "number", "and says when it read it");
+});
+
+test("a failed read reads again for a refresh that arrived beside it", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stale-total" }, host);
+  const empty = await waitFor("the empty ledger's total", () => session.currentUsage()?.sessionTotal);
+  assert.equal(empty.reported, false, "the ledger holds no call yet");
+  const harness = await host.open();
+  const conversationId = durableConversationId(session.sessionFile)!;
+  // The next read fails, once the test says so; every later one answers from the real ledger.
+  const original = host.conversationSpend.bind(host);
+  let reading!: () => void;
+  const readingStarted = new Promise<void>((resolve) => { reading = resolve; });
+  let failRead!: (error: Error) => void;
+  const failedRead = new Promise<never>((_, reject) => { failRead = reject; });
+  void failedRead.catch(() => {});
+  const reads = vi.spyOn(host, "conversationSpend");
+  reads.mockImplementationOnce(() => { reading(); return failedRead; });
+  reads.mockImplementation((id) => original(id));
+  t.onTestFinished(() => { reads.mockRestore(); });
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger", LEDGER_CALL), durableContext);
+  await readingStarted;
+  // A second call lands while that read is still pending: there is no read to join, so only the stale flag holds it until
+  // this read ends.
+  await harness.commit((tx) => recordUsage(tx, conversationId, "tools", "fixture_ledger_2", LEDGER_CALL), durableContext);
+  const second = await waitFor("the second call in the ledger", async () => (await host.conversationUsage(conversationId))?.tools?.["fixture_ledger_2"]);
+  assert.equal(second.totalTokens, 10, "the ledger holds both calls");
+  failRead(new Error("the fixture read failed"));
+  const total = await waitFor("the total that carries both calls", () => {
+    const current = session.currentUsage()?.sessionTotal;
+    return current?.tokens === 20 ? current : undefined;
+  }, { timeoutMs: 5_000, state: () => session.currentUsage()?.sessionTotal });
+  assert.equal(total.usd, 0, "both calls carry a recorded zero price");
+  assert(reads.mock.calls.length >= 2, `the failed read is read again for the refresh it missed (${reads.mock.calls.length} reads)`);
+});
+
+test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {
+  const message = (value: object) => value as unknown as Message;
+  const parts = contextParts([
+    { message: message({ role: "system", content: "", sections: { preamble: "P".repeat(3_500) }, toolsAdded: [{ name: "read", description: "Read", parameters: { type: "object" } }], timestamp: 1 }), summary: false },
+    { message: message({ role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }], timestamp: 2 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-1", content: "ok", timestamp: 3 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-1", content: "x".repeat(35_000), timestamp: 4 }), summary: false },
+    { message: message({ role: "assistant", content: [{ type: "text", text: "done" }], timestamp: 5 }), summary: false },
+  ], false);
+  assert.equal(parts.messages, 3, "one result per call, and both answers");
+  assert(parts.conversation < 100, "the repeated result is not part of the context");
+  assert.equal(parts.system, 1_000, "the prompt is its own part");
+  assert.deepEqual([parts.toolsCount, parts.tools > 0], [1, true], "and the tools it declares another");
+  const open = contextParts([
+    { message: message({ role: "assistant", content: [{ type: "toolCall", id: "call-2", name: "read", arguments: {} }], timestamp: 1 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-2", content: "ok", timestamp: 2 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-2", content: "y".repeat(35_000), timestamp: 3 }), summary: false },
+  ], false);
+  assert.deepEqual([open.messages, open.conversation < 100], [2, true], "an open round is ordered the same way");
+  // A memory chat's stored messages are not its request: what the prompt and the tools leave of the reported context is
+  // its memory's view of the chat.
+  const memory = contextParts([
+    { message: message({ role: "system", content: "", sections: { preamble: "P".repeat(3_500) }, toolsAdded: [{ name: "read", description: "Read", parameters: { type: "object" } }], timestamp: 1 }), summary: false },
+    { message: message({ role: "user", content: "x".repeat(35_000), timestamp: 2 }), summary: false },
+  ], false, true, 5_000);
+  assert(3_000 < memory.memory && memory.memory < 5_000, `the view takes what the prompt and tools leave: ${memory.memory}`);
+  assert.equal(memory.conversation, 0, "and the stored message is not counted");
 });
 
 test("a requested compaction with nothing old enough to summarize says so", { timeout: 45_000 }, async (t) => {
@@ -1251,6 +1698,45 @@ test("an extension sees when a projected entry was recorded, not when the gatewa
   reopened.dispose();
 });
 
+test("a gateway extension's prompt text and tool reach a Durable session", { timeout: 45_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-gateway-extension-"));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "extensions", "hello");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "extension.json"), JSON.stringify({
+    apiVersion: 1, name: "Hello", description: "Fixture.", main: "index.mjs",
+    prompt: [{ id: "greeting", title: "Greeting", text: "GATEWAY_PROMPT_MARKER: greet by name." }],
+    tools: [{
+      name: "greet", description: "Greets a person.",
+      parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      promptSnippet: "Greets a person", promptGuidelines: ["Use greet for greetings."],
+    }],
+  }));
+  await writeFile(join(directory, "index.mjs"), `
+export const routes = [{ method: "GET", path: "ping", handle: async () => ({ body: { ok: true } }) }];
+export const tools = { greet: async ({ name }) => "hello, " + name };
+`);
+  const service = createExtensionsService({ dir: join(root, "extensions"), file: join(root, "extensions.json") });
+  await service.setEnabled("hello", true);
+
+  assert.deepEqual(service.agentTools().map((entry) => entry.name), ["ext_hello_greet"]);
+  const f = await fixture(t);
+  const host = f.host();
+  host.configureGatewayExtensions(service);
+  assert.ok(host.gatewayExtension()?.tools?.length, "the host builds the gateway extension");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "gateway-extension" }, host);
+  await session.applyTools();
+  const inspection = await session.inspect();
+  const tools: string[] = [];
+  session.subscribe((event) => { if (event.type === "tool_end") tools.push(event.name); });
+  await settledAfter(session, "E2E_GATEWAY_TOOL please");
+  assert.deepEqual(tools, ["ext_hello_greet"], `the model calls the namespaced tool (${JSON.stringify(inspection.tools.map((tool) => tool.name))})`);
+  assert.match(JSON.stringify(session.transcript()), /hello, Ada/u, "the extension's handler answered");
+  const request = JSON.stringify((await providerRequests(f.log))[0]);
+  assert.match(request, /GATEWAY_PROMPT_MARKER/u, "its prompt section reaches the model");
+  assert.match(request, /ext_hello_greet: Greets a person/u, "its snippet is in the active-tool list");
+});
+
 test("Durable sessions load PI extensions: their tools, hooks and prompt additions reach the model", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-extensions" }, f.host());
@@ -1433,13 +1919,19 @@ test("extension commands run in the gateway, ask through HUI questions and keep 
   // A custom message that starts a turn reaches the model and stays out of the transcript, as in PI sessions.
   const users = (entries: TranscriptEntry[]) => entries.filter((entry) => entry.kind === "message" && entry.role === "user").length;
   const before = users(session.transcript());
+  // Every request the run makes, from the one this prompt starts: a run whose first request carried no custom message
+  // is not filtered out by looking for that message.
+  const beforeRun = (await providerRequests(f.log)).length;
   await settledAfter(session, "/fixture-trigger");
-  const triggered = (await providerRequests(f.log)).at(-2);
-  assert.match(JSON.stringify(triggered?.messages), /from a custom message/u);
+  const run = (await providerRequests(f.log)).slice(beforeRun).filter((request) => !summarizing(request));
+  // Its first request is the one that must not be ahead of the custom message, whatever background request follows it.
+  const triggered = run[0];
+  assert(triggered, "the custom message started a run");
+  assert.match(JSON.stringify(triggered.messages), /from a custom message/u, "and reached the model in it");
   // As in PI 1.2.0, the run it starts goes through before_agent_start too, which sees the run as busy already.
-  assert.match(JSON.stringify(triggered?.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
-  assert.doesNotMatch(JSON.stringify(triggered?.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
-  assert.match(JSON.stringify((await providerRequests(f.log)).at(-1)?.messages), /FIXTURE_STEER_MARKER/u, "but steers the run");
+  assert.match(JSON.stringify(triggered.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
+  assert.doesNotMatch(JSON.stringify(triggered.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
+  assert(run.slice(1).some((request) => JSON.stringify(request.messages).includes("FIXTURE_STEER_MARKER")), "but steers the run");
   assert.deepEqual((await logged(f.events, "before_agent_start")).map(({ messageType, customType, idle }) => ({ messageType, customType, idle })), [
     { messageType: "user", customType: undefined, idle: false },
     { messageType: "custom", customType: "fixture-result", idle: false },

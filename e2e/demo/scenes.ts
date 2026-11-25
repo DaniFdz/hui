@@ -1,4 +1,5 @@
 /** The demo clips, in overview order. Prompts match the scripted model in provider.ts. */
+import { chiefsScene } from "./chiefs-scene.ts";
 import type { Director, Target } from "./record.ts";
 
 /** `providerUrl`: the scripted model's server, which also serves the demo's pages and the Datadog graph. */
@@ -73,6 +74,8 @@ function drawSignupGraph(now: number): Promise<string> {
 }
 
 let pagesHook = "";
+/** The storefront group's Chief of Staff, made in the bots scene's setup: the bot whose started sessions the clip shows. */
+let storefrontChief = { id: "", name: "", handle: "" };
 const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
@@ -82,6 +85,51 @@ async function centre(d: Director, target: Target) {
   await d.waitFor(target);
   await d.stage("window.found?.scrollIntoView({ block: 'center', behavior: 'smooth' })");
   await d.pause(800);
+}
+
+/** Parks the cursor on the header line: a transcript that scrolls under a still cursor slides links beneath it, and a
+ * link's hover card then covers the picture the line is about. */
+async function parkCursor(d: Director) {
+  await d.move({ x: 620, y: 18 });
+}
+
+/** Scrolls a page to an element it has not brought into view yet: a long page, such as Usage, keeps its cards below the
+ * fold, where the recorder cannot point at them. The stage shares HUI's origin, so it scrolls HUI's own page. */
+async function reveal(d: Director, selector: string) {
+  const found = await d.stage<boolean>(`(() => {
+    const page = document.getElementById("app").contentDocument.querySelector(${JSON.stringify(selector)});
+    page?.scrollIntoView({ block: "center" });
+    return Boolean(page);
+  })()`);
+  if (!found) throw new Error(`The page has no ${selector}`);
+  await d.pause(700);
+}
+
+/** Waits until a target has left the screen: the view removes the working row when a run settles, so its absence is the
+ * only signal that nothing more is streaming into the row a line is about to describe. */async function gone(d: Director, target: Target, timeout = 60_000) {
+  const deadline = Date.now() + timeout;
+  while (await d.find(target)) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${JSON.stringify(target)} to go`);
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
+/** Waits for the screen to catch up with the DOM. The stage and HUI share a renderer, so a streamed row can be whole
+ * where `find` reads it while the compositor still shows the half-drawn one; a capture makes the renderer draw the
+ * settled state, which is the picture the cut then lands on. */
+async function caughtUp(d: Director) {
+  await d.send("Page.captureScreenshot", { format: "jpeg", quality: 20 });
+}
+
+/** Waits until the camera has finished moving, so a cut can end on the frame it framed: the stage's zoom runs 700 ms,
+ * and the frames before it lands still hold what the move was leaving behind. */
+async function cameraRested(d: Director) {
+  await d.stage(`(() => {
+    const camera = document.getElementById("camera");
+    void getComputedStyle(camera).transform;
+    return Promise.all(camera.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+  })()`);
+  await d.stage(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))`);
 }
 
 /** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one names the steer and queue shortcuts). */
@@ -95,67 +143,262 @@ async function send(d: Director, prompt: string) {
   if (await d.find({ css: ".chat-scroll-to-bottom[data-visible='true']" })) await d.click({ label: "Scroll to latest" });
 }
 
+/** Sets a caption exactly when its line begins: the previous line ends, the caption lands, then this line starts. Without
+ * this, a caption set before `say` waits for the last line changes up to a line and a half before its own voice. */
+async function narrate(d: Director, caption: string, key: string) {
+  await d.quiet();
+  await d.caption(caption);
+  await d.say(key);
+}
+
+/** Parks the cursor over the window's chrome, off the page: a hover there leaves the content, so no tooltip is left over
+ * the beat being filmed. */
+async function park(d: Director) {
+  await d.move({ x: -40, y: -20 });
+  await d.pause(400);
+}
+
+/** Opens the chat's Run status panel when the run left it shut. The trigger keeps its box as the panel's anchor, so the
+ * collapse control is what tells whether the panel is out. */
+async function openRunStatus(d: Director) {
+  await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+  if (!(await d.find({ css: ".chat-run-status__collapse" }))) await d.click({ css: ".chat-run-status__trigger" });
+  await d.waitFor({ css: ".chat-run-status__panel" }, 10_000);
+}
+
+/** Closes the Run status panel: a card in the transcript behind it would lose its right side. */
+async function closeRunStatus(d: Director) {
+  if (!(await d.find({ css: ".chat-run-status__collapse" }))) return;
+  await d.click({ css: ".chat-run-status__collapse" });
+  await d.waitFor({ css: ".chat-run-status__trigger[aria-expanded='false']" }, 10_000);
+  await d.pause(400);
+}
+
+/** Opens a finished batch's folded helper rows, so their names and states are on screen. */
+async function unfoldHelpers(d: Director) {
+  if (await d.find({ css: ".chat-run-status__success:not([open]) > summary" })) {
+    await d.click({ css: ".chat-run-status__success:not([open]) > summary" });
+    await d.pause(300);
+  }
+}
+
+/** Dismisses HUI's operation toast when it is up: its message would otherwise sit over the content the beat shows. */
+async function dismissNote(d: Director, text: string) {
+  if (!(await d.find({ css: ".app-toast.chat-operation-toast", contains: text }))) return;
+  await d.click({ css: ".app-toast.chat-operation-toast .app-toast__dismiss" });
+  await d.pause(300);
+}
+
+/** What the browser pane shows around a handoff, in the app's own pixels: its strip, its Continue button, the element
+ * on top of that button and the activity line. A release that did not happen is read from here, not guessed. */
+async function handoffState(d: Director) {
+  return d.stage<{ panes: number; strip: { x: number; y: number; width: number; height: number } | null; done: { x: number; y: number; width: number; height: number } | null; top: string | null; activity: string; camera: string }>(`(() => {
+    const doc = document.getElementById("app").contentDocument;
+    // HUI's elements draw into the light DOM, so the pane and its strip are plain descendants: the panes are found the
+    // way the recorder finds its targets, then queried directly.
+    const panes = [];
+    const walk = (root) => {
+      for (const element of root.querySelectorAll("*")) {
+        if (element.tagName === "HUI-BROWSER-PANE") panes.push(element);
+        if (element.shadowRoot) walk(element.shadowRoot);
+      }
+    };
+    walk(doc);
+    const pane = panes.find((element) => element.querySelector(".hui-browser-activity"));
+    const box = (element) => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+    };
+    const strip = box(pane?.querySelector(".hui-browser-handoff"));
+    const done = box(pane?.querySelector(".hui-browser-handoff__done"));
+    const hit = done ? pane.ownerDocument.elementFromPoint(done.x + done.width / 2, done.y + done.height / 2) : null;
+    return {
+      panes: panes.length, strip, done,
+      top: hit ? [hit.tagName.toLowerCase(), ...[...hit.classList].map((name) => "." + name)].join("") : null,
+      activity: pane?.querySelector(".hui-browser-activity__text")?.textContent?.trim() ?? "",
+      camera: getComputedStyle(document.getElementById("camera")).transform,
+    };
+  })()`);
+}
+
+/** Brings an element in the transcript to the middle of the view. The chat follows its last row, so a scripted smooth
+ * scroll from the bottom is re-pinned before it leaves HUI's bottom zone; a run of small scrolls is what a reader does. */
+async function centreInThread(d: Director, target: Target) {
+  await d.waitFor(target);
+  const deadline = Date.now() + 20_000;
+  let previous = Number.NaN;
+  for (;;) {
+    const box = await d.find(target);
+    if (!box) throw new Error("The element to centre is no longer in the transcript.");
+    const offset = box.y + box.height / 2 - 300;
+    if (Math.abs(offset) < 40) return;
+    const top = await d.stage<number>(`document.getElementById("app").contentDocument?.querySelector(".chat-thread")?.scrollTop ?? -1`);
+    // The scroll stopped moving: the element sits where the transcript's edges put it.
+    if (top === previous) return;
+    previous = top;
+    await d.stage(`document.getElementById("app").contentDocument?.querySelector(".chat-thread")?.scrollBy(0, ${Math.round(offset / 2)})`);
+    await d.pause(150);
+    if (Date.now() > deadline) throw new Error("The transcript did not reach the element to centre.");
+  }
+}
+
+/** The draft the Rich chat clip types: bold, a bullet list and inline code, and the canonical Markdown (a paragraph,
+ * a blank line, then the bullets) the serializer puts on the wire. */
+const RICH_DRAFT = "Chart this week's build times from the `ci` export\n\n- **main** and pull requests\n- Wednesday's cache change landed";
+
+/** A composer's hidden Markdown wire, which no box makes a target reachable: the stage reads the field itself. */
+async function composerWire(d: Director, name: "text" | "prompt"): Promise<string> {
+  return d.stage<string>(`document.getElementById("app").contentDocument?.querySelector('input[data-testid="composer-markdown"][name="${name}"]')?.value ?? ""`);
+}
+
+/** Scrolls an element the clip is about to use into view: a sidebar or a panel list is longer than the window, and a
+ * target off it is not visible to `find`. */
+async function scrollIn(d: Director, selector: string, timeout = 30_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const drawn = await d.stage<boolean>(`(() => {
+      const element = document.getElementById("app").contentDocument?.querySelector(${JSON.stringify(selector)});
+      element?.scrollIntoView({ block: "center" });
+      return Boolean(element);
+    })()`);
+    if (drawn) return;
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${selector} to be drawn.`);
+    await new Promise((done) => setTimeout(done, 200));
+  }
+}
+
+/** The checkout page's Confirm button, in the page's own 390×844 pixels: the pane shows the page's image, so a tap at
+ * the same fraction of the frame is the same point on the page. */
+const CHECKOUT = { width: 390, height: 844, x: 195, y: 598 };
+
+/** The streamed picture the operator is driving, as the frame it shows: every frame the page paints arrives as a new
+ * image, so the source itself is the fingerprint. A hash of it collided for two frames of the same length, and the
+ * clip read a painted page as one that never repainted. */
+async function framePixels(d: Director): Promise<string> {
+  return d.stage<string>(`document.getElementById("app").contentDocument?.querySelector(".hui-browser-frame img")?.getAttribute("src") ?? ""`);
+}
+
+/** Waits until the page repaints after the operator's input: the frame is the only view of it this page has. */
+async function frameRepainted(d: Director, before: string, timeout = 30_000) {
+  if (!before) throw new Error("The pane shows no live page frame, so a tap's repaint cannot be seen.");
+  const deadline = Date.now() + timeout;
+  while (await framePixels(d) === before) {
+    if (Date.now() > deadline) throw new Error("The page did not repaint after the tap.");
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
 export const scenes: Scene[] = [
   {
     name: "kanban",
     chapter: "Kanban",
-    path: "/kanban",
-    ready: { contains: "Drag a backlog item" },
-    // Lanes by custom group, Storefront first, instead of long project paths.
+    path: "/dashboard",
+    ready: { contains: "The sessions in flight" },
     storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
     narration: {
-      board: "This is H U I's Kanban board. Every agent session is a card, in the stage its work is in.",
+      dashboard: "Start on the Dashboard. Every session in flight, what needs you first, and how the machine is doing.",
+      board: "The Kanban board puts the same sessions in the stage their work is in.",
       drag: "When the work moves on, drag the card along.",
       backlog: "A backlog item starts its own session, in a fresh Git worktree, with a branch name suggested for you.",
       work: "The agent gets going right away: it reads the code, writes the change, and runs the tests.",
+      progress: "And H U I keeps a task progress card for it, so you can see how far along it is without reading the chat.",
       stage: "Agents keep the board up to date themselves. Tell this one that CI passed, and it moves its own card to Testing.",
     },
     async run({ director: d }) {
+      await d.caption("One page shows what is in flight");
+      await d.say("dashboard");
+      await d.move({ css: "[data-testid='dashboard-stats']" });
+      await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.4);
+      await d.pause(2_000);
+      await d.quiet();
+      await d.zoom();
+      await d.click(link("Kanban"));
+      await d.waitFor({ contains: "Drag a backlog item" });
       await d.caption("Every session is a card, in the stage its work is in");
       await d.say("board");
       await d.move(card("Apple Pay at checkout"));
       await d.pause(1_600);
 
+      // The drag plays at 1.0: under the stage's zoom Chrome draws the dragged card twice, at two scales.
       await d.caption("Drag a card when the work moves on");
       await d.say("drag");
-      await d.zoom({ css: ".kanban-cell--testing", nth: 0 }, 1.35);
+      await d.quiet();
       await d.drag({ css: ".kanban-card", contains: "Search results skeleton" }, { css: ".kanban-cell--done", nth: 0 });
       await d.waitFor(card("Search results skeleton", "done"));
-      await d.pause(700);
-      await d.zoom();
+      await d.pause(900);
 
+      // The dialog is the picture "in its own worktree" names, so choosing that option and its suggested branch is the
+      // cut: the line starts with the choice made, not with "Current checkout · main" selected under it.
+      await d.cut(async () => {
+        await d.click(card("Add CSV export to the orders page"));
+        await d.waitFor("New worktree");
+        await d.zoom({ css: "dialog" }, 1.3);
+        await d.click("New worktree");
+        await d.waitFor({ contains: "feature/orders-csv-export" });
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Start a backlog item in its own worktree");
-      await d.say("backlog");
-      await d.click(card("Add CSV export to the orders page"));
-      await d.waitFor("New worktree");
-      await d.zoom({ css: "dialog" }, 1.3);
-      await d.click("New worktree");
-      await d.cut(() => d.waitFor({ contains: "feature/orders-csv-export" }));
       await d.pause(1_200);
-      await d.click({ css: "button", text: "Start session" });
-      await d.zoom();
-      await d.waitFor(card("Add CSV export to the orders page", "investigation"));
-      await d.pause(800);
+      await d.say("backlog");
+      await d.quiet();
 
+      // Starting the session, the card it puts on the board and the session it opens are the wait: the line that reads
+      // the new session starts on it, framed on its own work instead of a slice of the sidebar.
+      const started = card("Add CSV export to the orders page", "investigation");
+      const tests = { css: "[data-testid='message-row']", contains: "node --test" };
+      await d.cut(async () => {
+        await d.click({ css: "button", text: "Start session" });
+        await d.zoom();
+        await d.waitFor(started, 40_000);
+        await d.click(started);
+        await d.waitFor(tests, 60_000);
+        await centre(d, tests);
+        await d.zoom(tests, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent gets to work right away");
       await d.say("work");
-      await d.click(card("Add CSV export to the orders page", "investigation"));
-      await d.zoom({ x: 860, y: 430 }, 1.3);
-      await d.waitFor({ contains: "node --test" }, 30_000);
-      await d.pause(1_800);
+      await d.pause(1_400);
+      await d.quiet();
       await d.zoom();
 
+      // The plan is the Run status panel's now: the pill counts its steps, and the operator opens the panel. Opening it
+      // and waiting for the card are a cut, so the line starts with the progress card on screen.
+      const progress = { css: "[data-testid='task-progress']" };
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-run-status__trigger" }, 60_000);
+        if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
+        await d.waitFor(progress, 20_000);
+        await d.pause(600);
+        await d.zoom(progress, 1.45);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("HUI keeps a task progress card");
+      await d.say("progress");
+      await d.pause(2_400);
+      await d.quiet();
+      await d.zoom();
+
+      // Telling the session that CI passed, the agent moving its card and the board showing it are a cut: the closing
+      // line reads the moved card, and the clip ends on the wide board it was moved on.
+      const moved = card("Apple Pay at checkout", "testing");
+      await d.cut(async () => {
+        await d.click(link("Apple Pay at checkout"));
+        await send(d, "CI passed on Apple Pay. Move it to review.");
+        await d.waitFor({ contains: "moved this card to" }, 30_000);
+        await d.click(link("Kanban"));
+        await d.waitFor(moved, 30_000);
+        await centre(d, moved);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Agents report their own stage");
       await d.say("stage");
-      await d.click(link("Apple Pay at checkout"));
-      await send(d, "CI passed on Apple Pay. Move it to review.");
-      await d.waitFor({ contains: "moved this card to" }, 30_000);
-      await d.pause(800);
-      await d.click(link("Kanban"));
-      await d.waitFor(card("Apple Pay at checkout", "testing"));
-      await d.zoom(card("Apple Pay at checkout", "testing"), 1.4);
-      await d.pause(2_000);
-      await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },
@@ -165,8 +408,8 @@ export const scenes: Scene[] = [
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     narration: {
-      chart: "Answers don't have to be walls of text. Ask for a chart of this week's builds,",
-      widget: "and the agent draws an interactive widget, right in the chat, on your theme.",
+      chart: "Start a new session and type the request: the composer writes the Markdown as you go.",
+      widget: "And the answer comes back as an interactive widget, on your theme.",
       browser: "It can drive a real browser too. You watch the page live while it fills in the signup form.",
       cards: "Links unfurl into cards, like the merged pull request and the Slack thread behind it.",
       datadog: "Datadog dashboards too: the widget's graph, read through your own orgs, as in Slack.",
@@ -178,46 +421,190 @@ export const scenes: Scene[] = [
       if (!response.ok) throw new Error(`The Datadog graph upload failed: ${response.status}`);
     },
     async run({ director: d }) {
-      await d.caption("Ask for a chart");
+      // The clip opens on the session it started on, and the New Session click happens on camera: the cut below lands on
+      // the ready composer instead of swallowing the loaded app.
+      await d.caption("Start a new session");
       await d.say("chart");
+      await d.pause(3_000);
       await d.click({ label: "New session in STOREFRONT" });
-      await d.click({ placeholder: "What should this session work on?" });
-      await d.type("Chart this week's build times from ci/build-times.csv");
+
+      // The rich composer, on camera: the draft formats as it is typed, so the typing is a beat of its own rather than
+      // a wait the clip cuts.
+      await d.cut(async () => {
+        await d.waitFor({ css: "#launch-prompt" }, 20_000);
+        await d.click({ placeholder: "What should this session work on?" });
+        await caughtUp(d);
+      });
+      await d.caption("Type it, and it formats");
+      await d.pause(3_000);
+      // A bullet list starts on `- `, bold on the closing `**` and code on the closing backtick. Enter splits the list
+      // item, never sends: Enter in prose sends, which is the send below. The dash and the space that completes the list
+      // rule are two strokes: typed as one string the rule would not see the run it converts.
+      await d.type("-");
+      await d.press("space");
+      await d.type("Chart this week's build times from the `ci` export");
       await d.press("Enter");
-      await d.caption("…and get an interactive widget, on your theme");
+      await d.type("**main** and pull requests");
+      await d.press("Enter");
+      await d.type("Wednesday's cache change landed");
+      // Shift+Tab on the first item lifts it out of the list: the request is the paragraph above its two bullets.
+      await d.click({ css: ".ProseMirror li", nth: 0 });
+      await d.press("Shift+Tab");
+      await d.zoom({ css: ".ProseMirror" }, 1.2);
+      // The formatted draft is the proof the feature works: the editor holds a strong run, a list item and a code span,
+      // and the wire the form submits carries exactly the Markdown they serialize to.
+      for (const selector of ["strong", "li", "code"]) {
+        if (!(await d.find({ css: `.ProseMirror ${selector}` }))) throw new Error(`The draft's editor shows no ${selector}.`);
+      }
+      const wire = await composerWire(d, "prompt");
+      if (wire !== RICH_DRAFT) throw new Error(`The composer's wire is not the draft.\nexpected: ${JSON.stringify(RICH_DRAFT)}\nreceived: ${JSON.stringify(wire)}`);
+      await d.caption("Bold, a list, inline code");
+      await d.pause(3_000);
+      // The send's own line holds on the draft, then the sent row is framed for a moment: the transcript follows the
+      // running turn, so the row is on screen only right after it lands.
+      await d.caption("Send it, and it arrives as Markdown");
+      await d.pause(3_000);
+      await d.click({ css: ".ProseMirror p", nth: 0 });
+      await d.press("Enter");
+      await d.waitFor({ css: ".chat-group.user strong" }, 60_000);
+      await d.waitFor({ css: ".chat-group.user li" }, 60_000);
+      await d.zoom({ css: ".chat-group.user", last: true }, 1.45);
+      await d.pause(2_000);
+      await d.quiet();
+
+      // The typed request and the drawn widget are the wait: the widget's own line starts once it is on screen, not over
+      // an empty card.
+      const widget = { css: ".hui-widget-card__frame" };
+      await d.cut(async () => {
+        await d.zoom();
+        await d.waitFor({ contains: "Toggle the series" }, 40_000);
+        await d.zoom(widget, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("…and an interactive widget");
       await d.say("widget");
-      await d.waitFor({ contains: "Toggle the series" }, 30_000);
-      await d.zoom({ css: ".hui-widget-card__frame" }, 1.3);
-      // The widget runs in its own sandboxed frame; its toggle sits at the top left.
-      const widget = await d.waitFor({ css: ".hui-widget-card__frame" });
-      await d.click({ x: widget.x + 130, y: widget.y + 24 });
+      await d.pause(3_000);
+      // The widget runs in its own sandboxed frame; its toggle sits at the top left. The caption has had its hold, so it
+      // leaves before the pointer starts changing the chart under it.
+      await d.caption();
+      const frame = await d.waitFor(widget);
+      await d.click({ x: frame.x + 130, y: frame.y + 24 });
       await d.pause(1_600);
-      await d.click({ x: widget.x + 40, y: widget.y + 24 });
+      await d.click({ x: frame.x + 40, y: frame.y + 24 });
       await d.pause(900);
+      await d.quiet();
       await d.zoom();
 
-      await d.caption("It drives a real browser, live in the chat");
+      // Sending the browser task, the page it drives and the confirmation that it really got there are a cut: the line
+      // starts on the live page, filled in. The turn's own tail scrolls the preview out of the transcript, so the cut
+      // waits for the run to settle and scrolls the card back before it frames it.
+      const preview = { css: ".hui-browser-preview" };
+      await d.cut(async () => {
+        await send(d, "Check that signup still works on staging");
+        // The transcript scrolls under a still cursor: park it off the page, or a link slides beneath it and opens its
+        // hover card over the picture.
+        await park(d);
+        await d.waitFor(preview, 30_000);
+        // The page's own confirmation, which the script quotes only when the browser really got there.
+        await d.waitFor({ contains: "We sent a link to dana@acme.dev" }, 40_000);
+        await gone(d, { css: ".chat-group--working" }, 40_000);
+        await centreInThread(d, preview);
+        await d.zoom(preview, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await park(d);
+      await d.caption("It drives a real browser");
       await d.say("browser");
-      await send(d, "Check that signup still works on staging");
-      await d.waitFor({ css: ".hui-browser-preview" }, 30_000);
-      await d.zoom({ css: ".hui-browser-preview" }, 1.35);
-      // The page's own confirmation, which the script quotes only when the browser really got there.
-      await d.waitFor({ contains: "We sent a link to dana@acme.dev" }, 40_000);
-      await d.pause(600);
+      await d.pause(3_200);
+      await d.quiet();
       await d.zoom();
+
+      // The cards sit below the fold: scrolling to the pull request and framing it is the cut before the line about them.
+      const pull = { css: ".github-embed" };
+      await d.cut(async () => {
+        await centre(d, pull);
+        await d.zoom(pull, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await park(d);
       await d.caption("Links unfurl into cards");
       await d.say("cards");
-      await centre(d, { css: ".github-embed" });
-      await d.zoom({ css: ".github-embed" }, 1.35);
-      await d.pause(2_200);
-      await d.zoom();
+      await d.pause(3_000);
+      await d.quiet();
+
+      const datadog = { css: ".datadog-embed" };
+      await d.cut(async () => {
+        await d.zoom();
+        // The card lands under the others, once its graph has loaded.
+        await centre(d, { css: ".datadog-embed__image" });
+        await d.zoom(datadog, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await park(d);
       await d.caption("Datadog graphs, from your orgs");
       await d.say("datadog");
-      // The card lands under the others, once its graph has loaded.
-      await centre(d, { css: ".datadog-embed__image" });
-      await d.zoom({ css: ".datadog-embed" }, 1.3);
-      await d.pause(2_600);
+      await d.pause(3_000);
+      // The closing line reads the graph; the camera comes back to the wide page under it, so the clip ends clean.
+      await d.quiet();
       await d.zoom();
+      await d.caption();
+      await d.pause(1_500);
+    },
+  },
+  {
+    name: "cost",
+    chapter: "Cost and context",
+    viewport: [1280, 720],
+    path: "/sessions/demo-11",
+    ready: { contains: "It drifted" },
+    narration: {
+      context: "Every conversation shows what its context carries: the system prompt, the tool definitions, and the conversation itself.",
+      total: "The same meter says what every model call in the session has cost so far.",
+      usage: "And Usage adds the sessions up: what a recorded call costs on average, the share the cache served, and what each session spent.",
+    },
+    async run({ director: d }) {
+      await narrate(d, "What this context carries", "context");
+      await d.click({ css: ".context-ring" });
+      await d.waitFor({ css: ".context-usage__breakdown" });
+      // The popover hangs under the composer, so at 1.7 the camera is already pinned to the window's bottom edge and a
+      // move onto the total below the split frames the same pixels. At 1.5 the whole popover fits and the move is a real
+      // one: the split by system prompt, tool definitions and conversation, then the session's own spend under it.
+      await d.zoom({ css: ".context-usage__popover" }, 1.5);
+      await d.pause(2_400);
+      await narrate(d, "…and what its calls cost", "total");
+      // The same meter counts the session's calls below the split, so the camera moves onto that block under the line.
+      await d.zoom({ css: ".context-usage__stats" }, 2.2);
+      await d.pause(2_000);
+      await d.zoom();
+
+      // The Usage page's report takes a few seconds to arrive. The click on its link and that wait are a cut: the line
+      // that reads the page then starts on the loaded page, instead of over four seconds of the session page standing
+      // still while the cursor glides and Usage loads.
+      await d.quiet();
+      await d.cut(async () => {
+        await d.click(link("Usage"));
+        await d.waitFor({ css: "[data-testid='usage-report'][aria-busy='false']" }, 30_000);
+        await d.waitFor({ css: "[data-testid='usage-totals']" }, 30_000);
+        await reveal(d, ".usage-summary-grid");
+        await caughtUp(d);
+      });
+      await narrate(d, "Cost and cache, across sessions", "usage");
+      // The line names the average cost first, then the cache share, then each session: its beats follow in that order.
+      // A card's own factor keeps the Usage overview heading and the Errors card beside it whole.
+      await d.pause(700);
+      await d.zoom({ css: ".usage-summary-card", contains: "Avg cost / record" }, 1.4);
+      await d.pause(1_600);
+      await d.zoom({ css: ".usage-summary-card", contains: "Cache hit rate" }, 1.4);
+      // The last clause names the sessions: back the camera out and scroll them in under the wide page, which is also
+      // the frame the clip ends on, so the last words need no zoom-out after them.
+      await d.pause(1_000);
+      await d.zoom();
+      await reveal(d, "[data-testid='usage-session-row']");
+      await d.quiet();
       await d.caption();
     },
   },
@@ -235,10 +622,18 @@ export const scenes: Scene[] = [
       vscode: "or open the whole project in V S Code, without leaving the browser.",
     },
     async run({ director: d }) {
+      // A fresh profile opens the conversation with its Work pane on the rail, where only Show Work pane exists. The pane
+      // and its terminal are open before the line that names them.
+      await d.cut(async () => {
+        if (await d.find({ label: "Show Work pane" })) await d.click({ label: "Show Work pane" });
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:terminal']" });
+        await d.waitFor({ contains: "Shared · Connected" });
+        await d.waitFor({ css: ".hui-terminal-surface" });
+        await caughtUp(d);
+      });
       await d.caption("Every conversation has a Work pane");
       await d.say("terminal");
-      await d.click({ label: "Open terminal" });
-      await d.waitFor({ contains: "Shared · Connected" });
       const terminal = await d.waitFor({ css: ".hui-terminal-surface" });
       // The prompt and output sit at the top of the terminal.
       const output = { x: terminal.x + terminal.width / 2, y: terminal.y + 150 };
@@ -247,46 +642,68 @@ export const scenes: Scene[] = [
       await d.type("git status --short && git log --oneline -1", { terminal: true });
       await d.press("Enter");
       await d.pause(1_400);
+      await d.quiet();
       await d.zoom();
 
+      // The agent's turn ends with the tests passing in the same terminal, and that is the picture its line describes.
+      await d.cut(async () => {
+        await send(d, "Go ahead, and run the tests in my terminal");
+        await d.waitFor({ contains: "3 tests pass in your terminal" }, 40_000);
+        await d.zoom(output, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent can type in your terminal too");
       await d.say("agent");
-      await send(d, "Go ahead, and run the tests in my terminal");
-      await d.zoom(output, 1.5);
-      await d.waitFor({ contains: "3 tests pass in your terminal" }, 40_000);
       await d.pause(1_200);
+      await d.quiet();
       await d.zoom();
 
+      // Opening the diff, its file and the side-by-side view is the wait, not the beat: the line starts on the change.
+      await d.cut(async () => {
+        await d.click({ label: "Maximize Work pane" });
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:diff']" });
+        await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
+        await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
+        await d.waitFor({ contains: "formatTotal(order.total" });
+        await d.zoom({ css: ".hui-diff-main" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Every change, in the Diff view");
       await d.say("diff");
-      await d.click({ label: "Maximize Work pane" });
-      await d.click({ label: "Open Work view" });
-      await d.click({ css: ".work-pane__menu-item[value='launch:diff']" });
-      await d.click({ css: ".hui-diff-file[data-path='src/orders/orders-page.js']" });
-      await d.click({ css: ".hui-diff-segmented__option", text: "Side by side" });
-      await d.waitFor({ contains: "formatTotal(order.total" });
-      await d.zoom({ css: ".hui-diff-main" }, 1.4);
       await d.pause(2_200);
-      await d.zoom();
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.zoom();
+        await d.click({ css: ".hui-diff-main__open" });
+        await d.waitFor({ css: ".hui-files-editor" });
+        await d.pause(1_800);
+        await caughtUp(d);
+      });
       await d.caption("Open a file in Files");
       await d.say("files");
-      await d.click({ css: ".hui-diff-main__open" });
-      await d.waitFor({ css: ".hui-files-editor" });
-      await d.pause(1_800);
+      await d.pause(1_200);
+      await d.quiet();
 
+      // VS Code's server starts (and is already installed before this run); the clip skips the wait.
+      await d.cut(async () => {
+        await d.click({ label: "Open Work view" });
+        await d.click({ css: ".work-pane__menu-item[value='launch:vscode']" });
+        await d.waitFor({ css: "[aria-label^='Source Control']" }, 300_000);
+        await d.pause(800);
+        await d.click({ css: "[aria-label^='Source Control']" });
+        await d.click({ css: ".monaco-list-row", contains: "orders-page.js" });
+        await d.pause(1_000);
+        await d.zoom({ css: ".monaco-workbench" }, 1.3);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("…or the whole project in VS Code");
       await d.say("vscode");
-      await d.click({ label: "Open Work view" });
-      await d.click({ css: ".work-pane__menu-item[value='launch:vscode']" });
-      // VS Code's server starts (and downloads its build the first time); the clip skips the wait.
-      await d.cut(() => d.waitFor({ css: "[aria-label^='Source Control']" }, 300_000));
-      await d.pause(800);
-      await d.click({ css: "[aria-label^='Source Control']" });
-      await d.click({ css: ".monaco-list-row", contains: "orders-page.js" });
-      await d.pause(1_000);
-      await d.zoom({ css: ".monaco-workbench" }, 1.3);
-      await d.pause(2_400);
+      await d.quiet();
       await d.zoom();
       await d.caption();
     },
@@ -298,56 +715,138 @@ export const scenes: Scene[] = [
     ready: "Apple Pay at checkout",
     narration: {
       ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
-      children: "One card tracks every helper while the agent waits for all of them.",
+      children: "Run status tracks every helper while the agent waits for all of them.",
       report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
+      goal: "Give the conversation a goal, and it keeps going on its own, ten turns at a time, until the objective is done.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
+      done: "The checks passed, the watcher merged, and it says Done in the chat.",
     },
     async run({ director: d }) {
-      await d.caption("Ask for a review that splits three ways");
-      await d.say("ask");
+      await narrate(d, "Ask for a review that splits three ways", "ask");
       await d.click({ label: "New session in PAYMENTS" });
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("One card tracks every helper");
-      await d.say("children");
-      await d.waitFor({ css: ".chat-swarm" }, 30_000);
-      await d.zoom({ css: ".chat-swarm" }, 1.6);
+
+      // The helpers' run leaves the panel shut; open it and wait for the rows before the line names them.
+      await openRunStatus(d);
+      await unfoldHelpers(d);
+      await narrate(d, "Run status tracks every helper", "children");
+      await unfoldHelpers(d);
+      await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
+      await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
-      await d.caption("…and the agent sums them up");
-      await d.say("report");
-      await d.waitFor({ contains: "All three reviews are in" }, 40_000);
+
+      // The summary streams into a chat row behind the panel, and its line reads the finished verdict table. The panel
+      // closing, the run settling and the table painting are one cut, so the line starts on the whole table instead of
+      // over a half-drawn verdict with a Working… row under it.
+      await d.quiet();
+      await d.cut(async () => {
+        // The panel would cover the table's right side.
+        await closeRunStatus(d);
+        await d.waitFor({ contains: "I'd fix the ownership check before merging." }, 40_000);
+        await gone(d, { css: ".chat-group--working" }, 40_000);
+        await centre(d, { css: "[data-testid='message-row']", contains: "All three reviews are in" });
+        await caughtUp(d);
+      });
+      await narrate(d, "…and the agent sums them up", "report");
+      await d.zoom({ css: "[data-testid='message-row']", contains: "All three reviews are in" }, 1.3);
       await d.pause(2_200);
-      await d.caption("Open any helper to see its work");
-      await d.say("open");
-      await d.click({ css: ".chat-swarm__summary" });
-      await d.click({ css: ".chat-subagents__row", contains: "Security review" });
-      await d.waitFor({ contains: "1 blocking issue" });
+      await d.zoom();
+
+      // The goal is given as its line starts: the command lands in the composer under "give the conversation a goal",
+      // and the panel it opens carries the rest of the line. Typing it out first left fifteen seconds of silence here.
+      await d.click({ placeholder: "Send a message…" });
+      const typing = d.type("/goal get the ownership check in and #142 merged");
+      await d.caption("Give it a goal, and it keeps going");
+      await d.say("goal");
+      await typing;
+      await d.press("Enter");
+      // HUI's own note floats over the header; it is an outside click for the panel's popover, so dismiss it before the
+      // panel opens. Then the panel and its pause note are what the rest of the line describes.
+      await d.waitFor({ css: ".app-toast.chat-operation-toast .app-toast__dismiss" }, 10_000);
+      await dismissNote(d, "Goal set.");
+      await openRunStatus(d);
+      await d.waitFor({ css: ".chat-run-status__objective" }, 20_000);
+      // Park the cursor over the chrome, off the page, before the plan is framed: no tooltip is left over it.
+      await park(d);
+      await d.zoom({ css: ".chat-run-status__section[aria-labelledby$='goal-title']" }, 1.7);
+      await d.pause(2_400);
+      await d.zoom();
+
+      // Open a helper only once its pane shows what it did; a header with an empty body is not the beat. The pane's load
+      // is a cut: the goal's line stays on the panel, then the opened helper arrives with its work already on screen.
+      await unfoldHelpers(d);
+      const helper = { css: ".chat-run-status__helper", contains: "Security review" };
+      await d.waitFor(helper, 20_000);
+      await centre(d, helper);
+      await narrate(d, "Open any helper to see its work", "open");
+      await d.cut(async () => {
+        await d.click(helper);
+        await d.waitFor({ css: ".session-history-action[aria-label='Open parent']" }, 20_000);
+        await d.waitFor({ contains: "1 blocking issue" }, 30_000);
+      });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
-      await d.caption("Its task names the session that sent it");
-      await d.say("parent");
-      await d.zoom({ css: ".chat-group--peer" }, 1.5);
+
+      // Its task names the parent session: its sender line loads after the task, so wait for that line itself before the
+      // caption, then scroll the task row in and name the sender under the line.
+      const task = { css: ".chat-group--peer", contains: "Security review of PR #142" };
+      await d.waitFor(task, 20_000);
+      const sender = { css: ".chat-sender-link", text: "Review PR #142 in parallel" };
+      await d.waitFor(sender, 20_000);
+      await centre(d, task);
+      // The sender footer is a hover/focus detail: it is in the DOM but transparent until the row is hovered, so the
+      // cursor reveals it before the line that names it and keeps it up while the task is framed.
+      await d.move(task);
+      await d.pause(400);
+      await narrate(d, "Its task names the session that sent it", "parent");
+      await d.zoom(task, 1.5);
       await d.pause(2_000);
       await d.zoom();
-      await d.click({ css: ".chat-sender-link", text: "Review PR #142 in parallel" });
-      await d.caption("Watchers wait on CI for you");
-      await d.say("watcher");
-      await send(d, "Fix the ownership check, then merge once CI is green");
-      await d.waitFor({ css: ".chat-watcher" }, 30_000);
-      await d.zoom({ css: ".chat-watcher" }, 1.4);
+      await d.click(sender);
+
+      // The watcher row lives below the goal and helpers in the panel. The prompt that starts it and its run are a cut:
+      // typing them out and waiting for the row added thirteen silent seconds to the clip before the watcher's line.
+      const watcher = { css: ".chat-watcher", contains: "Merge #142 when CI is green" };
+      await d.cut(async () => {
+        await send(d, "Fix the ownership check, then merge once CI is green");
+        await openRunStatus(d);
+        await d.waitFor(watcher, 30_000);
+        await centre(d, watcher);
+        await cameraRested(d);
+      });
+      await narrate(d, "Watchers wait on CI for you", "watcher");
+      await d.zoom(watcher, 1.4);
       await d.pause(1_500);
-      // HUI checks on watchers every 10 s; skip to the moment CI is green.
-      await d.cut(() => d.waitFor({ contains: "CI green, merged #142" }, 30_000));
-      await d.pause(1_200);
-      await d.click({ css: ".chat-watcher" });
-      await d.waitFor({ css: ".chat-watcher__log" });
-      await d.pause(2_200);
+      // HUI checks on watchers every 10 s, so the checks go green a while after the line. That wait and the reframe are
+      // a cut: the closing line starts on the framed Done card, not six seconds after the last word.
+      await d.quiet();
+      const event = { css: ".chat-group--watcher-event", contains: "Watcher finished: Merge #142 when CI is green" };
+      await d.cut(async () => {
+        await d.waitFor({ contains: "CI green, merged #142" }, 30_000);
+        // A settled watcher writes its own event into the conversation, where the open panel would cover its right side.
+        await d.waitFor(event, 20_000);
+        await d.waitFor({ css: ".chat-group--watcher-event .chat-subagents__snippet", contains: "Done" }, 20_000);
+        // The close control is in the panel's head, above the zoomed watcher row: back the camera out first, or the tap
+        // lands outside the frame and the panel stays over the card.
+        await d.zoom();
+        await closeRunStatus(d);
+        await centre(d, event);
+        await d.zoom(event, 1.4);
+        await caughtUp(d);
+      });
+      await narrate(d, "Done: checks green, #142 merged", "done");
+      await d.pause(2_400);
+      // The goal chip sits in the header, under where the panel's close control left the cursor; the closing wide shot
+      // has no pointer on it.
+      await parkCursor(d);
       await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },
@@ -357,75 +856,150 @@ export const scenes: Scene[] = [
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async setup({ api }) {
+      // A fresh HUI seeds its own ungrouped Chief of Staff on first boot, and the storefront group's chief below replaces
+      // it on this roster: archive the seeded one (an archive, never a permanent delete, so the demo world stays
+      // recoverable), so the roster is the four bots the clip is about. A refusal is reported in the server's own words
+      // and the roster is left as it is.
+      try {
+        const { bots } = await api("GET", "/__hui/bots");
+        const seeded = (bots as { id: string; title?: string; group?: string }[]).find((entry) => entry.title === "Chief of Staff" && !entry.group);
+        if (seeded) await api("DELETE", `/__hui/bots/${seeded.id}`);
+      } catch (error) {
+        process.stderr.write(`The seeded Chief of Staff stayed on the roster: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
       const { bot } = await api("POST", "/__hui/bots", { name: "Scout", title: "Release captain", avatar: { shape: "blob", color: "#5b8cff" }, soul: soul("Scout, the team's release captain.") });
       await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
       await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE who watches the pager overnight.") });
+      // The sessions below are started by the storefront group's chief, made before the clip so its arrival is not the beat.
+      const { bot: chief } = await api("POST", "/__hui/staff/chiefs", { group: "Storefront" });
+      storefrontChief = { id: chief.id, name: chief.name, handle: chief.handle };
       await api("POST", `/__hui/bots/${bot.id}/messages`, { text: "Heads-up: refunds roll out to 10% of stores on Monday, and Priya owns the rollback.", wait: true });
     },
     narration: {
       roster: "Bots are agents that stay. Each one has a face, a single long-running chat, and a memory.",
+      start: "Ask one for work, and it starts the sessions itself, one brief each.",
+      started: "The run lists both, and each session says which bot started it.",
       routine: "They schedule their own routines. Ask Scout for a weekday digest, and it sets one up.",
       run: "Run it now, and the digest already knows what you told it earlier.",
-      panel: "Its panel shows what it does on its own, and expands when you need the room.",
       handoff: "Agents hand a bot work by tagging it. You see what they sent, next to the bot's face.",
       reply: "Scout answers right in the agent's chat, under its own face.",
-      follow: "Click a name to open that chat.",
     },
     async run({ director: d }) {
-      await d.caption("Bots are agents that stay: a face, one chat and a memory");
-      await d.say("roster");
+      // The roster the line names is on screen before it speaks: the tab and the list are the click on the loaded app.
       await d.click({ css: "#sidebar-tab-bots" });
       await d.waitFor("Owl");
       await d.zoom({ css: ".bot-roster" }, 1.8);
-      await d.pause(1_800);
+      await d.caption("Bots are agents that stay");
+      await d.say("roster");
+      await d.pause(3_000);
+      await d.quiet();
       await d.zoom();
-      await d.click({ css: ".bot-row__name", text: "Scout" });
+
+      // The sessions a bot started: the chief opens two itself, and the creations (up to two minutes) are the cut. Its
+      // chat and composer are ready before the line that asks for them.
+      await d.cut(async () => {
+        await d.click({ css: ".bot-row__name", text: storefrontChief.name });
+        await d.waitFor({ css: ".ProseMirror[aria-label='Message']" }, 60_000);
+        await d.click({ label: "Message" });
+        await caughtUp(d);
+      });
+      await d.caption("Ask a bot to start the work");
+      await d.say("start");
+      await d.pause(3_000);
+      await d.type("Start the orders CSV export and the flaky checkout test fix");
+      await d.press("Enter");
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Two sessions are up" }, 180_000);
+        await openRunStatus(d);
+        await d.waitFor({ css: ".chat-run-status__session", nth: 1 }, 30_000);
+        await d.zoom({ css: "section[aria-label='Sessions']" }, 1.45);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("The run lists both sessions");
+      await d.say("started");
+      await d.pause(3_000);
+      await d.quiet();
+      await d.zoom();
+
+      // Open one from the run: its header names the bot that started it, and so does its sidebar row.
+      await d.click({ css: ".chat-run-status__session", nth: 0 });
+      await d.waitFor({ css: "[data-testid='chat-pane-creator']" }, 30_000);
+      await d.click({ css: "#sidebar-tab-sessions" });
+      await scrollIn(d, '[data-testid="session-row-creator"]');
+      await d.waitFor({ css: "[data-testid='session-row-creator']" }, 15_000);
+      await d.caption("Started by a bot, with its brief");
+      await d.zoom({ css: "[data-testid='chat-pane-creator']" }, 1.9);
+      await d.pause(3_000);
+      // The chip leads back to the bot that started it, where its own line about the two sessions sits. Its caption leaves
+      // with the session header it describes, before the picture becomes the bot's chat.
+      await d.caption();
+      await d.click({ css: "[data-testid='chat-pane-creator']" });
+      await centreInThread(d, { contains: "Two sessions are up" });
+      await d.zoom();
+      await d.pause(800);
+
+      // Scout's chat with the routine already set up is the picture the line names: the request and its answer are a cut.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-bots" });
+        await d.click({ css: ".bot-row__name", text: "Scout" });
+        await send(d, "Every weekday at 9, post a digest of open PRs and today's rollouts");
+        await d.waitFor({ contains: "runs every weekday at 9:00" }, 30_000);
+        await caughtUp(d);
+      });
       await d.caption("They schedule their own routines");
       await d.say("routine");
-      await send(d, "Every weekday at 9, post a digest of open PRs and today's rollouts");
-      await d.waitFor({ contains: "runs every weekday at 9:00" }, 30_000);
-      await d.pause(1_000);
-      await d.caption("Run one now, and it remembers what you told it");
+      await d.pause(3_000);
+      await d.quiet();
+
+      // Running the routine and waiting for the digest it writes are the cut before its line.
+      await d.cut(async () => {
+        await d.click({ css: ".bot-overview__name", text: "Morning digest" });
+        await d.click({ label: "Run now: Morning digest" });
+        await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
+        await d.zoom({ contains: "Priya owns the rollback", last: true }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await park(d);
+      await d.caption("Run one now, and it remembers");
       await d.say("run");
-      await d.click({ css: ".bot-overview__name", text: "Morning digest" });
-      await d.click({ label: "Run now: Morning digest" });
-      await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
-      await d.zoom({ contains: "Priya owns the rollback" , last: true }, 1.4);
-      await d.pause(2_200);
+      await d.pause(3_000);
+      await d.quiet();
       await d.zoom();
-      await d.caption("Its panel shows what it does, and expands");
-      await d.say("panel");
-      await d.click({ label: "Back to Scout" });
-      await d.click({ label: "Expand the panel" });
-      await d.pause(800);
-      await d.zoom({ css: ".bot-overview" }, 1.3);
-      await d.pause(2_400);
-      await d.zoom();
-      await d.click({ label: "Show the chat beside the panel" });
-      await d.caption("Agents hand bots work with an @");
+
+      // Sending the tagged message, the handoff row it writes and Scout's answer are the wait: the line starts on the
+      // handoff card, not on a composer still being typed into.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-sessions" });
+        await d.click({ css: "a", contains: "Apple Pay at checkout" });
+        await d.waitFor({ contains: "merchant validation endpoint next" });
+        await send(d, "@scout make sure Apple Pay is on Monday's rollout");
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await park(d);
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("Agents hand bots work with @");
       await d.say("handoff");
-      await d.click({ css: "#sidebar-tab-sessions" });
-      await d.click({ css: "a", contains: "Apple Pay at checkout" });
-      await d.waitFor({ contains: "merchant validation endpoint next" });
-      await send(d, "@scout make sure Apple Pay is on Monday's rollout");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
-      await d.pause(1_800);
+      await d.pause(3_000);
+      await d.quiet();
       await d.zoom();
+
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer" }, 30_000);
+        await d.zoom({ css: ".chat-group--peer" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Scout answers in the agent's chat");
       await d.say("reply");
-      await d.waitFor({ css: ".chat-group--peer" }, 30_000);
-      await d.zoom({ css: ".chat-group--peer" }, 1.5);
-      await d.pause(2_200);
-      await d.zoom();
-      await d.caption("Click a name to open that chat");
-      await d.say("follow");
-      await d.click({ css: ".chat-sender-link", text: "Scout" });
-      await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
-      await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
-      await d.pause(2_200);
+      await d.pause(3_000);
+      await d.quiet();
       await d.zoom();
       await d.caption();
+      await d.pause(1_500);
     },
   },
   {
@@ -456,87 +1030,198 @@ export const scenes: Scene[] = [
       follow: "Click a name to see the other side of the conversation.",
     },
     async run({ director: d, api }) {
+      // The roster the line names is on screen before it speaks: the tabs and the roster are the cut before the first line.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-bots" });
+        await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
+        await d.zoom({ css: ".bot-roster" }, 1.8);
+      });
       await d.caption("Bots work with agents, and with each other");
       await d.say("team");
-      await d.click({ css: "#sidebar-tab-bots" });
-      await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
-      await d.zoom({ css: ".bot-roster" }, 1.8);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-      await d.click({ css: "#sidebar-tab-sessions" });
-      await d.click({ css: "a", contains: "Retry-safe webhooks" });
-      await d.waitFor({ contains: "Tests cover duplicates" });
 
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-sessions" });
+        // The sidebar lists the group it scrolled to last; searching brings the session to the top, where the click is
+        // reliable while the list re-renders.
+        await d.click({ placeholder: "Search sessions" });
+        await d.type("Retry-safe");
+        await d.click({ css: "a", contains: "Retry-safe webhooks" });
+        await d.waitFor({ contains: "Tests cover duplicates" });
+        await caughtUp(d);
+      });
       await d.caption("An agent hands its PR to Piper");
       await d.say("handoff");
-      await send(d, "Open the PR, and ask @piper to watch it until it merges");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await centre(d, { css: ".chat-handoff" });
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
-      await d.pause(1_800);
-      await d.zoom();
+      await d.pause(1_200);
+      await d.quiet();
 
+      // The agent tags Piper and the handoff row it writes is the picture the line describes, so both are the cut.
+      await d.cut(async () => {
+        await send(d, "Open the PR, and ask @piper to watch it until it merges");
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await centre(d, { css: ".chat-handoff" });
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Piper brings the reviewer's question back");
       await d.say("question");
-      await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
-      await d.pause(2_200);
+      await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      // The reviewer's question is on screen; the answer line belongs to the beat below, where the agent has answered it.
+      await d.pause(1_800);
+      await d.quiet();
+      await d.zoom();
+
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
+        await centre(d, { css: ".chat-handoff", last: true });
+        await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("The agent decides, and answers");
       await d.say("answer");
-      await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
-      await centre(d, { css: ".chat-handoff", last: true });
-      await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      // Owl's trigger is what the line names, so the navigation to it comes first.
+      await d.cut(async () => {
+        await d.click({ css: "#sidebar-tab-bots" });
+        await d.click({ css: ".bot-row__name", text: "Owl" });
+        await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
+        await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Triggers wake a bot");
       await d.say("trigger");
-      await d.click({ css: "#sidebar-tab-bots" });
-      await d.click({ css: ".bot-row__name", text: "Owl" });
-      await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
-      await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
-
-      await d.caption("A page wakes Owl");
+      await d.cut(async () => {
+        await api("POST", pagesHook, { events: [{
+          id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
+          details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
+        }] });
+        await d.waitFor({ contains: "Investigate this page" }, 15_000);
+        await d.zoom({ contains: "Investigate this page" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("A page comes in, and Owl digs in");
       await d.say("page");
-      await api("POST", pagesHook, { events: [{
-        id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
-        details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
-      }] });
-      await d.waitFor({ contains: "Investigate this page" }, 15_000);
-      await d.zoom({ contains: "Investigate this page" }, 1.4);
-      await d.pause(1_800);
-      await d.zoom();
+      await d.pause(1_400);
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-handoff" }, 30_000);
+        await centre(d, { css: ".chat-handoff" });
+        await d.zoom({ css: ".chat-handoff" }, 1.6);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Owl hands the revert to Piper");
       await d.say("bots");
-      await d.waitFor({ css: ".chat-handoff" }, 30_000);
-      await centre(d, { css: ".chat-handoff" });
-      await d.zoom({ css: ".chat-handoff" }, 1.6);
       await d.pause(1_800);
+      await d.quiet();
       await d.zoom();
 
+      await d.cut(async () => {
+        await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Piper reverts it, and reports back");
       await d.say("reverted");
-      await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
       await d.pause(1_800);
-      await d.zoom();
-      await d.waitFor({ contains: "Closing the page" }, 30_000);
+      await d.quiet();
 
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Closing the page" }, 30_000);
+        await d.click({ css: ".chat-sender-link", text: "Piper" });
+        await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
+        await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
+        await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Click a name to open that chat");
       await d.say("follow");
-      await d.click({ css: ".chat-sender-link", text: "Piper" });
-      await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
-      await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
-      await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
+      await d.quiet();
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "share",
+    chapter: "From a phone share",
+    device: "phone",
+    // What a phone's Share sheet opens: the shared link is already in HUI's new session composer.
+    path: `/new-session?share=${encodeURIComponent("https://www.instagram.com/reel/C9xK2mPq/")}`,
+    ready: { css: "#launch-prompt", value: "Look this post in Instagram" },
+    narration: {
+      share: "Share a post to H U I from your phone, and H U I opens a new session with the link already in the composer.",
+      project: "Tap plus beside the project it belongs to, and send it. Nothing has to be pasted in.",
+      answer: "The agent reads the code the post is about, and comes back with the next step.",
+    },
+    async run({ director: d }) {
+      await narrate(d, "A shared post becomes a session", "share");
+      await d.zoom({ css: "#launch-prompt" }, 1.35);
+      await d.pause(2_400);
+      await d.zoom();
+
+      await narrate(d, "Tap + beside its project", "project");
+      // The drawer's group action puts the session in the project the post is about, and keeps the shared text. The
+      // plus is the control beside STOREFRONT; the caption and line name it instead of the icon-only button.
+      await d.click({ label: "Open navigation" });
+      await d.waitFor({ css: ".sidebar[data-open='true']" }, 10_000);
+      await d.pause(600);
+      await d.move({ label: "New session in STOREFRONT" });
+      await d.pause(500);
+      await d.click({ label: "New session in STOREFRONT" });
+      // The new session screen replaces the drawer, so the tap's caption goes with it: the next one names the send.
+      // The seeded workspace's raw temporary path sits just above the composer; the camera takes the send row and the
+      // shared text below it, where the path is out of the shot, and the cut ends once the move has finished, because
+      // the frames before it lands still hold the path in frame.
+      await d.cut(async () => {
+        await d.waitFor({ css: "#launch-cwd", value: "storefront" }, 20_000);
+        const send = await d.waitFor({ label: "Start session" }, 20_000);
+        await d.zoom({ x: send.x + send.width / 2, y: send.y + send.height / 2 + 34 }, 2.2);
+        await cameraRested(d);
+      });
+      await d.caption("Send it, nothing to paste");
+      await d.click({ label: "Start session" });
+      // The running session is a new beat with no line of its own; the send's caption ends with it here rather than
+      // staying up over the answer.
+      await d.caption();
+      // The answer is on screen whole before its line: the settle and the wait are a cut, so the line does not start
+      // over a half-drawn reply and a Working… row.
+      await d.cut(async () => {
+        await d.waitFor({ contains: "Want me to start?" }, 40_000);
+        await gone(d, { css: ".chat-group--working" }, 40_000);
+        await centre(d, { contains: "Want me to start?", last: true });
+        await caughtUp(d);
+      });
+      await narrate(d, "The agent reads the code", "answer");
+      await d.zoom({ contains: "Want me to start?", last: true }, 1.4);
       await d.pause(2_200);
       await d.zoom();
+      await d.quiet();
       await d.caption();
     },
   },
@@ -548,38 +1233,170 @@ export const scenes: Scene[] = [
     ready: { contains: "Add Apple Pay to checkout" },
     storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
     narration: {
-      phone: "And it all works on your phone. Reach your laptop over Tailscale, and your sessions are right there.",
+      phone: "And it all works on your phone. Reach your laptop over your private network, and your sessions are right there.",
       ask: "Check in on an agent from anywhere,",
-      board: "or keep an eye on the whole board, wherever you are.",
+      board: "or keep an eye on everything in flight, wherever you are.",
+      hand: "Some work needs you: here the agent can't confirm a payment by itself.",
+      takeover: "Take over its browser, right from your phone.",
+      pay: "The page is live: tap Confirm, and the payment goes through.",
+      back: "Then hand the page back to the agent.",
+      confirm: "Ask it what happened, and it reads the page it can see.",
     },
     async run({ director: d }) {
       await d.caption("HUI works on your phone too");
       await d.say("phone");
-      await d.pause(2_000);
+      await d.pause(3_000);
+      // The next caption lands when this line has finished, not a line and a half early, and the cut carries none.
+      await d.quiet();
+      await d.caption();
+
+      // Typing, sending and the reply are the cut: the next line reads the answer the session came back with, not a
+      // composer still being typed into.
+      await d.cut(async () => {
+        await d.click({ placeholder: "Send a message…" });
+        await d.type("Quick status on Apple Pay?");
+        // On a touch screen Return adds a line; the send button sends.
+        await d.click({ label: "Send message" });
+        await d.waitFor({ contains: "Want me to open the pull request?" }, 30_000);
+        await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
       await d.caption("Check in from anywhere");
       await d.say("ask");
-      await d.click({ placeholder: "Send a message…" });
-      await d.type("Quick status on Apple Pay?");
-      // On a touch screen Return adds a line; the send button sends.
-      await d.click({ label: "Send message" });
-      await d.waitFor({ contains: "Want me to open the pull request?" }, 30_000);
-      await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
-      await d.pause(1_600);
+      await d.pause(3_000);
+      await d.quiet();
       await d.zoom();
-      await d.caption("The board fits in your pocket");
+
+      // The Dashboard is what "everything in flight" names: the drawer, the navigation and its load are the cut.
+      await d.cut(async () => {
+        await d.click({ label: "Open navigation" });
+        await d.pause(900);
+        await d.click(link("Dashboard"));
+        await d.waitFor({ contains: "The sessions in flight" });
+        await d.pause(900);
+        await d.zoom({ css: "[data-testid='dashboard-stats']" }, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("Everything in flight, in your pocket");
       await d.say("board");
-      await d.click({ label: "Open navigation" });
-      await d.pause(900);
-      await d.click(link("Kanban"));
-      await d.waitFor({ contains: "Drag a backlog item" });
-      await d.pause(800);
-      // Each lane scrolls sideways through the stages.
-      await d.swipe({ css: ".kanban-cell--backlog", nth: 0 }, 260);
-      await d.pause(900);
-      await d.swipe({ css: ".kanban-cell--investigation", nth: 0 }, 300);
-      await d.waitFor(card("Apple Pay at checkout"));
-      await d.pause(1_800);
+      await d.pause(3_000);
+      await d.quiet();
+      await d.zoom();
+
+      // The agent opens the checkout and says it cannot pay; the session it asked in is a cut before its line.
+      const asked = { contains: "take control of the page", last: true };
+      await d.cut(async () => {
+        await d.click({ label: "Open navigation" });
+        await d.waitFor({ css: ".sidebar[data-open='true']" }, 10_000);
+        await d.pause(500);
+        await d.click({ css: "a", contains: "Apple Pay at checkout" });
+        await d.waitFor({ contains: "Add Apple Pay to checkout" }, 30_000);
+        await d.click({ placeholder: "Send a message…" });
+        await d.type("Pay for the storefront order on staging");
+        await d.click({ label: "Send message" });
+        await d.waitFor(asked, 60_000);
+        await centre(d, asked);
+        await d.zoom(asked, 1.35);
+        await cameraRested(d);
+        await caughtUp(d);
+      });
+      await d.caption("The agent needs a hand");
+      await d.say("hand");
+      await d.pause(3_000);
+      await d.quiet();
+
+      // The Work view's browser pane is the page itself: opening it and waiting for the live view are the cut before
+      // the line, so the takeover button is on screen when it is described. The camera stays wide until the page is the
+      // operator's: zooming the pane pushes its toolbar, and the Take control button with it, above the top edge.
+      await d.cut(async () => {
+        await d.zoom();
+        await d.click({ css: "[aria-label^='Active panel']" });
+        await d.click({ css: ".picker-select__option", contains: "Browser" });
+        await d.waitFor("Take control", 60_000);
+        await caughtUp(d);
+      });
+      await d.caption("Take over its browser");
+      await d.say("takeover");
+      await d.pause(3_000);
+      await d.quiet();
+      await d.click({ css: "button", text: "Take control" });
+      const frame = await d.waitFor({ label: "You have control of the page" }, 20_000);
+      // The page is the operator's now: zoom until its own text reads on a phone screen.
+      const confirm = { x: frame.x + frame.width * (CHECKOUT.x / CHECKOUT.width), y: frame.y + frame.height * (CHECKOUT.y / CHECKOUT.height) };
+      await d.zoom(confirm, 1.8);
+      await d.caption("The page is yours to drive");
+      await d.say("pay");
+      await d.pause(3_000);
+      const before = await framePixels(d);
+      await d.click(confirm);
+      // The tap's proof is the page: the streamed picture redraws once the button's status line paints.
+      await frameRepainted(d, before);
+      await d.pause(2_500);
+      await d.caption("Paid, right on the page");
+      await d.pause(3_000);
+      await d.quiet();
+      // The handoff strip sits above the frame, off screen at this zoom: back the camera out or its button is tapped
+      // past the stage's top edge and the lease never ends.
+      await d.zoom();
+      await cameraRested(d);
+      await d.caption("Hand it back when done");
+      await d.say("back");
+      await d.pause(3_000);
+      // The strip lives above the frame, so a camera still zoomed into the page leaves its button above the stage's top
+      // edge, where the tap lands on nothing and the lease never ends: the button's stage point is proven on the stage
+      // before it is tapped. `stage.toStage` maps into the stage page's own pixels, which this 1920×1080 layout draws at
+      // 2×.
+      const done = await d.waitFor({ css: "button.hui-browser-handoff__done" });
+      const target = { x: done.x + done.width / 2, y: done.y + done.height / 2 };
+      const point = await d.stage<{ x: number; y: number }>(`stage.toStage(${target.x}, ${target.y})`);
+      if (point.x < 0 || point.y < 0 || point.x > 3840 || point.y > 2160) {
+        throw new Error(`The Continue button is off the stage at (${Math.round(point.x)}, ${Math.round(point.y)}); the pane shows ${JSON.stringify(await handoffState(d))}.`);
+      }
+      await d.click(target);
+      // The lease's own sentence in the pane's activity line is what proves it ended. The strip leaving proves nothing
+      // on its own (a hidden pane hides it too), and an agent action while the lease stands is refused, which would
+      // leave the follow-up below answering from no page at all.
+      try {
+        await d.waitFor({ css: ".hui-browser-activity__text", contains: "You finished; the agent is stopped." }, 15_000);
+      } catch (error) {
+        throw new Error(`The lease did not end; the pane shows ${JSON.stringify(await handoffState(d))}.`, { cause: error });
+      }
+
+      // Back in the chat, the agent reads the page the operator paid on: its answer quotes the page, or says plainly
+      // that it could not confirm the payment.
+      const answer = { contains: "the checkout page says", last: true };
+      await d.cut(async () => {
+        await d.zoom();
+        await d.click({ css: "[aria-label^='Active panel']" });
+        await d.click({ css: ".picker-select__option", contains: "Chat" });
+        await d.waitFor({ placeholder: "Send a message…" }, 20_000);
+        await d.click({ placeholder: "Send a message…" });
+        await d.type("Did the payment go through?");
+        await d.click({ label: "Send message" });
+        // The answer lands under the browser card, and the thread is still where an earlier beat left it: the run is
+        // over, so the thread goes to its last row and the answer is centred there. Otherwise the card above it leaves
+        // the answer under the composer, and the line's own beat shows a page preview instead of the words it names.
+        await gone(d, { css: ".chat-group--working" }, 60_000);
+        await d.stage(`(() => {
+          const thread = document.getElementById("app").contentDocument.querySelector(".chat-thread");
+          thread.scrollTop = thread.scrollHeight;
+          return thread.scrollTop;
+        })()`);
+        await d.pause(600);
+        await centreInThread(d, answer);
+        await caughtUp(d);
+      });
+      await d.zoom(answer, 1.35);
+      await d.caption("The agent reads the real page");
+      await d.say("confirm");
+      await d.pause(3_000);
+      await d.quiet();
+      await d.zoom();
       await d.caption();
+      await d.pause(1_500);
     },
   },
+  chiefsScene,
 ];

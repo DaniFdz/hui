@@ -1,5 +1,5 @@
 /**
- * A bot's Tools & skills page (HUI-18): "Available tools", every one on until the
+ * A bot's Tools & skills page: "Available tools", every one on until the
  * operator turns it off, grouped as Files, Shell, HUI, each extension by its
  * source, and Bots; then its skills, searchable once there are many; an access
  * request waiting in its chat, answerable here as in the chat; and what is
@@ -75,9 +75,28 @@ function renderSkills(props: BotToolsProps) {
             ${skill.description ? html`<span class="bot-tools__desc">${skill.description}</span>` : nothing}
             <span class="bot-tools__source">${skill.source}</span>
           </div>
-          ${renderSettingsToggle(`Skill ${skill.name}`, skill.enabled, (checked) => props.onToggleSkill(skill, checked), disabled)}
-        </div>`)}</div>`}
+          <div class="bot-tools__controls">
+            ${skill.own ? html`<button type="button" class="btn btn--sm" aria-label=${`Edit skill ${skill.name}`} ?disabled=${disabled || props.state.editing?.saving} @click=${() => props.onEditSkill(skill.name)}>Edit</button>` : nothing}
+            ${renderSettingsToggle(`Skill ${skill.name}`, skill.enabled, (checked) => props.onToggleSkill(skill, checked), disabled)}
+          </div>
+        </div>
+        ${props.state.editing?.name === skill.name ? renderSkillEditor(props, skill, disabled) : nothing}`)}</div>`}
   </section>`;
+}
+
+/** The inline SKILL.md editor for one own skill: the whole text, the folder's name, the files beside it untouched. */
+function renderSkillEditor(props: BotToolsProps, skill: { name: string }, disabled: boolean) {
+  const editing = props.state.editing!;
+  return html`<div class="bot-tools__editor" role="group" aria-label=${`Edit ${skill.name}`}>
+    <p class="bot-panel__hint">The whole SKILL.md. Keep <code>name: ${skill.name}</code> in the frontmatter, and keep the files beside it as they are. The change applies from its next read.</p>
+    <textarea class="settings-input bot-tools__skill-text" aria-label=${`Skill text for ${skill.name}`} ?disabled=${editing.saving || disabled}
+      .value=${live(editing.text)} @input=${(event: Event) => props.onSkillText((event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+    ${editing.error ? html`<p class="bot-field__error" role="alert">${editing.error}</p>` : nothing}
+    <div class="bot-tools__editor-actions">
+      <button type="button" class="btn primary btn--sm" ?disabled=${editing.saving} @click=${() => props.onSaveSkill()}>${editing.saving ? "Saving…" : "Save skill"}</button>
+      <button type="button" class="btn btn--sm" ?disabled=${editing.saving} @click=${() => props.onCancelSkill()}>Cancel</button>
+    </div>
+  </div>`;
 }
 
 export function renderBotToolsTab(props: BotToolsProps) {

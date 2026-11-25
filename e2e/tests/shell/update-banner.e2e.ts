@@ -15,8 +15,13 @@ test("Dismiss update notification keeps the composer's draft, lasts for that ver
   const dismiss = screen.getByRole("button", "Dismiss update notification");
   const message = screen.getByPlaceholder("What should this session work on?");
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  // The update notice's check is the page load's own request, so the worker an earlier load registered must not be the
+  // one that answers it, and the route must be in place before the load that asks.
+  await hui.clearOffline();
   await hui.open("/");
+  await expect(screen.getByRole("button", "Start session")).toBeVisible();
+  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.reload();
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft to keep through a dismissal");
@@ -48,8 +53,11 @@ test("Review update opens the HUI update session and the dialog on the latest re
   const message = screen.getByPlaceholder("What should this session work on?");
   const before = await hui.providerRequests();
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.clearOffline();
   await hui.open("/");
+  await expect(screen.getByRole("button", "Start session")).toBeVisible();
+  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.reload();
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft that Review update must keep");
@@ -82,8 +90,11 @@ test("Escape closes the Update HUI dialog with the draft unchanged and returns f
   const review = screen.getByRole("button", "Review update");
   const message = screen.getByPlaceholder("What should this session work on?");
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.clearOffline();
   await hui.open("/");
+  await expect(screen.getByRole("button", "Start session")).toBeVisible();
+  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.reload();
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft that Escape must keep");

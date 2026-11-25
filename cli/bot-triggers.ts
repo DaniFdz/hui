@@ -1,5 +1,5 @@
 /**
- * `hui bot trigger`: a bot's triggers (HUI-18) from a terminal, through the running gateway's trigger routes, as the
+ * `hui bot trigger`: a bot's triggers from a terminal, through the running gateway's trigger routes, as the
  * Triggers section of the Bots tab uses them: list, add, remove and test. Every trigger is a listener's: `add` prints
  * the URL its listener reports to, this once.
  */
@@ -72,6 +72,17 @@ export function formatTrigger(trigger: BotTrigger): string {
   ].join(" · ");
 }
 
+/** What `add` prints: the trigger in its bot's list, then its URL, which is shown this once. A bot on a worker takes the
+ * report on that machine's own endpoint, so the URL it prints is the one HUI just showed there; with none to show, the
+ * sentence says why. A bot here keeps the gateway's URL, reachable from this machine or the tailnet. */
+export function formatAdded(bot: Pick<BotView, "handle">, created: BotTriggerCreated, base: string): string {
+  const head = `Added the trigger ${created.trigger.name} to @${bot.handle} (${botTriggerFilterSummary(created.trigger)}).`;
+  const worker = created.hook.worker;
+  if (worker?.url) return `${head} Its URL, shown this once, is on ${worker.name}: run your listener on that machine; after every check it POSTs { "events": [...] } to it:\n${worker.url}`;
+  if (worker) return `${head} HUI has no listener URL for it yet: ${worker.error ?? `${worker.name} has no listener endpoint.`}`;
+  return `${head} Its URL, shown this once: your listener POSTs { "events": [...] } to it after every check, from this machine or your tailnet (use the gateway's tailnet name from elsewhere):\n${new URL(created.hook.path, base).href}`;
+}
+
 /** Runs one `hui bot trigger` action and returns the exit code. */
 export async function triggerCommand(base: string, action: string, operands: readonly string[], flags: TriggerFlags, io: BotIO): Promise<number> {
   const print = (value: unknown, text: string) => io.out(`${flags.json ? JSON.stringify(value) : text}\n`);
@@ -88,7 +99,7 @@ export async function triggerCommand(base: string, action: string, operands: rea
     }
     case "add": {
       const created = await request<BotTriggerCreated>(base, path, { method: "POST", body: triggerBody(flags), timeoutMs: 30_000 });
-      print(created, `Added the trigger ${created.trigger.name} to @${bot.handle} (${botTriggerFilterSummary(created.trigger)}). Its URL, shown this once: your listener POSTs { "events": [...] } to it after every check, from this machine or your tailnet (use the gateway's tailnet name from elsewhere):\n${new URL(created.hook.path, base).href}`);
+      print(created, formatAdded(bot, created, base));
       return 0;
     }
     case "remove": {

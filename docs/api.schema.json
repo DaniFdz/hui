@@ -1066,6 +1066,9 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "own": {
+          "type": "boolean"
         }
       }
     },
@@ -2168,6 +2171,9 @@
         "description": {
           "type": "string"
         },
+        "group": {
+          "type": "string"
+        },
         "tagging": {
           "$ref": "#/$defs/BotTagging"
         },
@@ -2419,6 +2425,32 @@
         }
       }
     },
+    "BotOwnSkill": {
+      "type": "object",
+      "required": [
+        "name",
+        "text"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotOwnSkillRequest": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BotPatch": {
       "type": "object",
       "properties": {
@@ -2432,6 +2464,9 @@
           "type": "string"
         },
         "description": {
+          "type": "string"
+        },
+        "group": {
           "type": "string"
         },
         "tagging": {
@@ -3121,19 +3156,7 @@
           "$ref": "#/$defs/BotTrigger"
         },
         "hook": {
-          "type": "object",
-          "required": [
-            "token",
-            "path"
-          ],
-          "properties": {
-            "token": {
-              "type": "string"
-            },
-            "path": {
-              "type": "string"
-            }
-          }
+          "$ref": "#/$defs/BotTriggerHook"
         }
       }
     },
@@ -3166,6 +3189,45 @@
         "external": {
           "type": "boolean",
           "const": true
+        }
+      }
+    },
+    "BotTriggerHook": {
+      "type": "object",
+      "required": [
+        "token",
+        "path"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "worker": {
+          "$ref": "#/$defs/BotTriggerHookWorker"
+        }
+      }
+    },
+    "BotTriggerHookWorker": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
         }
       }
     },
@@ -3415,6 +3477,9 @@
         "description": {
           "type": "string"
         },
+        "group": {
+          "type": "string"
+        },
         "tagging": {
           "enum": [
             "mention",
@@ -3562,6 +3627,56 @@
         }
       }
     },
+    "BrowserCookieImport": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserCookieImportReport": {
+      "type": "object",
+      "required": [
+        "imported",
+        "expired",
+        "domains",
+        "applied",
+        "message"
+      ],
+      "properties": {
+        "imported": {
+          "type": "number"
+        },
+        "expired": {
+          "type": "number"
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applied": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "now"
+            },
+            {
+              "type": "string",
+              "const": "next-start"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserError": {
       "type": "object",
       "required": [
@@ -3601,6 +3716,38 @@
         }
       }
     },
+    "BrowserHandoff": {
+      "type": "object",
+      "required": [
+        "tabId",
+        "message",
+        "since",
+        "by"
+      ],
+      "properties": {
+        "tabId": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "agent"
+            },
+            {
+              "type": "string",
+              "const": "operator"
+            }
+          ]
+        }
+      }
+    },
     "BrowserPreview": {
       "type": "object",
       "required": [
@@ -3612,13 +3759,77 @@
         }
       }
     },
+    "BrowserSecretInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "origin",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserSecretRemoval": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserSecrets": {
+      "type": "object",
+      "required": [
+        "secrets"
+      ],
+      "properties": {
+        "secrets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BrowserSecretView"
+          }
+        }
+      }
+    },
+    "BrowserSecretView": {
+      "type": "object",
+      "required": [
+        "name",
+        "origin",
+        "createdAt"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserSettings": {
       "type": "object",
       "required": [
         "enabled",
         "headless",
         "executablePath",
-        "mirrorState"
+        "mirrorState",
+        "allowedOrigins"
       ],
       "properties": {
         "enabled": {
@@ -3632,6 +3843,12 @@
         },
         "mirrorState": {
           "type": "boolean"
+        },
+        "allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -3787,6 +4004,22 @@
         }
       }
     },
+    "BrowserViewClipboard": {
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "clipboard"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserViewConnection": {
       "type": "object",
       "required": [
@@ -3799,27 +4032,208 @@
       }
     },
     "BrowserViewControl": {
-      "type": "object",
-      "required": [
-        "action",
-        "tabId"
-      ],
-      "properties": {
-        "action": {
-          "type": "string",
-          "const": "select"
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "select"
+            },
+            "tabId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
         },
-        "tabId": {
-          "anyOf": [
-            {
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "takeover"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "copy"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "text"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "insert"
+            },
+            "tabId": {
               "type": "string"
             },
-            {
-              "type": "null"
+            "text": {
+              "type": "string"
             }
-          ]
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "kind",
+            "x",
+            "y",
+            "button"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "pointer"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "move"
+                },
+                {
+                  "type": "string",
+                  "const": "down"
+                },
+                {
+                  "type": "string",
+                  "const": "up"
+                }
+              ]
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "button": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "left"
+                },
+                {
+                  "type": "string",
+                  "const": "right"
+                }
+              ]
+            },
+            "clickCount": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "x",
+            "y",
+            "deltaX",
+            "deltaY"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "wheel"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "deltaX": {
+              "type": "number"
+            },
+            "deltaY": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "key"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "key"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "continue"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
         }
-      }
+      ]
     },
     "BrowserViewMessage": {
       "anyOf": [
@@ -3831,7 +4245,8 @@
             "tabs",
             "current",
             "watching",
-            "following"
+            "following",
+            "handoff"
           ],
           "properties": {
             "type": {
@@ -3881,6 +4296,16 @@
             },
             "following": {
               "type": "boolean"
+            },
+            "handoff": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/BrowserHandoff"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         },
@@ -3922,6 +4347,9 @@
               "type": "string"
             }
           }
+        },
+        {
+          "$ref": "#/$defs/BrowserViewClipboard"
         }
       ]
     },
@@ -3932,7 +4360,8 @@
         "tabs",
         "current",
         "watching",
-        "following"
+        "following",
+        "handoff"
       ],
       "properties": {
         "running": {
@@ -3978,6 +4407,16 @@
         },
         "following": {
           "type": "boolean"
+        },
+        "handoff": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserHandoff"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -4039,10 +4478,6 @@
             {
               "type": "string",
               "const": "timeout"
-            },
-            {
-              "type": "string",
-              "const": "limit"
             }
           ]
         },
@@ -4381,6 +4816,45 @@
           "const": "overflow"
         }
       ]
+    },
+    "ContextUsagePart": {
+      "type": "object",
+      "required": [
+        "id",
+        "tokens"
+      ],
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "const": "tools"
+            },
+            {
+              "type": "string",
+              "const": "conversation"
+            },
+            {
+              "type": "string",
+              "const": "summary"
+            },
+            {
+              "type": "string",
+              "const": "memory"
+            }
+          ]
+        },
+        "tokens": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        }
+      }
     },
     "DatadogConnection": {
       "type": "object",
@@ -5171,6 +5645,265 @@
         }
       }
     },
+    "ExtensionEnginesInfo": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "string"
+        },
+        "max": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionPage": {
+      "type": "object",
+      "required": [
+        "title",
+        "entry"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "github"
+            },
+            {
+              "type": "string",
+              "const": "pull-request"
+            }
+          ]
+        }
+      }
+    },
+    "ExtensionPanel": {
+      "type": "object",
+      "required": [
+        "title",
+        "entry"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "github"
+            },
+            {
+              "type": "string",
+              "const": "pull-request"
+            }
+          ]
+        }
+      }
+    },
+    "ExtensionPromptInfo": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionRouteInfo": {
+      "type": "object",
+      "required": [
+        "method",
+        "path",
+        "description"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ExtensionsResponse": {
+      "type": "object",
+      "required": [
+        "extensions"
+      ],
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionStatus"
+          }
+        },
+        "storeError": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionStatus": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "enabled",
+        "state",
+        "mode",
+        "restarts",
+        "routes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "loaded"
+            },
+            {
+              "type": "string",
+              "const": "disabled"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "missing"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "engines": {
+          "$ref": "#/$defs/ExtensionEnginesInfo"
+        },
+        "reloadedAt": {
+          "type": "number"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "in-process"
+            },
+            {
+              "type": "string",
+              "const": "process"
+            }
+          ]
+        },
+        "restarts": {
+          "type": "number"
+        },
+        "panel": {
+          "$ref": "#/$defs/ExtensionPanel"
+        },
+        "page": {
+          "$ref": "#/$defs/ExtensionPage"
+        },
+        "prompt": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionPromptInfo"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionToolInfo"
+          }
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionRouteInfo"
+          }
+        }
+      }
+    },
+    "ExtensionToggleRequest": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ExtensionToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "runtimeName",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
     "FileCreateRequest": {
       "type": "object",
       "required": [
@@ -5556,6 +6289,7 @@
         "transport",
         "uptimeSeconds",
         "access",
+        "name",
         "sessions"
       ],
       "properties": {
@@ -5573,6 +6307,9 @@
         "access": {
           "type": "string",
           "const": "Full Access"
+        },
+        "name": {
+          "type": "string"
         },
         "sessions": {
           "type": "object",
@@ -6103,6 +6840,20 @@
         "spruce",
         "vale"
       ]
+    },
+    "HeartbeatRun": {
+      "type": "object",
+      "required": [
+        "notified"
+      ],
+      "properties": {
+        "notified": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "HostMetrics": {
       "type": "object",
@@ -6691,6 +7442,134 @@
         }
       }
     },
+    "LocalProvider": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "models",
+        "inPi",
+        "hasEndpoint",
+        "configured",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "models": {
+          "type": "number"
+        },
+        "inPi": {
+          "type": "boolean"
+        },
+        "hasEndpoint": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/LocalProviderStatus"
+        },
+        "message": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "number"
+        },
+        "startCommand": {
+          "type": "string"
+        },
+        "healthUrl": {
+          "type": "string"
+        },
+        "readyTimeoutMs": {
+          "type": "number"
+        }
+      }
+    },
+    "LocalProviderError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "LocalProviderOk": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "LocalProviderRequest": {
+      "type": "object",
+      "required": [
+        "startCommand"
+      ],
+      "properties": {
+        "startCommand": {
+          "type": "string"
+        },
+        "healthUrl": {
+          "type": "string"
+        },
+        "readyTimeoutMs": {
+          "type": "number"
+        }
+      }
+    },
+    "LocalProviderSnapshot": {
+      "type": "object",
+      "required": [
+        "providers"
+      ],
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LocalProvider"
+          }
+        }
+      }
+    },
+    "LocalProviderStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "online"
+        },
+        {
+          "type": "string",
+          "const": "offline"
+        },
+        {
+          "type": "string",
+          "const": "starting"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "MemorySource": {
       "type": "object",
       "required": [
@@ -6728,6 +7607,200 @@
         },
         "modifiedAt": {
           "type": "string"
+        }
+      }
+    },
+    "ModelMetric": {
+      "type": "object",
+      "required": [
+        "at",
+        "provider",
+        "model",
+        "status"
+      ],
+      "properties": {
+        "at": {
+          "type": "number"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheReadTokens": {
+          "type": "number"
+        },
+        "cacheWriteTokens": {
+          "type": "number"
+        },
+        "ttftMs": {
+          "type": "number"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "generationMs": {
+          "type": "number"
+        },
+        "tokensPerSecond": {
+          "type": "number"
+        },
+        "promptTokensPerSecond": {
+          "type": "number"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "ok"
+            },
+            {
+              "type": "string",
+              "const": "error"
+            }
+          ]
+        }
+      }
+    },
+    "ModelMetricAverage": {
+      "type": "object",
+      "properties": {
+        "tokensPerSecond": {
+          "type": "number"
+        },
+        "ttftMs": {
+          "type": "number"
+        },
+        "promptTokensPerSecond": {
+          "type": "number"
+        },
+        "cacheHitRate": {
+          "type": "number"
+        }
+      }
+    },
+    "ModelMetricError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelMetricSession": {
+      "type": "object",
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/ModelMetric"
+        }
+      }
+    },
+    "ModelMetricSummary": {
+      "type": "object",
+      "required": [
+        "provider",
+        "since",
+        "requests",
+        "average",
+        "p50",
+        "p95",
+        "samples"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "since": {
+          "type": "number"
+        },
+        "requests": {
+          "type": "number"
+        },
+        "last": {
+          "$ref": "#/$defs/ModelMetric"
+        },
+        "average": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "p50": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "p95": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelMetric"
+          }
+        }
+      }
+    },
+    "NotificationTestError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "NotificationTestResponse": {
+      "type": "object",
+      "required": [
+        "sent"
+      ],
+      "properties": {
+        "sent": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "NtfyLink": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "web"
+        },
+        {
+          "type": "string",
+          "const": "phone"
+        },
+        {
+          "type": "string",
+          "const": "desktop"
+        }
+      ]
+    },
+    "NtfySettings": {
+      "type": "object",
+      "required": [
+        "server",
+        "topic",
+        "link"
+      ],
+      "properties": {
+        "server": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "link": {
+          "$ref": "#/$defs/NtfyLink"
         }
       }
     },
@@ -7218,6 +8291,22 @@
         }
       }
     },
+    "PluginError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PluginPayload": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
     "PowerError": {
       "type": "object",
       "required": [
@@ -7427,6 +8516,15 @@
         "code": {
           "type": "string"
         },
+        "flow": {
+          "$ref": "#/$defs/ProviderLoginFlow"
+        },
+        "reason": {
+          "$ref": "#/$defs/ProviderLoginFailure"
+        },
+        "expiresAt": {
+          "type": "number"
+        },
         "prompt": {
           "type": "object",
           "required": [
@@ -7483,6 +8581,50 @@
         }
       }
     },
+    "ProviderLoginFailure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "type": "string",
+          "const": "expired"
+        },
+        {
+          "type": "string",
+          "const": "stale_link"
+        },
+        {
+          "type": "string",
+          "const": "port_in_use"
+        },
+        {
+          "type": "string",
+          "const": "network"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "ProviderLoginFlow": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "browser"
+        },
+        {
+          "type": "string",
+          "const": "device_code"
+        },
+        {
+          "type": "string",
+          "const": "copy_code"
+        }
+      ]
+    },
     "ProviderLoginRequest": {
       "type": "object",
       "required": [
@@ -7506,6 +8648,9 @@
         },
         "accountId": {
           "type": "string"
+        },
+        "flow": {
+          "$ref": "#/$defs/ProviderLoginFlow"
         }
       }
     },
@@ -7771,6 +8916,92 @@
         }
       }
     },
+    "ProviderTest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "latencyMs"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "const": true
+            },
+            "latencyMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "reason",
+            "message"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "$ref": "#/$defs/ProviderTestFailure"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ProviderTestFailure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auth"
+        },
+        {
+          "type": "string",
+          "const": "rate_limit"
+        },
+        {
+          "type": "string",
+          "const": "billing"
+        },
+        {
+          "type": "string",
+          "const": "timeout"
+        },
+        {
+          "type": "string",
+          "const": "format"
+        },
+        {
+          "type": "string",
+          "const": "unavailable"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "ProviderTestRequest": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "accountId": {
+          "type": "string"
+        }
+      }
+    },
     "PullRequestState": {
       "anyOf": [
         {
@@ -7790,6 +9021,148 @@
           "const": "closed"
         }
       ]
+    },
+    "PushError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PushSettings": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "subject"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "subject": {
+          "type": "string"
+        }
+      }
+    },
+    "PushStatusResponse": {
+      "type": "object",
+      "required": [
+        "publicKey",
+        "devices"
+      ],
+      "properties": {
+        "publicKey": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PushSubscribeRequest": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "keys"
+      ],
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "object",
+          "required": [
+            "p256dh",
+            "auth"
+          ],
+          "properties": {
+            "p256dh": {
+              "type": "string"
+            },
+            "auth": {
+              "type": "string"
+            }
+          }
+        },
+        "device": {
+          "type": "string"
+        }
+      }
+    },
+    "PushSubscribeResponse": {
+      "type": "object",
+      "required": [
+        "subscribed",
+        "id"
+      ],
+      "properties": {
+        "subscribed": {
+          "type": "boolean",
+          "const": true
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "PushTestResponse": {
+      "type": "object",
+      "required": [
+        "sent",
+        "devices"
+      ],
+      "properties": {
+        "sent": {
+          "type": "number"
+        },
+        "devices": {
+          "type": "number"
+        }
+      }
+    },
+    "PushUnsubscribeRequest": {
+      "type": "object",
+      "required": [
+        "endpoint"
+      ],
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        }
+      }
+    },
+    "PushUnsubscribeResponse": {
+      "type": "object",
+      "required": [
+        "removed"
+      ],
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      }
     },
     "QuestionnaireAnswer": {
       "type": "object",
@@ -7816,6 +9189,22 @@
         }
       }
     },
+    "QuestionnaireInput": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "options"
+        },
+        {
+          "type": "string",
+          "const": "slider"
+        },
+        {
+          "type": "string",
+          "const": "text"
+        }
+      ]
+    },
     "QuestionnaireOption": {
       "type": "object",
       "required": [
@@ -7831,6 +9220,9 @@
         },
         "preview": {
           "type": "string"
+        },
+        "previewHtml": {
+          "type": "string"
         }
       }
     },
@@ -7840,7 +9232,8 @@
         "header",
         "question",
         "multiSelect",
-        "options"
+        "options",
+        "input"
       ],
       "properties": {
         "header": {
@@ -7857,6 +9250,24 @@
           "items": {
             "$ref": "#/$defs/QuestionnaireOption"
           }
+        },
+        "input": {
+          "$ref": "#/$defs/QuestionnaireInput"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
         }
       }
     },
@@ -8313,6 +9724,15 @@
         },
         "sessionCost": {
           "$ref": "#/$defs/SessionCostReport"
+        },
+        "breakdown": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContextUsagePart"
+          }
+        },
+        "sessionTotal": {
+          "$ref": "#/$defs/SessionSpend"
         }
       }
     },
@@ -8327,6 +9747,17 @@
           "items": {
             "$ref": "#/$defs/ActivitySession"
           }
+        }
+      }
+    },
+    "SessionAutonomousResponse": {
+      "type": "object",
+      "required": [
+        "autonomous"
+      ],
+      "properties": {
+        "autonomous": {
+          "type": "boolean"
         }
       }
     },
@@ -8673,6 +10104,22 @@
         {
           "type": "object",
           "required": [
+            "type",
+            "metric"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "model_metric"
+            },
+            "metric": {
+              "$ref": "#/$defs/ModelMetric"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
@@ -8844,6 +10291,42 @@
           "items": {
             "$ref": "#/$defs/SessionView"
           }
+        }
+      }
+    },
+    "SessionGroupCreateRequest": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        },
+        "workspaceMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "branch"
+            },
+            {
+              "type": "string",
+              "const": "worktree"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "baseRef": {
+          "type": "string"
         }
       }
     },
@@ -9303,6 +10786,9 @@
         "fast": {
           "type": "boolean"
         },
+        "autonomous": {
+          "type": "boolean"
+        },
         "queue": {
           "$ref": "#/$defs/RuntimeQueue"
         },
@@ -9332,6 +10818,36 @@
         },
         "compaction": {
           "$ref": "#/$defs/RuntimeCompaction"
+        }
+      }
+    },
+    "SessionSpend": {
+      "type": "object",
+      "required": [
+        "tokens",
+        "usd",
+        "reported",
+        "asOf"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "number"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reported": {
+          "type": "boolean"
+        },
+        "asOf": {
+          "type": "number"
         }
       }
     },
@@ -9657,6 +11173,30 @@
           "properties": {
             "event": {
               "type": "string",
+              "const": "autonomous"
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "autonomous"
+              ],
+              "properties": {
+                "autonomous": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
               "const": "heartbeat"
             },
             "data": {
@@ -9712,6 +11252,9 @@
           "type": "string"
         },
         "fast": {
+          "type": "boolean"
+        },
+        "autonomous": {
           "type": "boolean"
         },
         "queue": {
@@ -9952,6 +11495,59 @@
           "type": "boolean",
           "const": true
         },
+        "question": {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "select"
+                },
+                {
+                  "type": "string",
+                  "const": "confirm"
+                },
+                {
+                  "type": "string",
+                  "const": "input"
+                },
+                {
+                  "type": "string",
+                  "const": "editor"
+                },
+                {
+                  "type": "string",
+                  "const": "secret"
+                },
+                {
+                  "type": "string",
+                  "const": "questionnaire"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "failure": {
+          "type": "string"
+        },
         "background": {
           "type": "boolean",
           "const": true
@@ -10002,6 +11598,25 @@
             }
           }
         },
+        "createdBy": {
+          "type": "object",
+          "required": [
+            "id",
+            "handle",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
         "stage": {
           "$ref": "#/$defs/SessionStage"
         },
@@ -10022,16 +11637,10 @@
     "Settings": {
       "type": "object",
       "required": [
-        "theme",
-        "themeMode",
-        "accent",
-        "fontUi",
-        "fontChat",
-        "fontTerminal",
-        "textScale",
         "chat",
         "profileName",
         "profileHandle",
+        "name",
         "branchPrefix",
         "browser",
         "codemode",
@@ -10046,192 +11655,13 @@
         "labs"
       ],
       "properties": {
-        "theme": {
-          "type": "string"
-        },
-        "themeMode": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "system"
-            },
-            {
-              "type": "string",
-              "const": "light"
-            },
-            {
-              "type": "string",
-              "const": "dark"
-            }
-          ]
-        },
-        "accent": {
-          "type": "string"
-        },
-        "fontUi": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "instrument-sans"
-            },
-            {
-              "type": "string",
-              "const": "geist"
-            },
-            {
-              "type": "string",
-              "const": "dm-sans"
-            },
-            {
-              "type": "string",
-              "const": "ibm-plex-sans"
-            },
-            {
-              "type": "string",
-              "const": "space-grotesk"
-            },
-            {
-              "type": "string",
-              "const": "atkinson-hyperlegible"
-            },
-            {
-              "type": "string",
-              "const": "fraunces"
-            },
-            {
-              "type": "string",
-              "const": "lora"
-            },
-            {
-              "type": "string",
-              "const": "jetbrains-mono"
-            },
-            {
-              "type": "string",
-              "const": "system"
-            }
-          ]
-        },
-        "fontChat": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "instrument-sans"
-            },
-            {
-              "type": "string",
-              "const": "geist"
-            },
-            {
-              "type": "string",
-              "const": "dm-sans"
-            },
-            {
-              "type": "string",
-              "const": "ibm-plex-sans"
-            },
-            {
-              "type": "string",
-              "const": "space-grotesk"
-            },
-            {
-              "type": "string",
-              "const": "atkinson-hyperlegible"
-            },
-            {
-              "type": "string",
-              "const": "fraunces"
-            },
-            {
-              "type": "string",
-              "const": "lora"
-            },
-            {
-              "type": "string",
-              "const": "jetbrains-mono"
-            },
-            {
-              "type": "string",
-              "const": "system"
-            }
-          ]
-        },
-        "fontTerminal": {
-          "type": "string"
-        },
-        "textScale": {
-          "anyOf": [
-            {
-              "type": "number",
-              "const": 90
-            },
-            {
-              "type": "number",
-              "const": 100
-            },
-            {
-              "type": "number",
-              "const": 110
-            },
-            {
-              "type": "number",
-              "const": 125
-            },
-            {
-              "type": "number",
-              "const": 140
-            }
-          ]
-        },
         "chat": {
           "type": "object",
           "required": [
-            "messageWidth",
-            "collapseTaskProgress",
-            "sendShortcut",
-            "githubEmbeds",
-            "datadogEmbeds",
             "toolMarks",
             "toolIcons"
           ],
           "properties": {
-            "messageWidth": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "const": "compact"
-                },
-                {
-                  "type": "string",
-                  "const": "comfortable"
-                },
-                {
-                  "type": "string",
-                  "const": "wide"
-                }
-              ]
-            },
-            "collapseTaskProgress": {
-              "type": "boolean"
-            },
-            "sendShortcut": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "const": "enter"
-                },
-                {
-                  "type": "string",
-                  "const": "modifierEnter"
-                }
-              ]
-            },
-            "githubEmbeds": {
-              "type": "boolean"
-            },
-            "datadogEmbeds": {
-              "type": "boolean"
-            },
             "toolMarks": {
               "type": "object",
               "patternProperties": {
@@ -10254,6 +11684,9 @@
           "type": "string"
         },
         "profileHandle": {
+          "type": "string"
+        },
+        "name": {
           "type": "string"
         },
         "branchPrefix": {
@@ -10304,7 +11737,9 @@
             "tool",
             "runFinished",
             "runFailed",
-            "needsInput"
+            "needsInput",
+            "ntfy",
+            "push"
           ],
           "properties": {
             "tool": {
@@ -10318,6 +11753,12 @@
             },
             "needsInput": {
               "type": "boolean"
+            },
+            "ntfy": {
+              "$ref": "#/$defs/NtfySettings"
+            },
+            "push": {
+              "$ref": "#/$defs/PushSettings"
             }
           }
         },
@@ -10328,6 +11769,7 @@
             "fallback",
             "utility",
             "thinking",
+            "retryAttempts",
             "routes"
           ],
           "properties": {
@@ -10379,6 +11821,9 @@
                   ]
                 }
               ]
+            },
+            "retryAttempts": {
+              "type": "number"
             },
             "routes": {
               "type": "array",
@@ -10537,17 +11982,13 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug",
-            "dashboard"
+            "detailedDebug"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
-              "type": "boolean"
-            },
-            "dashboard": {
               "type": "boolean"
             }
           }
@@ -10581,6 +12022,17 @@
           "type": "string"
         },
         "model": {
+          "type": "string"
+        }
+      }
+    },
+    "StaffChiefInput": {
+      "type": "object",
+      "required": [
+        "group"
+      ],
+      "properties": {
+        "group": {
           "type": "string"
         }
       }
@@ -11905,11 +13357,15 @@
     "UpdateSnapshot": {
       "type": "object",
       "required": [
+        "name",
         "currentVersion",
         "check",
         "job"
       ],
       "properties": {
+        "name": {
+          "type": "string"
+        },
         "currentVersion": {
           "anyOf": [
             {
@@ -13926,7 +15382,7 @@
       }
     }
   },
-  "x-hui-api-version": "0.1.5",
+  "x-hui-api-version": "0.2.1",
   "x-hui-areas": {
     "api-schema": [
       "ApiSchemaDocument",
@@ -14001,6 +15457,9 @@
     ],
     "settings": [
       "BrowserSettings",
+      "NtfyLink",
+      "NtfySettings",
+      "PushSettings",
       "Settings",
       "SettingsError",
       "SettingsRequest",
@@ -14026,6 +15485,8 @@
       "ProviderAnswerRequest",
       "ProviderError",
       "ProviderLogin",
+      "ProviderLoginFailure",
+      "ProviderLoginFlow",
       "ProviderLoginRequest",
       "ProviderModel",
       "ProviderModelsRequest",
@@ -14033,7 +15494,25 @@
       "ProviderOrderRequest",
       "ProviderQuota",
       "ProviderSnapshot",
-      "ProviderSummary"
+      "ProviderSummary",
+      "ProviderTest",
+      "ProviderTestFailure",
+      "ProviderTestRequest"
+    ],
+    "local-providers": [
+      "LocalProvider",
+      "LocalProviderError",
+      "LocalProviderOk",
+      "LocalProviderRequest",
+      "LocalProviderSnapshot",
+      "LocalProviderStatus"
+    ],
+    "model-metrics": [
+      "ModelMetric",
+      "ModelMetricAverage",
+      "ModelMetricError",
+      "ModelMetricSession",
+      "ModelMetricSummary"
     ],
     "tools": [
       "RuntimeInspection",
@@ -14048,9 +15527,11 @@
       "ProgressCard",
       "ProgressStep",
       "QuestionnaireAnswer",
+      "QuestionnaireInput",
       "QuestionnaireOption",
       "QuestionnaireQuestion",
       "QuestionnaireResult",
+      "SessionAutonomousResponse",
       "SessionConnectResponse",
       "SessionError",
       "SessionFastResponse",
@@ -14058,6 +15539,7 @@
       "SessionGoalRequest",
       "SessionGoalStatus",
       "SessionGroup",
+      "SessionGroupCreateRequest",
       "SessionJiraIssue",
       "SessionList",
       "SessionListLayoutGroup",
@@ -14082,6 +15564,7 @@
     ],
     "session-events": [
       "CompactionReason",
+      "ContextUsagePart",
       "QueuedMessage",
       "RuntimeCommand",
       "RuntimeCompaction",
@@ -14100,6 +15583,7 @@
       "SessionOpenResponse",
       "SessionQuestion",
       "SessionSnapshot",
+      "SessionSpend",
       "SessionStreamFrame",
       "SessionStreamSnapshot",
       "SessionThinkingRequest",
@@ -14192,13 +15676,21 @@
     ],
     "browser": [
       "BrowserControl",
+      "BrowserCookieImport",
+      "BrowserCookieImportReport",
       "BrowserError",
       "BrowserExecutableView",
+      "BrowserHandoff",
       "BrowserPreview",
+      "BrowserSecretInput",
+      "BrowserSecretRemoval",
+      "BrowserSecretView",
+      "BrowserSecrets",
       "BrowserState",
       "BrowserStatus",
       "BrowserTabView",
       "BrowserViewAction",
+      "BrowserViewClipboard",
       "BrowserViewConnection",
       "BrowserViewControl",
       "BrowserViewMessage",
@@ -14233,6 +15725,8 @@
       "BotMemoryZoom",
       "BotMessageRequest",
       "BotMessageResult",
+      "BotOwnSkill",
+      "BotOwnSkillRequest",
       "BotPatch",
       "BotQuestion",
       "BotReply",
@@ -14259,6 +15753,8 @@
       "BotTriggerCreated",
       "BotTriggerDeleted",
       "BotTriggerFilter",
+      "BotTriggerHook",
+      "BotTriggerHookWorker",
       "BotTriggerInput",
       "BotTriggerPatch",
       "BotTriggerResponse",
@@ -14415,6 +15911,36 @@
       "ThemeImportResponse",
       "ThemeRef",
       "ThemesResponse"
+    ],
+    "staff": [
+      "StaffChiefInput"
+    ],
+    "heartbeat": [
+      "HeartbeatRun"
+    ],
+    "extensions": [
+      "ExtensionEnginesInfo",
+      "ExtensionPage",
+      "ExtensionPanel",
+      "ExtensionPromptInfo",
+      "ExtensionRouteInfo",
+      "ExtensionStatus",
+      "ExtensionToggleRequest",
+      "ExtensionToolInfo",
+      "ExtensionsResponse",
+      "PluginError",
+      "PluginPayload"
+    ],
+    "notifications": [
+      "NotificationTestError",
+      "NotificationTestResponse",
+      "PushError",
+      "PushStatusResponse",
+      "PushSubscribeRequest",
+      "PushSubscribeResponse",
+      "PushTestResponse",
+      "PushUnsubscribeRequest",
+      "PushUnsubscribeResponse"
     ]
   },
   "x-hui-routes": [
@@ -14747,6 +16273,23 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/bots/:id/skills/:name",
+      "response": {
+        "$ref": "#/$defs/BotOwnSkill"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/bots/:id/skills/:name",
+      "request": {
+        "$ref": "#/$defs/BotOwnSkillRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotOwnSkill"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/bots/:id/soul",
       "response": {
         "$ref": "#/$defs/BotSoul"
@@ -14885,6 +16428,43 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/browser/cookies",
+      "request": {
+        "$ref": "#/$defs/BrowserCookieImport"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserCookieImportReport"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/browser/secrets",
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/browser/secrets",
+      "request": {
+        "$ref": "#/$defs/BrowserSecretInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/browser/secrets/remove",
+      "request": {
+        "$ref": "#/$defs/BrowserSecretRemoval"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
+      }
+    },
+    {
       "method": "GET",
       "path": "/__hui/browser/tabs/:tab/preview",
       "response": {
@@ -14972,6 +16552,30 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/ext",
+      "response": {
+        "$ref": "#/$defs/ExtensionsResponse"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/ext/:id",
+      "request": {
+        "$ref": "#/$defs/ExtensionToggleRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/ext/:id/reload",
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/git-checkout",
       "response": {
         "$ref": "#/$defs/GitCheckoutResponse"
@@ -15017,6 +16621,13 @@
       "path": "/__hui/health",
       "response": {
         "$ref": "#/$defs/GatewayHealth"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/heartbeat",
+      "response": {
+        "$ref": "#/$defs/HeartbeatRun"
       }
     },
     {
@@ -15086,6 +16697,92 @@
       "path": "/__hui/local-paths",
       "response": {
         "$ref": "#/$defs/LocalPathsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/local-providers",
+      "response": {
+        "$ref": "#/$defs/LocalProviderSnapshot"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/local-providers/:provider",
+      "response": {
+        "$ref": "#/$defs/LocalProviderOk"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/local-providers/:provider",
+      "request": {
+        "$ref": "#/$defs/LocalProviderRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/LocalProvider"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/local-providers/:provider/start",
+      "response": {
+        "$ref": "#/$defs/LocalProvider"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/model-metrics/providers/:provider",
+      "response": {
+        "$ref": "#/$defs/ModelMetricSummary"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/model-metrics/sessions/:session",
+      "response": {
+        "$ref": "#/$defs/ModelMetricSession"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/notifications/push",
+      "response": {
+        "$ref": "#/$defs/PushStatusResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/subscribe",
+      "request": {
+        "$ref": "#/$defs/PushSubscribeRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PushSubscribeResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/test",
+      "response": {
+        "$ref": "#/$defs/PushTestResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/push/unsubscribe",
+      "request": {
+        "$ref": "#/$defs/PushUnsubscribeRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PushUnsubscribeResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/test",
+      "response": {
+        "$ref": "#/$defs/NotificationTestResponse"
       }
     },
     {
@@ -15222,6 +16919,16 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/providers/:provider/test",
+      "request": {
+        "$ref": "#/$defs/ProviderTestRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderTest"
+      }
+    },
+    {
       "method": "DELETE",
       "path": "/__hui/providers/login/:id",
       "response": {
@@ -15248,6 +16955,9 @@
     {
       "method": "POST",
       "path": "/__hui/session-groups",
+      "request": {
+        "$ref": "#/$defs/SessionGroupCreateRequest"
+      },
       "response": {
         "$ref": "#/$defs/SessionList"
       }
@@ -15306,6 +17016,13 @@
       "path": "/__hui/sessions/:id/abort",
       "response": {
         "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/autonomous",
+      "response": {
+        "$ref": "#/$defs/SessionAutonomousResponse"
       }
     },
     {
@@ -15560,6 +17277,13 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/sessions/:id/progress",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/prompt",
       "response": {
         "$ref": "#/$defs/SessionPromptResponse"
@@ -15779,6 +17503,16 @@
       },
       "response": {
         "$ref": "#/$defs/Settings"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/staff/chiefs",
+      "request": {
+        "$ref": "#/$defs/StaffChiefInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotResponse"
       }
     },
     {

@@ -26,9 +26,18 @@ export type BrowserStatus = Static<typeof BrowserStatus>;
 export const BrowserViewTab = Type.Object({ id: Type.String(), title: Type.String(), url: Type.String() }, { $id: "BrowserViewTab" });
 export type BrowserViewTab = Static<typeof BrowserViewTab>;
 
+/** A tab waiting for the operator: `by` says whether the agent handed it over and waits, or the operator took it
+ * and the agent's run was stopped. */
+export const BrowserHandoff = Type.Object({
+  tabId: Type.String(), message: Type.String(), since: Type.String(),
+  by: Type.Union([Type.Literal("agent"), Type.Literal("operator")]),
+}, { $id: "BrowserHandoff" });
+export type BrowserHandoff = Static<typeof BrowserHandoff>;
+
 export const BrowserViewState = Type.Object({
   running: Type.Boolean(), mode: Type.Optional(Type.Union([Type.Literal("headless"), Type.Literal("windowed")])), tabs: Type.Array(BrowserViewTab),
   current: Type.Union([Type.String(), Type.Null()]), watching: Type.Union([Type.String(), Type.Null()]), following: Type.Boolean(),
+  handoff: Type.Union([BrowserHandoff, Type.Null()]),
 }, { $id: "BrowserViewState" });
 export type BrowserViewState = Static<typeof BrowserViewState>;
 
@@ -37,17 +46,62 @@ export const BrowserViewAction = Type.Object({
 }, { $id: "BrowserViewAction" });
 export type BrowserViewAction = Static<typeof BrowserViewAction>;
 
+export const BrowserViewClipboard = Type.Object({ type: Type.Literal("clipboard"), text: Type.String() }, { $id: "BrowserViewClipboard" });
+export type BrowserViewClipboard = Static<typeof BrowserViewClipboard>;
+
 export const BrowserViewMessage = Type.Union([
   Type.Object({ type: Type.Literal("state"), ...BrowserViewState.properties }),
   Type.Object({ type: Type.Literal("action"), ...BrowserViewAction.properties }),
+  BrowserViewClipboard,
 ], { $id: "BrowserViewMessage" });
 export type BrowserViewMessage = Static<typeof BrowserViewMessage>;
 
-export const BrowserViewControl = Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }, { $id: "BrowserViewControl" });
+/** What a browser view sends back: pick a tab, take one from the agent, or drive the tab the operator holds.
+ * Input is only applied while that tab waits for the operator, and only by the conversation that owns it. */
+export const BrowserViewControl = Type.Union([
+  Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }),
+  Type.Object({ action: Type.Literal("takeover"), tabId: Type.String() }),
+  Type.Object({ action: Type.Literal("copy"), tabId: Type.String() }),
+  // The published schema has no length keywords; the transport enforces 1–1024 code units.
+  Type.Object({ action: Type.Literal("insert"), tabId: Type.String(), text: Type.String() }),
+  Type.Object({
+    action: Type.Literal("pointer"), tabId: Type.String(),
+    kind: Type.Union([Type.Literal("move"), Type.Literal("down"), Type.Literal("up")]),
+    x: Type.Number(), y: Type.Number(), button: Type.Union([Type.Literal("left"), Type.Literal("right")]),
+    clickCount: Type.Optional(Type.Number()),
+  }),
+  Type.Object({ action: Type.Literal("wheel"), tabId: Type.String(), x: Type.Number(), y: Type.Number(), deltaX: Type.Number(), deltaY: Type.Number() }),
+  Type.Object({ action: Type.Literal("key"), tabId: Type.String(), key: Type.String() }),
+  Type.Object({ action: Type.Literal("continue"), tabId: Type.String() }),
+], { $id: "BrowserViewControl" });
 export type BrowserViewControl = Static<typeof BrowserViewControl>;
+
+/** A stored site secret as any route may see it: never its value. */
+export const BrowserSecretView = Type.Object({ name: Type.String(), origin: Type.String(), createdAt: Type.String() }, { $id: "BrowserSecretView" });
+export type BrowserSecretView = Static<typeof BrowserSecretView>;
+
+export const BrowserSecrets = Type.Object({ secrets: Type.Array(BrowserSecretView) }, { $id: "BrowserSecrets" });
+export type BrowserSecrets = Static<typeof BrowserSecrets>;
+
+export const BrowserSecretInput = Type.Object({ name: Type.String(), origin: Type.String(), value: Type.String() }, { $id: "BrowserSecretInput" });
+export type BrowserSecretInput = Static<typeof BrowserSecretInput>;
+
+export const BrowserSecretRemoval = Type.Object({ name: Type.String() }, { $id: "BrowserSecretRemoval" });
+export type BrowserSecretRemoval = Static<typeof BrowserSecretRemoval>;
 
 export const BrowserControl = Type.Object({ action: Type.Union([Type.Literal("start"), Type.Literal("stop")]) }, { $id: "BrowserControl" });
 export type BrowserControl = Static<typeof BrowserControl>;
+
+/** The operator's exported login to read: an absolute path to the cookie file, never its contents. */
+export const BrowserCookieImport = Type.Object({ path: Type.String() }, { $id: "BrowserCookieImport" });
+export type BrowserCookieImport = Static<typeof BrowserCookieImport>;
+
+/** What an import did: counts and domains only, so no cookie's name or value can be answered back. */
+export const BrowserCookieImportReport = Type.Object({
+  imported: Type.Number(), expired: Type.Number(), domains: Type.Array(Type.String()),
+  applied: Type.Union([Type.Literal("now"), Type.Literal("next-start")]), message: Type.String(),
+}, { $id: "BrowserCookieImportReport" });
+export type BrowserCookieImportReport = Static<typeof BrowserCookieImportReport>;
 
 export const BrowserViewConnection = Type.Object({ url: Type.String() }, { $id: "BrowserViewConnection" });
 export type BrowserViewConnection = Static<typeof BrowserViewConnection>;
@@ -61,6 +115,10 @@ export type BrowserError = Static<typeof BrowserError>;
 export const routeSchemas = [
   { method: "GET", path: "/__hui/browser", response: BrowserStatus },
   { method: "POST", path: "/__hui/browser", request: BrowserControl, response: BrowserStatus },
+  { method: "POST", path: "/__hui/browser/cookies", request: BrowserCookieImport, response: BrowserCookieImportReport },
+  { method: "GET", path: "/__hui/browser/secrets", response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets", request: BrowserSecretInput, response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets/remove", request: BrowserSecretRemoval, response: BrowserSecrets },
   { method: "GET", path: "/__hui/browser/tabs/:tab/preview", response: BrowserPreview },
   { method: "POST", path: "/__hui/sessions/:id/browser/connect", response: BrowserViewConnection },
   { method: "WS", path: "/__hui/browser-stream", request: BrowserViewControl, response: BrowserViewMessage, events: BrowserViewMessage },

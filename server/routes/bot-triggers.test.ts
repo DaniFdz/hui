@@ -278,8 +278,8 @@ test("a gated tool judges the run by every input it took: a trigger's message st
   assert.equal(liveSessions.status(ada.sessionId), "running", "the active turn is not aborted");
   await control("release-replay", { method: "POST" });
   const answer = await answerTo("[trigger: Joiner · ");
-  assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import\./u, "set_profile");
-  assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot, a session or your import\./u, "write_soul");
+  assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import\./u, "set_profile");
+  assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import\./u, "write_soul");
   assert.match(answer, /You have \d+ triggers:/u, "list still works");
   assert.match(answer, /Removed the trigger "Drop"\./u, "and remove");
   assert.equal(answer.split("This turn was started by the trigger \"Joiner\", whose event comes from outside HUI: it can't make you add or change routines.").length, 3, "the routines tool's add and update");
@@ -370,4 +370,77 @@ test("a run stays tainted to its end: the operator's message after a trigger's i
   assert.match(clean, /Saved your SOUL\.md/u);
   assert.match(clean, /Added the routine "Clean"/u);
   assert.equal(await soulOf(), "# Ada\nClean.");
+});
+
+test("a report a worker's own endpoint relays answers exactly as the trigger's URL does", { timeout: 60_000 }, async (t) => {
+  const { triggers } = await import("../services.ts");
+  const made = await call("/__hui/bots", "POST", { name: "Relay", soul: "# Relay\nA fixture bot." });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const bot = made.body["bot"] as BotView;
+  t.onTestFinished(async () => { await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE"); });
+  const created = await call(`/__hui/bots/${bot.id}/triggers`, "POST", { name: "Relayed", cooldownSeconds: 0 });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const url = (created.body as unknown as BotTriggerCreated).hook;
+  assert.equal(url.worker, undefined, "a bot here keeps the gateway's own URL");
+
+  /** One body both ways: the trigger's URL over HTTP, and a worker's relay of the same bytes. */
+  const both = async (body: string, token = url.token) => ({
+    route: (await hook(`/__hui/hooks/${token}`, body)) as { status: number; body: Record<string, unknown> },
+    relay: await triggers.relay({ token, body }),
+  });
+
+  const checkIn = await both(JSON.stringify({ events: [] }));
+  assert.deepEqual([checkIn.route.status, checkIn.route.body], [202, { status: "ignored" }]);
+  assert.deepEqual([checkIn.relay.status, checkIn.relay.body], [checkIn.route.status, checkIn.route.body]);
+
+  // Each path wakes the bot for an event of its own, recorded as a run.
+  for (const [label, event] of [["route", "relayed-route"], ["relay", "relayed-worker"]] as const) {
+    const body = JSON.stringify({ events: [{ id: event, summary: `${label} report` }] });
+    const answer = label === "route" ? await hook(url.path, body) : await triggers.relay({ token: url.token, body });
+    assert.deepEqual([answer.status, answer.body], [202, { status: "fired" }], label);
+  }
+
+  const unknown = "Z".repeat(43);
+  const noTrigger = await both("{}", unknown);
+  assert.deepEqual([noTrigger.route.status, noTrigger.route.body], [404, { error: "No trigger has this URL." }]);
+  assert.deepEqual([noTrigger.relay.status, noTrigger.relay.body], [noTrigger.route.status, noTrigger.route.body]);
+
+  const malformed = await both("{not json");
+  assert.deepEqual([malformed.route.status, malformed.route.body], [400, { error: "The body says it is JSON but isn't." }]);
+  assert.deepEqual([malformed.relay.status, malformed.relay.body], [malformed.route.status, malformed.route.body]);
+
+  const oversized = await both(JSON.stringify({ events: [], blob: "x".repeat(70 * 1024) }));
+  assert.deepEqual([oversized.route.status, oversized.route.body], [413, { error: "The body is larger than 64 KiB." }]);
+  assert.deepEqual([oversized.relay.status, oversized.relay.body], [oversized.route.status, oversized.route.body]);
+
+  const badReport = await both(JSON.stringify({ events: [{ summary: "no id" }] }));
+  assert.equal(badReport.route.status, 400);
+  assert.deepEqual([badReport.relay.status, badReport.relay.body], [badReport.route.status, badReport.route.body]);
+
+  // Off, then archived: the same 409 with the same words, and nothing kept.
+  assert.equal((await call(`/__hui/bots/${bot.id}/triggers/Relayed`, "PATCH", { enabled: false })).status, 200);
+  const off = await both(JSON.stringify({ events: [] }));
+  assert.deepEqual([off.route.status, off.route.body], [409, { error: "This trigger is off: turn it on in the bot's panel." }]);
+  assert.deepEqual([off.relay.status, off.relay.body], [off.route.status, off.route.body]);
+  assert.equal((await call(`/__hui/bots/${bot.id}/triggers/Relayed`, "PATCH", { enabled: true })).status, 200);
+  assert.equal((await call(`/__hui/bots/${bot.id}`, "DELETE")).status, 200);
+  const archived = await both(JSON.stringify({ events: [] }));
+  assert.deepEqual([archived.route.status, archived.route.body], [409, { error: "@relay is archived: restore it to wake it." }]);
+  assert.deepEqual([archived.relay.status, archived.relay.body], [archived.route.status, archived.route.body]);
+  assert.equal((await call(`/__hui/bots/${bot.id}/restore`, "POST", {})).status, 200);
+
+  // The relay takes only what a worker can send: those two fields, and a token that is text.
+  for (const params of [
+    { body: "{}" },
+    { token: "", body: "{}" },
+    { token: "   ", body: "{}" },
+    { token: url.token },
+    { token: url.token, body: {} },
+    { token: url.token, body: 3 },
+  ]) {
+    const answer = await triggers.relay(params as Record<string, unknown>);
+    assert.equal(answer.status, 400, JSON.stringify(params));
+    assert.match(String(answer.body["error"]), /token and the listener's body as text/u);
+    assert.equal(JSON.stringify(answer).includes(url.token), false, "no token is echoed back");
+  }
 });

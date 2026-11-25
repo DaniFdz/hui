@@ -2,11 +2,25 @@
 
 export type BrowserControl = { "action": ("start") | ("stop"); };
 
+export type BrowserCookieImport = { "path": string; };
+
+export type BrowserCookieImportReport = { "imported": number; "expired": number; "domains": Array<string>; "applied": ("now") | ("next-start"); "message": string; };
+
 export type BrowserError = { "error": string; };
 
 export type BrowserExecutableView = { "path": string; "name": string; "source": ("configured") | ("detected"); };
 
+export type BrowserHandoff = { "tabId": string; "message": string; "since": string; "by": ("agent") | ("operator"); };
+
 export type BrowserPreview = { "image": string; };
+
+export type BrowserSecretInput = { "name": string; "origin": string; "value": string; };
+
+export type BrowserSecretRemoval = { "name": string; };
+
+export type BrowserSecretView = { "name": string; "origin": string; "createdAt": string; };
+
+export type BrowserSecrets = { "secrets": Array<BrowserSecretView>; };
 
 export type BrowserState = ("stopped") | ("starting") | ("running") | ("stopping");
 
@@ -16,12 +30,14 @@ export type BrowserTabView = { "id": string; "ownerSessionId": string; "ownerTit
 
 export type BrowserViewAction = { "tabId": string; "text": string; "point"?: { "x": number; "y": number; }; "at": string; };
 
+export type BrowserViewClipboard = { "type": "clipboard"; "text": string; };
+
 export type BrowserViewConnection = { "url": string; };
 
-export type BrowserViewControl = { "action": "select"; "tabId": (string) | (null); };
+export type BrowserViewControl = ({ "action": "select"; "tabId": (string) | (null); }) | ({ "action": "takeover"; "tabId": string; }) | ({ "action": "copy"; "tabId": string; }) | ({ "action": "insert"; "tabId": string; "text": string; }) | ({ "action": "pointer"; "tabId": string; "kind": ("move") | ("down") | ("up"); "x": number; "y": number; "button": ("left") | ("right"); "clickCount"?: number; }) | ({ "action": "wheel"; "tabId": string; "x": number; "y": number; "deltaX": number; "deltaY": number; }) | ({ "action": "key"; "tabId": string; "key": string; }) | ({ "action": "continue"; "tabId": string; });
 
-export type BrowserViewMessage = ({ "type": "state"; "running": boolean; "mode"?: ("headless") | ("windowed"); "tabs": Array<BrowserViewTab>; "current": (string) | (null); "watching": (string) | (null); "following": boolean; }) | ({ "type": "action"; "tabId": string; "text": string; "point"?: { "x": number; "y": number; }; "at": string; });
+export type BrowserViewMessage = ({ "type": "state"; "running": boolean; "mode"?: ("headless") | ("windowed"); "tabs": Array<BrowserViewTab>; "current": (string) | (null); "watching": (string) | (null); "following": boolean; "handoff": (BrowserHandoff) | (null); }) | ({ "type": "action"; "tabId": string; "text": string; "point"?: { "x": number; "y": number; }; "at": string; }) | (BrowserViewClipboard);
 
-export type BrowserViewState = { "running": boolean; "mode"?: ("headless") | ("windowed"); "tabs": Array<BrowserViewTab>; "current": (string) | (null); "watching": (string) | (null); "following": boolean; };
+export type BrowserViewState = { "running": boolean; "mode"?: ("headless") | ("windowed"); "tabs": Array<BrowserViewTab>; "current": (string) | (null); "watching": (string) | (null); "following": boolean; "handoff": (BrowserHandoff) | (null); };
 
 export type BrowserViewTab = { "id": string; "title": string; "url": string; };

@@ -1,25 +1,34 @@
 /**
  * HUI's Markdown parser: markdown-it with HUI's extensions (details, math, alerts, task lists, rich embeds, Mermaid and
  * chart fences) and its safety rules: raw HTML is escaped, links are limited to safe schemes and remote images are
- * never loaded. The web renders its HTML (`markdown.ts`); the iOS core takes its tokens (`markdownTokens`), so both
- * clients read Markdown the same way.
+ * never loaded. The web renders its HTML (`markdown.ts`); a client that draws Markdown itself takes its tokens
+ * (`markdownTokens`), so every client reads Markdown the same way.
  *
  * With `fileReferences` it also wraps file references (inline code spans and link targets shaped like paths,
- * `../files/references.ts`) in `<hui-file-ref>`, for the agent's own replies. With `linkCards: false` it leaves
- * isolated Slack and X links as links instead of cards.
+ * `../files/references.ts`) in `<hui-file-ref>`, for the agent's own replies; a link that targets one of HUI's own
+ * routes stays an anchor there, since it navigates the app (`../in-app-links.ts`). With `sessionReferences` it draws a
+ * resolvable `session:<id>` in prose as `<hui-session-ref>`, the chip that resolves against the app's registry
+ * (`../session/session-reference-store.ts`). With `linkCards: false` it leaves isolated Slack and X links as links
+ * instead of cards.
  */
 import MarkdownIt, { type MarkdownIt as MarkdownItParser, type StateBlock, type StateCore, type StateInline, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
 import markdownItTaskLists from "markdown-it-task-lists";
 import { parseSlackLink } from "./slack-link.ts";
 import { parseFileLinkTarget, parseFileReference, type FileReference } from "../files/references.ts";
+import { inAppLinkTarget } from "../in-app-links.ts";
+import { parseSessionQuery } from "../session/session-reference-store.ts";
 
 const DISALLOWED_LINK_SCHEME_RE = /^(?!(?:https?|mailto):)[a-z][a-z0-9+.-]*:/i;
 const INLINE_DATA_IMAGE_RE = /^data:image\/[a-z0-9.+-]+;base64,/i;
 const CJK_RE = /[\u2e80-\u2fff\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff01-\uff60]/;
-const ALERT_MARKER_RE = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/iu;
-const ALERT_LABELS = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" } as const;
-type AlertType = keyof typeof ALERT_LABELS;
+/** The marker that opens a GitHub alert, with the whitespace the transcript drops after it. The composer reads its own
+ * draft with this too (`../composer/rich/markdown.ts`), so a note's marker is one rule in both places. */
+export const ALERT_MARKER_RE = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/iu;
+/** What an alert's title reads, the callout's one label map. A note's kind is the attribute the wire derives from it. */
+export const ALERT_LABELS = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" } as const;
+/** The five GitHub alerts. */
+export type AlertType = keyof typeof ALERT_LABELS;
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -175,7 +184,13 @@ function installMath(parser: MarkdownItParser): void {
   parser.renderer.rules.hui_math_inline = (tokens, index) => `<hui-math class="markdown-math markdown-math--inline" data-display="inline" role="math"><template>${escapeHtml(tokens[index]?.content ?? "")}</template></hui-math>`;
 }
 
-function installAlerts(parser: MarkdownItParser): void {
+/**
+ * GitHub alerts: a blockquote whose first line is `> [!NOTE]` (and the four other kinds) becomes the callout the chat
+ * draws, `<aside class="markdown-alert markdown-alert--note" aria-label="Note">`. The blockquote tokens keep their type
+ * and carry the kind in `meta.huiAlert`, so a client that reads tokens knows one without parsing HTML; the composer's own
+ * tokenizer installs this rule too and renames those tokens into its `note` node.
+ */
+export function installAlerts(parser: MarkdownItParser): void {
   parser.core.ruler.after("inline", "hui_markdown_alerts", (state) => {
     for (let index = 0; index < state.tokens.length; index += 1) {
       const open = state.tokens[index];
@@ -401,7 +416,7 @@ function fileReferenceTag(state: StateCore, reference: FileReference | undefined
 }
 
 /** Wraps path-shaped inline code spans and link targets in `<hui-file-ref>`. A link's label is wrapped whole and its
- * own code spans are left alone; web and mail links stay links. */
+ * own code spans are left alone; web, mail and in-app links stay links. */
 function installFileReferences(parser: MarkdownItParser): void {
   parser.core.ruler.after("hui_safe_links", "hui_file_references", (state) => {
     for (const block of state.tokens) {
@@ -413,6 +428,11 @@ function installFileReferences(parser: MarkdownItParser): void {
         if (!token) continue;
         if (token.type === "link_open") {
           const href = String(token.attrGet("href") ?? "");
+          if (inAppLinkTarget(href)) {
+            // A link into the app navigates it: its label is the link, not a file the chat could open.
+            links.push(false);
+            continue;
+          }
           const reference = /^(?:https?|mailto):/iu.test(href) ? undefined : parseFileLinkTarget(href);
           links.push(Boolean(reference));
           if (reference) children[index] = fileReferenceTag(state, reference);
@@ -429,9 +449,114 @@ function installFileReferences(parser: MarkdownItParser): void {
   });
 }
 
+/** How a reference is written; an uppercase `SESSION:` is prose. */
+const SESSION_PREFIX = "session:";
+/** What a query run may take: hexadecimal digits and dashes, so any separator (`_`, `.`, `,`, `)`) ends it instead of
+ * swallowing the text after it. */
+const QUERY_CHAR_RE = /[0-9A-Fa-f-]/u;
+/** A character that continues a word, which is what makes a run part of one rather than a reference: an ASCII letter, a
+ * digit or an underscore. Scripts that run on without spaces between words (CJK) are not word continuations, so the
+ * reference before them stays a chip. */
+const WORD_CHAR_RE = /[0-9A-Za-z_]/u;
+/** A character that makes `session:` the tail of a word, a path or a scheme rather than a reference of its own. An
+ * underscore is not one: it joins the run to a longer word, which `sessionReferenceAt` rejects on its own, so a
+ * reference right after one (`session:0badc0de_session:195c3659`) still resolves. */
+const WORD_BEFORE_SESSION_RE = /[\p{L}\p{N}/:.]/u;
+
+function sessionReferenceTag(state: StateCore, query: string | undefined): Token {
+  const token = new state.Token("html_inline", "", 0);
+  token.meta = { sessionRef: true };
+  token.content = query === undefined ? "</hui-session-ref>" : `<hui-session-ref data-query="${escapeHtml(query)}">`;
+  return token;
+}
+
+/** Whether the character at `index` continues the word a run ends at, which makes the run part of that word rather than
+ * a reference of its own: a letter, a digit, or an underscore with a word after it. A single trailing underscore is a
+ * separator, so `session:195c3659_` keeps the chip and leaves the `_` as text. */
+function continuesWord(content: string, index: number): boolean {
+  const character = content.charAt(index);
+  return character === "_" ? WORD_CHAR_RE.test(content.charAt(index + 1)) : WORD_CHAR_RE.test(character);
+}
+
+/** The query the `session:` at `start` names and where its typed span ends, or `undefined` when that `session:` is
+ * prose: no id after it, a run that is part of a longer word, or a word, path, scheme or dot before it. */
+function sessionReferenceAt(content: string, start: number): { query: string; end: number } | undefined {
+  if (start > 0 && WORD_BEFORE_SESSION_RE.test(content.charAt(start - 1))) return undefined;
+  const from = start + SESSION_PREFIX.length;
+  let end = from;
+  while (end < content.length && QUERY_CHAR_RE.test(content.charAt(end))) end += 1;
+  const query = parseSessionQuery(content.slice(from, end));
+  if (!query || continuesWord(content, end)) return undefined;
+  return { query, end };
+}
+
+/** One text token's content, split around every resolvable `session:<id>`: the text between them, and each chip's
+ * opening tag, the text as typed (so an unresolved reference reads exactly as written) and its closing tag. A candidate
+ * that is prose resumes the scan after its own `session:` prefix, never past it, so a second reference in the same text
+ * is still found: `session:0badc0de_session:195c3659` chips the second one and leaves the first as text. */
+function sessionReferenceTokens(state: StateCore, content: string): Token[] | undefined {
+  const parts: Token[] = [];
+  let cursor = 0;
+  let search = 0;
+  for (;;) {
+    const start = content.indexOf(SESSION_PREFIX, search);
+    if (start < 0) break;
+    const reference = sessionReferenceAt(content, start);
+    if (!reference) {
+      search = start + SESSION_PREFIX.length;
+      continue;
+    }
+    if (start > cursor) parts.push(textToken(state, content.slice(cursor, start)));
+    parts.push(sessionReferenceTag(state, reference.query), textToken(state, content.slice(start, reference.end)), sessionReferenceTag(state, undefined));
+    cursor = reference.end;
+    search = reference.end;
+  }
+  if (!parts.length) return undefined;
+  if (cursor < content.length) parts.push(textToken(state, content.slice(cursor)));
+  return parts;
+}
+
+function textToken(state: StateCore, content: string): Token {
+  const token = new state.Token("text", "", 0);
+  token.content = content;
+  return token;
+}
+
+/** Draws a resolvable `session:<id>` in prose as `<hui-session-ref>`, the chip that resolves against the app's session
+ * registry (`../session/session-reference-store.ts`). It runs after every link rewrite and splits only `text` tokens,
+ * so an inline code span, math, a fenced block and a link's own label never become a chip. */
+function installSessionReferences(parser: MarkdownItParser): void {
+  parser.core.ruler.after("hui_file_references", "hui_session_references", (state) => {
+    for (const block of state.tokens) {
+      if (block.type !== "inline" || !block.children) continue;
+      const children = block.children;
+      let links = 0;
+      // A file reference's label is that control's own text, and `hui_file_references` already replaced its link tokens
+      // with `html_inline` tags, so its link depth is gone: count the tags it left behind too.
+      let fileReferences = 0;
+      for (let index = 0; index < children.length; index += 1) {
+        const token = children[index];
+        if (!token) continue;
+        if (token.type === "link_open") links += 1;
+        else if (token.type === "link_close") links = Math.max(0, links - 1);
+        else if (token.type === "html_inline" && token.meta?.fileRef === true) {
+          fileReferences = Math.max(0, fileReferences + (token.content.startsWith("</") ? -1 : 1));
+        } else if (token.type === "text" && !links && !fileReferences) {
+          const parts = sessionReferenceTokens(state, token.content);
+          if (!parts) continue;
+          children.splice(index, 1, ...parts);
+          index += parts.length - 1;
+        }
+      }
+    }
+  });
+}
+
 export type MarkdownParserOptions = {
   /** Wrap file references for the Files view (the agent's replies only). */
   fileReferences?: boolean;
+  /** Draw resolvable `session:<id>` references as chips that resolve against the app's registry. */
+  sessionReferences?: boolean;
   /** `false` keeps isolated Slack and X links as links instead of cards. */
   linkCards?: boolean;
 };
@@ -444,6 +569,7 @@ export function createMarkdownParser(options: MarkdownParserOptions = {}): Markd
   installMath(parser);
   installLinkRules(parser);
   if (options.fileReferences) installFileReferences(parser);
+  if (options.sessionReferences) installSessionReferences(parser);
   installRichEmbeds(parser);
   if (options.linkCards === false) parser.core.ruler.disable("hui_rich_url_embeds");
   installAlerts(parser);
@@ -462,7 +588,7 @@ export function createMarkdownParser(options: MarkdownParserOptions = {}): Markd
   };
   parser.renderer.rules.html_inline = (tokens, index) => {
     const token = tokens[index];
-    if (token?.meta?.taskListPlugin === true || token?.meta?.richEmbed === true || token?.meta?.fileRef === true) return token.content;
+    if (token?.meta?.taskListPlugin === true || token?.meta?.richEmbed === true || token?.meta?.fileRef === true || token?.meta?.sessionRef === true) return token.content;
     return /^<br\s*\/?>$/iu.test(token?.content.trim() ?? "") ? "<br>" : escapeHtml(token?.content ?? "");
   };
   parser.renderer.rules.table_open = () => '<div class="markdown-table"><div class="markdown-table__viewport" tabindex="0" role="region" aria-label="Table"><table>';
@@ -500,7 +626,7 @@ export function createMarkdownParser(options: MarkdownParserOptions = {}): Markd
   return parser;
 }
 
-const tokenParsers = { plain: createMarkdownParser(), agent: createMarkdownParser({ fileReferences: true, linkCards: false }) };
+const tokenParsers = { plain: createMarkdownParser(), agent: createMarkdownParser({ fileReferences: true, sessionReferences: true, linkCards: false }) };
 
 /** The tokens markdown-it parses `source` into: the operator's Markdown, or with `agent` the agent's replies with their
  * file references and without link cards, as the chat shows its older messages. */

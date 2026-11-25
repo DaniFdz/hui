@@ -1,0 +1,332 @@
+/* HUI-owned: the composer's rich editor (`src/lib/composer/rich/editor.ts`) — the ProseMirror surface every composer
+ * draws, a literal draft's plain text included — and the selection toolbar that editor opens
+ * (`src/lib/composer/rich/toolbar.ts`).
+ *
+ * The reference sheets keep the composer's geometry and apply it to `.agent-chat__composer-combobox > :is(textarea,
+ * input)`; the rich root takes the same box from the same tokens here. The visible editor draws the formatted draft, so
+ * the marks and blocks it can hold are drawn as the transcript draws them,
+ * and no rule here changes where the caret sits: no transform, no negative margin, no inline-block box.
+ *
+ * The toolbar is a popover on `document.body`, never a row of the composer: it is `position: fixed` in the top layer, so
+ * the box's `overflow`, its fade mask and the container query around it cannot clip it, and it never takes a line of the
+ * draft's own height. Its 8px inset and `calc(100vw - 16px)` cap are the padding the placement clamps to.
+ */
+
+/* The editing box: the reference textarea's height cap, padding and face, on the contenteditable the view builds. */
+.agent-chat__composer-combobox > .ProseMirror {
+  --control-ui-touch-input-size: var(--chat-composer-editor-size);
+
+  position: relative;
+  width: 100%;
+  min-height: calc(var(--chat-composer-editor-line) + 8px);
+  /* The draft grows upward against the viewport, never against a line count: past this the surface stops moving and
+     the draft scrolls inside it. */
+  max-height: min(
+    25dvh,
+    calc(var(--chat-composer-editor-line) * 6 + var(--chat-composer-editor-inset-block) * 2)
+  );
+  overflow-y: auto;
+  padding-block: var(--chat-composer-editor-inset-block);
+  /* The horizontal inset belongs to the row, so the text keeps one origin in both modes. */
+  padding-inline: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-strong);
+  /* A phone must not zoom the sheet when the composer takes focus. */
+  font-family: inherit;
+  font-size: max(16px, var(--chat-composer-editor-size));
+  line-height: var(--chat-composer-editor-line);
+  outline: none;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* New Session's first prompt is not a chat message: it grows to its reference textarea's ten-line cap, on that
+   textarea's own expression, so the rich box keeps the sheet's height (CHAT-091). */
+.new-session-page__composer .agent-chat__composer-combobox > .ProseMirror {
+  max-height: calc(10lh + var(--chat-box-inset) + var(--chat-box-inset));
+}
+
+/* Focus is the surface's state, as it is for the reference textarea: one luminance step, no second ring. */
+.agent-chat__input:has(.agent-chat__composer-combobox > .ProseMirror:focus) {
+  border-color: color-mix(in srgb, var(--chat-composer-hairline) 94%, var(--text-strong));
+  box-shadow: 0 4px 16px rgb(0 0 0 / 5%);
+}
+
+:root[data-theme-mode="light"] .agent-chat__input:has(.agent-chat__composer-combobox > .ProseMirror:focus) {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 8%),
+    0 1px 2px -1px rgb(0 0 0 / 8%),
+    0 2px 4px rgb(0 0 0 / 6%);
+}
+
+/* Past six lines the reference textarea fades its own edges; the rich draft keeps the same fade on its own box. */
+.agent-chat__composer-combobox > .ProseMirror:is([data-scroll-fade-top], [data-scroll-fade-bottom]) {
+  --chat-composer-scroll-mask-top: currentColor;
+  --chat-composer-scroll-mask-bottom: currentColor;
+
+  mask-image: linear-gradient(
+    to bottom,
+    var(--chat-composer-scroll-mask-top) 0,
+    currentColor 16px,
+    currentColor calc(100% - 16px),
+    var(--chat-composer-scroll-mask-bottom) 100%
+  );
+}
+
+.agent-chat__composer-combobox > .ProseMirror[data-scroll-fade-top] {
+  --chat-composer-scroll-mask-top: transparent;
+}
+
+.agent-chat__composer-combobox > .ProseMirror[data-scroll-fade-bottom] {
+  --chat-composer-scroll-mask-bottom: transparent;
+}
+
+/* The empty document still holds one paragraph, so the placeholder is laid over it rather than replacing it. */
+.agent-chat__composer-combobox > .ProseMirror[data-empty]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset-inline: 0;
+  top: var(--chat-composer-editor-inset-block);
+  overflow: hidden;
+  color: var(--chat-composer-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The blocks the dialect holds, drawn as the transcript draws them. */
+.agent-chat__composer-combobox > .ProseMirror :is(p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol, pre) {
+  margin: 0 0 0.45em;
+}
+
+.agent-chat__composer-combobox > .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat__composer-combobox > .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.05em;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.agent-chat__composer-combobox > .ProseMirror blockquote {
+  border-inline-start: 2px solid var(--border-strong);
+  padding-inline-start: 0.6em;
+  color: var(--text);
+}
+
+/* A note is the transcript's own callout (`aside.markdown-alert`, drawn with `.markdown-alert` in `openclaw-chat.css`),
+   tightened to the room a six-line composer has: the tone and the title's colour stay the transcript's. */
+.agent-chat__composer-combobox > .ProseMirror .markdown-alert {
+  margin: 0 0 0.45em;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.agent-chat__composer-combobox > .ProseMirror .markdown-alert__title {
+  margin-bottom: 2px;
+  font-size: 0.75em;
+  letter-spacing: 0.02em;
+}
+
+.agent-chat__composer-combobox > .ProseMirror .markdown-alert__body > :first-child {
+  margin-top: 0;
+}
+
+.agent-chat__composer-combobox > .ProseMirror .markdown-alert__body > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat__composer-combobox > .ProseMirror :is(ul, ol) {
+  padding-inline-start: 1.4em;
+}
+
+.agent-chat__composer-combobox > .ProseMirror li > p {
+  margin: 0;
+}
+
+.agent-chat__composer-combobox > .ProseMirror li + li {
+  margin-top: 0.15em;
+}
+
+.agent-chat__composer-combobox > .ProseMirror pre {
+  padding: 0.4em 0.55em;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-strong) 6%, transparent);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.agent-chat__composer-combobox > .ProseMirror pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.agent-chat__composer-combobox > .ProseMirror code {
+  padding: 0 0.25em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+
+.agent-chat__composer-combobox > .ProseMirror strong {
+  font-weight: 650;
+}
+
+.agent-chat__composer-combobox > .ProseMirror em {
+  font-style: italic;
+}
+
+.agent-chat__composer-combobox > .ProseMirror s {
+  text-decoration: line-through;
+}
+
+.agent-chat__composer-combobox > .ProseMirror a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The selection toolbar: a popover in the top layer, placed by `toolbar.ts` in viewport pixels. The UA's own popover
+   box (`inset: 0`, `margin: auto`) is cleared so the two written coordinates are the whole story. */
+.composer-toolbar {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  /* 8px of padding and 8px from each viewport edge: what `placeToolbar` clamps to, so the strip never needs a scroll. */
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--popover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* A closed strip draws nothing: `display: flex` above would otherwise outrank the popover's own hiding and leave a row
+   of buttons in the page. Two rules, because a browser without the popover API has no `:popover-open` to match. */
+.composer-toolbar[hidden] {
+  display: none;
+}
+
+.composer-toolbar:not(:popover-open) {
+  display: none;
+}
+
+.composer-toolbar__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A thumb-sized target, not a link: the strip is used with a mouse, and 28px is its smallest honest hit area. */
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer-toolbar__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.composer-toolbar__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.composer-toolbar__item[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.composer-toolbar__item:disabled {
+  /* Disabled, not hidden: the strip shows every action the selection could have, and says which ones it cannot. */
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.composer-toolbar__separator {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-strong);
+}
+
+/* A phone's strip wraps, and a wrapped row keeps the buttons centred rather than orphaned at one edge. */
+@media (max-width: 480px) {
+  .composer-toolbar {
+    justify-content: center;
+    gap: 1px;
+  }
+}
+
+/* Forced colours drop every paint we own: the prose keeps the system face, and code is marked by a border the system
+   draws, so a fence is still a fence. */
+@media (forced-colors: active) {
+  .agent-chat__composer-combobox > .ProseMirror {
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  /* The strip is a bordered box the system draws, and a pressed button is its selection colour. */
+  .composer-toolbar {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+
+  .composer-toolbar__item {
+    color: ButtonText;
+  }
+
+  .composer-toolbar__item[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .composer-toolbar__item:disabled {
+    color: GrayText;
+  }
+
+  .composer-toolbar__separator {
+    background: CanvasText;
+  }
+
+  .agent-chat__composer-combobox > .ProseMirror :is(code, pre) {
+    border: 1px solid CanvasText;
+    background: none;
+  }
+
+  .agent-chat__composer-combobox > .ProseMirror a {
+    color: LinkText;
+  }
+
+  .agent-chat__composer-combobox > .ProseMirror:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

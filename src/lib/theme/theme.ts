@@ -1,6 +1,9 @@
 /** Color mode is a document-level preference; the token layer in tokens.css
  * owns the actual colors. "system" defers to the OS. Nothing here is persisted;
- * settings.ts owns that. */
+ * settings.ts owns that. The phone shell's status bar follows the resolved mode
+ * from here too, so it never disagrees with the page above it. */
+import { nativeShell } from "../native-shell.ts";
+import { parseColor, toHex } from "./color-contrast.ts";
 
 export const THEME_MODES = ["system", "light", "dark"] as const;
 
@@ -71,4 +74,20 @@ export function applyThemeMode(mode: ThemeMode, variant: ThemeVariant): void {
   root.classList.toggle("wa-dark", resolved === "dark");
   root.dataset["theme"] = resolvedPaletteSelector(root.dataset["themePalette"] ?? "claw", resolved);
   root.style.colorScheme = resolved;
+  const shell = nativeShell();
+  if (shell) {
+    // The phone's keyboard repaints its uncovered backdrop from `document.body`'s background colour, but that native
+    // reader only understands hex and rgb(). A custom theme carries `oklch()` or a computed `color(srgb …)` here, so
+    // resolve it once per mode. Drop the previous mode's inline value first: it must follow the new theme's `--bg`.
+    if (document.body) {
+      document.body.style.removeProperty("background-color");
+      const page = getComputedStyle(document.body).backgroundColor;
+      if (/^(?:oklch|lab|lch|color)\(/iu.test(page) && !page.includes("/")) {
+        const color = parseColor(page);
+        if (color) document.body.style.backgroundColor = toHex(color);
+      }
+    }
+    // The phone's status bar carries no page: the shell is told the mode the page resolved, not the saved preference.
+    void shell.setStatusBar({ dark: resolved === "dark" });
+  }
 }

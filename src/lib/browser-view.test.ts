@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { BrowserViewState } from "../api/schema/browser.ts";
-import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, fitFrame, pointPosition, relativeTime } from "./browser-view.ts";
+import { browserPreviewDisplay, browserTabOptions, browserViewEmptyMessage, browserViewStatus, drivingActivity, drivingLabel, fitFrame, handoffNotice, insertableText, operatorDriving, operatorKey, operatorPoint, pointPosition, relativeTime, takeoverAvailable } from "./browser-view.ts";
 
 const state: BrowserViewState = {
   running: true, mode: "headless",
   tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1:5173/" }, { id: "t4", title: "", url: "https://example.com/docs" }],
   current: "t1", watching: "t1", following: true,
+  handoff: null,
 };
 
 test("frames fit the pane without distortion or upscaling, and pointers map onto them", () => {
@@ -55,4 +56,58 @@ test("the chat preview shows frames, a placeholder only while the agent browses,
   assert.deepEqual(browserPreviewDisplay({ ...base, frame: undefined }), { body: "loading", chip: "live", title: "Fixture", url: "http://127.0.0.1:5173/" });
   assert.equal(browserPreviewDisplay({ ...base, frame: undefined, live: false, pending: true }).body, "none", "history without a frame stays hidden");
   assert.equal(browserPreviewDisplay({ ...base, frame: undefined, view: { ...state, running: false, tabs: [], current: null, watching: null } }).body, "none");
+});
+
+test("the operator's view takes the tab only while its handoff waits", () => {
+  const handoff = { tabId: "t1", message: "Sign in.", since: "2026-09-28T09:00:00.000Z", by: "agent" as const };
+  const lease = { tabId: "t1", message: "You took control. The agent is stopped.", since: "2026-09-28T09:00:00.000Z", by: "operator" as const };
+  assert.equal(operatorDriving({ ...state, handoff }), true);
+  assert.equal(operatorDriving({ ...state, handoff: lease }), true, "a tab the operator took is theirs to drive too");
+  assert.equal(operatorDriving({ ...state, handoff, watching: "t4" }), false, "another tab stays view-only");
+  assert.equal(operatorDriving({ ...state, handoff: lease, watching: "t4" }), false);
+  assert.equal(operatorDriving(state), false);
+  assert.equal(browserViewStatus({ ...state, handoff }, "live"), "Your turn");
+  assert.equal(browserViewStatus({ ...state, handoff: lease }, "live"), "You have control", "a taken tab is no longer the agent's turn");
+
+  // The view is scaled; input has to land on the page coordinate under the pointer.
+  const rect = { left: 100, top: 50, width: 640, height: 400 };
+  assert.deepEqual(operatorPoint({ clientX: 420, clientY: 250 }, rect, { width: 1280, height: 800 }), { x: 640, y: 400 });
+  assert.deepEqual(operatorPoint({ clientX: 90, clientY: 40 }, rect, { width: 1280, height: 800 }), { x: 0, y: 0 });
+  assert.deepEqual(operatorPoint({ clientX: 900, clientY: 600 }, rect, { width: 1280, height: 800 }), { x: 1280, y: 800 });
+  assert.equal(operatorPoint({ clientX: 10, clientY: 10 }, { ...rect, width: 0 }, { width: 1280, height: 800 }), undefined);
+
+  assert.equal(operatorKey({ key: "Enter" }), "Enter");
+  assert.equal(operatorKey({ key: "a" }), "a");
+  assert.equal(operatorKey({ key: "A" }), "A", "Shift is already in the character");
+  assert.equal(operatorKey({ key: "a", ctrlKey: true }), "Control+a");
+  assert.equal(operatorKey({ key: "ArrowLeft", metaKey: true }), "Meta+ArrowLeft");
+  assert.equal(operatorKey({ key: " " }), " ");
+  for (const key of ["Shift", "Control", "Meta", "AltGraph", "Dead", "Unidentified"]) assert.equal(operatorKey({ key }), undefined);
+});
+
+test("a tab is the operator's to take, and each kind of wait has its own words", () => {
+  const wait = { tabId: "t1", message: "Sign in.", since: "2026-09-28T09:00:00.000Z", by: "agent" as const };
+  const lease = { ...wait, message: "You took control. The agent is stopped.", by: "operator" as const };
+  assert.equal(takeoverAvailable(state, "live"), true);
+  assert.equal(takeoverAvailable({ ...state, following: false, watching: "t4" }, "live"), true, "a pinned tab can be taken too");
+  assert.equal(takeoverAvailable({ ...state, handoff: wait }, "live"), false, "a wait already holds the tab");
+  assert.equal(takeoverAvailable({ ...state, handoff: lease }, "live"), false);
+  assert.equal(takeoverAvailable({ ...state, running: false }, "live"), false, "a stopped browser has no tab to take");
+  assert.equal(takeoverAvailable({ ...state, watching: null }, "live"), false);
+  assert.equal(takeoverAvailable(undefined, "live"), false);
+  for (const connection of ["idle", "connecting", "reconnecting", "disconnected"] as const) {
+    assert.equal(takeoverAvailable(state, connection), false, `a ${connection} view has no tab to take`);
+  }
+
+  assert.deepEqual(handoffNotice(wait), { lead: "Your turn.", detail: "Sign in." }, "an agent's own words while it waits");
+  assert.deepEqual(handoffNotice(lease), { lead: "You have control.", detail: "The agent is stopped." }, "the server's message is not the one for a lease");
+  assert.deepEqual(drivingActivity(wait), { line: "You have control; the agent waits.", tooltip: "You have control of this tab; the agent waits." });
+  assert.deepEqual(drivingActivity(lease), { line: "You have control; the agent is stopped.", tooltip: "You have control of this tab; the agent is stopped." });
+  assert.equal(drivingLabel(wait), "Your turn: the agent is waiting");
+  assert.equal(drivingLabel(lease), "You have control of the page");
+
+  assert.equal(insertableText("hello"), "hello");
+  assert.equal(insertableText(" "), " ", "a space is text the page may need");
+  assert.equal(insertableText(""), undefined, "an empty paste sends nothing");
+  assert.equal(insertableText("a".repeat(2_000)), "a".repeat(1_024), "one insert carries at most 1024 code units");
 });

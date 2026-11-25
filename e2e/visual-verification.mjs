@@ -4,7 +4,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream, existsSync } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--production] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--production] [--pi-sessions] [--fast-fixture] [--quota-fixture | --provider-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -27,7 +27,10 @@ directory outside the checkout. --receipt-dir also writes the printed receipt to
 so offline files, the service worker and the cached shell are the shipped ones;
 without it the fixture serves the development sources. Doctor checks instance
 identity, branch/HEAD/content fingerprint, provider health
-and the HUI x-hui boundary. Run before and after browser evidence. After any source
+and the HUI x-hui boundary. --provider-fixture scripts Settings → Models → Connect a
+provider in the same test-only server (a sign-in that completes after a short wait, a
+model choice and a verified check), so the wizard runs with no account and no provider
+call. Run before and after browser evidence. After any source
 edit or commit, cleanup and relaunch: a stale checkout fails doctor.
 For an intentionally detached CI checkout, pass --branch HEAD; the receipt still
 records the exact commit and detached=true. Never switch branches to make it pass.
@@ -229,6 +232,9 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
   await copyFile(join(repo, "e2e/fixtures/question-extension.ts"), join(agentDir, "extensions/question.ts"));
   await copyFile(join(repo, "e2e/fixtures/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
   await copyFile(join(repo, "e2e/fixtures/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
+  // A gateway extension installed disabled: Settings → Extensions and its journey need a subject.
+  await mkdir(join(dir, "config", "hui", "extensions"), { recursive: true });
+  await cp(join(repo, "e2e/fixtures/extensions/hello"), join(dir, "config", "hui", "extensions/hello"), { recursive: true });
   const receiptPath = join(dir, "receipt.json");
   const receipt = { version: 1, state: "starting", production, runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, huiConfig: join(dir, "config", "hui"), artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
@@ -238,6 +244,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
   };
   await save();
   const env = fixtureEnvironment(dir);
+  if (process.argv.includes("--provider-fixture")) env.HUI_VERIFICATION_PROVIDER_FIXTURE = "1";
   if (process.argv.includes("--quota-fixture")) {
     env.HUI_VERIFICATION_QUOTAS = "1";
     const providersDir = join(env.XDG_CONFIG_HOME, "hui", "providers");
@@ -410,6 +417,8 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     if (process.argv.includes("--usage-fixture")) {
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "usage-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
+    // The launcher, not the disposable gateway child, owns a frozen automation clock across restarts.
+    let automationNow = null;
     const serve = async () => {
       const server = start("visual-verification-server.mjs", {
         ...serverEnv,
@@ -420,7 +429,14 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
         HUI_VERIFICATION_PORT: String(port ?? 0),
       }, true);
       receipt.serverPid = server.pid;
-      server.on("message", (message) => { if (message.type === "shutdown") void stop(); });
+      server.on("message", (message) => {
+        if (message.type === "shutdown") void stop();
+        if (message.type === "automation-clock-ready") server.send({ type: "automation-clock-init", now: automationNow });
+        if (message.type === "automation-clock-state") {
+          automationNow = message.now;
+          server.send({ type: "automation-clock-ack", id: message.id });
+        }
+      });
       receipt.url = await ready(server, (done) => {
         const onMessage = (message) => { if (message.type === "ready") done(message.url); };
         server.on("message", onMessage);
@@ -484,7 +500,7 @@ async function main() {
   const port = command === "launch" ? valueOf("--port") : undefined;
   const receiptDir = command === "launch" ? valueOf("--receipt-dir") : undefined;
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--production", "--demo"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--provider-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--production", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1], { port: port === undefined ? undefined : Number(port), receiptDir });

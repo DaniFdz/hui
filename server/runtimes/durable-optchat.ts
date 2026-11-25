@@ -7,11 +7,14 @@
  * then the run's first input with the memory's view in front of it, then the
  * run's own steps. Durable stays the authority: its entries are projected into
  * the OptChat log (idempotently, after a restart too), its compactions are
- * declined, and nothing here writes a Durable entry. Every other conversation is
+ * declined, and nothing here writes a Durable entry. A memory holds the entries
+ * after its conversation's latest reset (a clear): a reset met while projecting
+ * starts the memory over, and `cutoff.json` keeps that point across restarts. A
+ * rewind's abandoned branch is forgotten (`abandon`). Every other conversation is
  * untouched: each hook, section and tool reads the document first, and the tools
  * are offered only by an extension enabled conversations select.
  */
-import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { mkdir, open, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "@earendil-works/chord";
@@ -21,9 +24,9 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import {
-  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
-  type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
-  type HookApi, type SubmissionId, type ToolExecutionResult, type Tx,
+  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, ResetEntry, section, ToolResultEntry, UserEntry,
+  type CommitPublication, type Conversation, type ConversationId, type Cursor, type DocumentReader, type EntryId, type EntryRecord, type Extension, type Harness,
+  type HookApi, type Session, type SubmissionId, type ToolExecutionResult, type Tx,
 } from "@earendil-works/pi-durable";
 import { BLOCK_LINES, blockCuts, blockMarks, markCache, markedPrefix } from "../optchat/cache.ts";
 import { createLimiter, type Limiter, type SummaryReply, type SummaryRequest } from "../optchat/compactor.ts";
@@ -31,24 +34,88 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { callRecordLines, parseCallRecord } from "../calls-format.ts";
 import { offIsSent } from "./thinking-level.ts";
 import { CallEntry } from "./turn-origins.ts";
+
+/** The provider session every compactor call of a conversation's memory goes as: stable, one per memory, never its turns'. */
+export const optChatSessionId = (conversationId: ConversationId): string => `hui-optchat-${conversationId}`;
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
  * `thinking` pick the compactor's model, by default HUI's utility model, at medium thinking or the nearest level below it. */
 export type OptChatState = { enabled: boolean; name: string; model?: string; thinking?: string };
 
-/** Absent or `enabled: false`: the conversation is plain Durable. A fork starts without it. */
+/** Absent or `enabled: false`: the conversation is plain Durable. A fork keeps it: a bot's rewind stays the bot's, and its
+ * memory is rebuilt from the kept branch (`cutoff.json` and the projection below). */
 export const OptChatDoc = defineDoc<OptChatState>({
+  kind: "hui.optchat", version: 1, scope: "conversation", history: "latest", fork: "current",
+  initial: () => ({ enabled: false, name: "" }),
+  checkpointWhen: () => false,
+});
+
+/** The document as HUI wrote it before a bot's rewind kept OptChat: `fork: "initial"`, so a fork started without it.
+ * pi-durable refuses a typed read whose fork semantics disagree with the stored incarnation, so every read falls back to
+ * this token, and `adoptOptChat` rewrites the incarnation. It is never written, and its `initial` never used. */
+const LegacyOptChatDoc = defineDoc<OptChatState>({
   kind: "hui.optchat", version: 1, scope: "conversation", history: "latest", fork: "initial",
   initial: () => ({ enabled: false, name: "" }),
   checkpointWhen: () => false,
 });
 
+/** pi-durable's refusal of a stored incarnation whose scope, history or fork the supplied definition does not have. */
+const isSemanticsMismatch = (error: unknown): boolean =>
+  error instanceof TypeError && error.message.includes("does not match the supplied definition semantics");
+
+/** A conversation's OptChat state, also while an update has left its document a fork semantics behind. */
+export async function readOptChat(read: DocumentReader, conversationId: ConversationId, context: Context): Promise<Readonly<OptChatState> | undefined> {
+  try {
+    return await read.snapshot(OptChatDoc, conversationId, context);
+  } catch (error) {
+    if (!isSemanticsMismatch(error)) throw error;
+    return await read.snapshot(LegacyOptChatDoc, conversationId, context);
+  }
+}
+
+/** The value of the legacy incarnation, when the conversation still has one: read with the token that matches it, so a
+ * mismatch means the current document is the stored one. */
+async function legacyOptChat(read: DocumentReader, conversationId: ConversationId, context: Context): Promise<Readonly<OptChatState> | undefined> {
+  try {
+    return await read.snapshot(LegacyOptChatDoc, conversationId, context);
+  } catch (error) {
+    if (isSemanticsMismatch(error)) return undefined;
+    throw error;
+  }
+}
+
+/** Where a document can be adopted from: committed reads, and commits. */
+type DocumentStore = DocumentReader & Pick<Session, "commit">;
+
+/**
+ * Rewrites a conversation's legacy OptChat document as the current one, its value kept: what an update that changed the
+ * document's fork semantics leaves behind (`docs/optchat.md`). pi-durable cannot change the fork semantics of the
+ * incarnation it stored, so one commit retires the old incarnation and creates the new one, and it answers whether it
+ * adopted anything. Call it outside a commit: it commits.
+ *
+ * The incumbent is read with the legacy token first: a typed read through the wrong definition fails the whole commit
+ * that starts it, even when the caller catches the error.
+ */
+export async function adoptOptChat(store: DocumentStore, conversationId: ConversationId, context: Context): Promise<boolean> {
+  if (await legacyOptChat(store, conversationId, context) === undefined) return false;
+  await store.commit(async (tx) => {
+    const legacy = await tx.doc(LegacyOptChatDoc, conversationId);
+    // `plain` drops the absent optional fields, so the fresh document (which has none) takes exactly what was stored.
+    const kept = { enabled: legacy.enabled, name: legacy.name, model: legacy.model, thinking: legacy.thinking };
+    await tx.retireDoc(LegacyOptChatDoc, conversationId);
+    const current = await tx.doc(OptChatDoc, conversationId);
+    Object.assign(current, plain(kept));
+  }, context);
+  return true;
+}
+
 /** The global extension (hooks and the prompt section), in every conversation's default selection. */
 export const OPTCHAT_EXTENSION = "hui-optchat";
-/** zoom and date, selected only by enabled conversations: other conversations are never offered them. */
+/** zoom, date and search_chat, selected only by enabled conversations: other conversations are never offered them. */
 export const OPTCHAT_TOOLS_EXTENSION = "hui-optchat-tools";
 
 /** A change to the document: a given field replaces the stored one, `null` clears it, `undefined` keeps it. */
@@ -83,6 +150,7 @@ const THINKING = new Set<string>(THINKING_LEVELS);
 const CALL_TIMEOUT_MS = 120_000;
 const ZOOM = "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole.";
 const DATE = "The date and time of message id.";
+const SEARCH = "Search the whole chat, not just the view: the lines of the messages that mention query, newest first, each named id+1 so zoom(id, 1) opens it whole.";
 const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -149,6 +217,10 @@ async function applyChange(tx: Tx, conversationId: ConversationId, change: OptCh
  * tool selection. With a transaction it joins that commit, so a creator enables a conversation in the commit that
  * creates it (`createConversation({ init: (tx, id) => configureOptChat(tx, id, ...) })`); with a conversation it
  * commits on its own. A run in progress picks the change up at its next request.
+ *
+ * Both read the current document, so a conversation whose document an older HUI wrote is adopted first (`adoptOptChat`):
+ * a gateway does it when it opens the chat, `hui doctor --fix` for a store at rest, and the bots' boundaries before a
+ * setting changes. A transaction starts nothing else, so it cannot adopt it in passing.
  */
 export function configureOptChat(tx: Tx, conversationId: ConversationId, change: OptChatChange): Promise<void>;
 export function configureOptChat(conversation: Conversation, change: OptChatChange, context?: Context): Promise<void>;
@@ -187,8 +259,7 @@ const contentText = (content: string | readonly { type: string; text?: string }[
  * summary as talk, both marked `[call]`). Thoughts are never logged, nor answers Durable keeps out of the context
  * (error, aborted, deferred), nor system, reset and compaction entries.
  */
-export function projectEntry(entry: EntryRecord): ProjectedLine[] {
-  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
+export function projectEntry(entry: EntryRecord): ProjectedLine[] {  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
   if (CallEntry.is(entry)) {
     const record = parseCallRecord(entry.data);
     if (!record?.lines.length) return [];
@@ -197,7 +268,12 @@ export function projectEntry(entry: EntryRecord): ProjectedLine[] {
   }
   const message = entry.model?.[0];
   if (!message) return [];
-  if (UserEntry.is(entry) && message.role === "user") return [{ kind: "user", text: contentText(message.content) }];
+  if (UserEntry.is(entry) && message.role === "user") {
+    const text = contentText(message.content);
+    // A child's report is not the operator's words. OptChat's compactor tags a `user` line that starts with an id as a
+    // subagent report (it never writes such a prefix), so the entry's own id makes the report self-describing.
+    return [{ kind: "user", text: text.startsWith(SUBAGENT_COMPLETION_MARKER) ? `[${entry.id}] ${text}` : text }];
+  }
   if (AssistantEntry.is(entry) && message.role === "assistant") {
     if (message.stopReason !== "stop" && message.stopReason !== "length" && message.stopReason !== "toolUse") return [];
     const talk = message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");
@@ -362,9 +438,10 @@ class RunLog {
 
 type Memory = {
   readonly id: ConversationId;
-  readonly memory: OptChatMemory;
+  /** Replaced when a reset starts the memory over (`#restart`). */
+  memory: OptChatMemory;
   readonly conversation: Conversation;
-  readonly runs: RunLog;
+  runs: RunLog;
   /** The current run's input entry and message. */
   readonly inputs: Map<number, { readonly entry: EntryId; readonly message: UserMessage }>;
   /** Projection passes run one at a time; `queued` is the next one, not started yet. */
@@ -374,6 +451,41 @@ type Memory = {
 
 /** The prefix of a compaction context the memory's latest Anthropic compactor request marked. */
 type ContextMark = { prefix: string | undefined };
+
+/**
+ * `cutoff.json` in a memory's directory: `entry` is the latest reset of the conversation the memory is built after
+ * (absent: none seen), and `abandoned` marks the memory of a conversation a rewind left behind, which never opens again.
+ * Written whole (temporary file, sync, rename) before the memory's other files are removed, so a crash in between
+ * leaves a memory that projection starts over from the cutoff.
+ */
+export type MemoryCutoff = { readonly entry?: number; readonly abandoned?: true };
+const CUTOFF_FILE = "cutoff.json";
+const isCutoff = (value: unknown): value is MemoryCutoff => isRecord(value)
+  && (value["entry"] === undefined || (typeof value["entry"] === "number" && Number.isSafeInteger(value["entry"]) && value["entry"] >= 0))
+  && (value["abandoned"] === undefined || value["abandoned"] === true);
+
+async function readCutoff(dir: string, report: (problem: string) => void): Promise<MemoryCutoff> {
+  const { values } = await readLines(join(dir, CUTOFF_FILE), report);
+  // One JSON value per line: a single record, the last one written.
+  const value = values.at(-1);
+  if (value === undefined) return {};
+  if (!isCutoff(value)) { report(`${dir}: ${CUTOFF_FILE} is malformed; OptChat reads it as absent`); return {}; }
+  return value;
+}
+
+async function writeCutoff(dir: string, cutoff: MemoryCutoff): Promise<void> {
+  const path = join(dir, CUTOFF_FILE);
+  const temp = `${path}.tmp`;
+  const handle = await open(temp, "w", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(cutoff)}\n`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(temp, path);
+  await syncDirectory(dir);
+}
 
 export type OptChatManagerOptions = {
   /** The Durable store's directory: memories live in `optchat/<conversation>/` inside it. */
@@ -403,7 +515,8 @@ export class OptChatManager {
   readonly #limiter: Limiter;
   #harness: Harness | undefined;
   #unsubscribe: (() => void) | undefined;
-  #memories = new Map<ConversationId, Promise<Memory>>();
+  /** Each conversation's memory once opened; undefined for one a rewind abandoned, whose memory never opens again. */
+  #memories = new Map<ConversationId, Promise<Memory | undefined>>();
   #listeners = new Map<ConversationId, Set<(status: OptChatStatus) => void>>();
   /** The cache marking of each in-flight turn request's frozen view, by its task invocation's signal. */
   #views = new WeakMap<AbortSignal, Marking>();
@@ -421,14 +534,14 @@ export class OptChatManager {
     this.extension = defineExtension({
       name: OPTCHAT_EXTENSION,
       sections: [section("optchat", async (input, renderContext) => {
-        const state = await input.read.snapshot(OptChatDoc, input.conversationId, renderContext);
+        const state = await readOptChat(input.read, input.conversationId, renderContext);
         return state?.enabled ? systemSection(agentName(state)) : undefined;
       }, { tag: false })],
       hooks: [
         hook(GenerationTask, { beforeRequest: (request, api, hookContext) => this.#beforeRequest(request, api, hookContext) }),
         // OptChat is the memory; a Durable summary would replace history the next turn never sends anyway.
         hook(CompactionTask, {
-          beforeCompact: async (_compaction, api, hookContext) => (await api.snapshot(OptChatDoc, api.conversationId, hookContext))?.enabled ? { decline: true as const } : undefined,
+          beforeCompact: async (_compaction, api, hookContext) => (await readOptChat(api, api.conversationId, hookContext))?.enabled ? { decline: true as const } : undefined,
         }),
       ],
     });
@@ -442,6 +555,11 @@ export class OptChatManager {
         defineTool({
           name: "date", description: DATE, parameters: Type.Object({ id: Type.Integer() }), replay: "safe",
           execute: async ({ id }, api) => this.#answer(api.conversationId, (memory) => memory.date(id)),
+        }),
+        defineTool({
+          name: "search_chat", description: SEARCH,
+          parameters: Type.Object({ query: Type.String(), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }), replay: "safe",
+          execute: async ({ query, limit }, api) => this.#answer(api.conversationId, (memory) => memory.search(query, limit)),
         }),
       ],
     });
@@ -461,10 +579,29 @@ export class OptChatManager {
   }
 
   async enabled(conversationId: ConversationId): Promise<boolean> {
-    return (await this.#harness?.snapshot(OptChatDoc, conversationId, context))?.enabled === true;
+    const harness = this.#harness;
+    return harness !== undefined && (await readOptChat(harness, conversationId, context))?.enabled === true;
   }
 
-  /** The extension carrying zoom and date when the conversation has OptChat; its session selects it. */
+  /** Adopts a document an older HUI wrote (`adoptOptChat`), so a fork of this conversation keeps its OptChat. Called
+   * outside a commit: it commits, once, and never for a document that is already current. A failure is reported and
+   * never keeps a conversation from opening: every read still falls back to the document that is stored. */
+  async adopt(conversationId: ConversationId): Promise<void> {
+    const harness = this.#harness;
+    if (!harness) return;
+    try {
+      if (await adoptOptChat(harness, conversationId, context)) {
+        recordDiagnosticEvent({
+          area: "runtime", level: "info", action: "optchat_document_adopted",
+          summary: `Adopted conversation ${conversationId}'s OptChat document, written before a fork kept a chat's OptChat`,
+        });
+      }
+    } catch (error) {
+      this.#report("optchat_document_adopt_failed", `Conversation ${conversationId}'s OptChat document an older HUI wrote could not be adopted`, error);
+    }
+  }
+
+  /** The extension carrying zoom, date and search_chat when the conversation has OptChat; its session selects it. */
   async toolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
     return await this.enabled(conversationId) ? this.toolsExtension : undefined;
   }
@@ -484,6 +621,10 @@ export class OptChatManager {
 
   async date(conversationId: ConversationId, id: number): Promise<string | undefined> {
     return (await this.#current(conversationId))?.memory.date(id);
+  }
+
+  async search(conversationId: ConversationId, query: string, limit?: number): Promise<string | undefined> {
+    return (await this.#current(conversationId))?.memory.search(query, limit);
   }
 
   /** The browse page: view, every message and each tree level. */
@@ -519,7 +660,25 @@ export class OptChatManager {
     const opening = [...this.#memories.values()];
     this.#memories.clear();
     for (const result of await Promise.allSettled(opening)) {
-      if (result.status === "fulfilled") await this.#closeMemory(result.value);
+      if (result.status === "fulfilled" && result.value) await this.#closeMemory(result.value);
+    }
+  }
+
+  /**
+   * Forgets the memory of a conversation a rewind left behind: its files are removed, and `cutoff.json` marks it abandoned
+   * so a restart never reopens it. Its OptChat document stays as it was (the abandoned branch is kept in Durable). A
+   * memory that is still open is closed first.
+   */
+  async abandon(conversationId: ConversationId): Promise<void> {
+    const opening = this.#memories.get(conversationId);
+    this.#memories.delete(conversationId);
+    const handle = await opening?.catch(() => undefined);
+    if (handle) await this.#closeMemory(handle);
+    const dir = join(this.#dir, "optchat", String(conversationId));
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeCutoff(dir, { abandoned: true });
+    for (const name of await readdir(dir)) {
+      if (name !== CUTOFF_FILE) await rm(join(dir, name), { recursive: true, force: true });
     }
   }
 
@@ -529,7 +688,7 @@ export class OptChatManager {
    */
   async purge(conversationId: ConversationId): Promise<void> {
     const harness = this.#harness;
-    if (harness && (await harness.snapshot(OptChatDoc, conversationId, context))?.enabled) {
+    if (harness && (await readOptChat(harness, conversationId, context))?.enabled) {
       throw new Error(`OptChat is still on for conversation ${conversationId}; turn it off before deleting its memory.`);
     }
     const opening = this.#memories.get(conversationId);
@@ -555,17 +714,18 @@ export class OptChatManager {
   async #memory(conversationId: ConversationId, known?: OptChatState): Promise<Memory | undefined> {
     const harness = this.#harness;
     if (!harness) return undefined;
-    const state = known ?? await harness.snapshot(OptChatDoc, conversationId, context);
+    const state = known ?? await readOptChat(harness, conversationId, context);
     if (!state?.enabled) return undefined;
     let opening = this.#memories.get(conversationId);
     if (!opening) {
-      const started = this.#open(harness, conversationId, state);
+      // Registered before any await, so a concurrent caller shares this open rather than starting another.
+      const started = this.#openUnlessAbandoned(harness, conversationId, state);
       opening = started;
       this.#memories.set(conversationId, started);
       started.catch(() => { if (this.#memories.get(conversationId) === started) this.#memories.delete(conversationId); });
     }
     const handle = await opening;
-    handle.memory.rename(agentName(state));
+    handle?.memory.rename(agentName(state));
     return handle;
   }
 
@@ -576,11 +736,25 @@ export class OptChatManager {
     return handle;
   }
 
+  /** `#open`, unless a rewind abandoned the conversation's memory: an abandoned memory never opens again. */
+  async #openUnlessAbandoned(harness: Harness, conversationId: ConversationId, state: OptChatState): Promise<Memory | undefined> {
+    if ((await readCutoff(join(this.#dir, "optchat", String(conversationId)), () => {})).abandoned) return undefined;
+    return this.#open(harness, conversationId, state);
+  }
+
   async #open(harness: Harness, conversationId: ConversationId, state: OptChatState): Promise<Memory> {
     const conversation = await harness.conversation(conversationId, context);
     if (!conversation) throw new Error(`Durable conversation ${conversationId} does not exist.`);
     const dir = join(this.#dir, "optchat", String(conversationId));
     await mkdir(dir, { recursive: true, mode: 0o700 });
+    const opened = await this.#openFiles(conversationId, dir, state);
+    const handle: Memory = { id: conversationId, ...opened, conversation, inputs: new Map(), projecting: Promise.resolve(), queued: undefined };
+    void this.#catchUp(handle).catch((error: unknown) => this.#report("optchat_projection_failed", `OptChat memory ${conversationId} did not catch up`, error));
+    return handle;
+  }
+
+  /** The memory and its run log in `dir`, with the listeners wired: what `#open` and a restart both need. */
+  async #openFiles(conversationId: ConversationId, dir: string, state: OptChatState): Promise<{ memory: OptChatMemory; runs: RunLog }> {
     const report = (problem: string, error?: unknown) => this.#report("optchat_memory", problem, error);
     const contextMark: ContextMark = { prefix: undefined };
     const memory = await OptChatMemory.open(dir, {
@@ -594,14 +768,36 @@ export class OptChatManager {
       await memory.close();
       throw error;
     }
-    const handle: Memory = { id: conversationId, memory, conversation, runs, inputs: new Map(), projecting: Promise.resolve(), queued: undefined };
     memory.onChange(() => {
       for (const listener of [...this.#listeners.get(conversationId) ?? []]) {
         try { listener(memory.status()); } catch { /* a listener's failure is its own */ }
       }
     });
-    void this.#catchUp(handle).catch((error: unknown) => this.#report("optchat_projection_failed", `OptChat memory ${conversationId} did not catch up`, error));
-    return handle;
+    return { memory, runs };
+  }
+
+  /**
+   * Starts a memory over at a reset of its conversation (a clear): the log, views, usage and runs are removed, and
+   * `cutoff.json` names the reset first, so a crash part-way reopens the memory from that point. Runs on the projection
+   * chain, so nothing else reads or writes the memory meanwhile.
+   */
+  async #restart(handle: Memory, reset: EntryId, state: OptChatState): Promise<void> {
+    const dir = join(this.#dir, "optchat", String(handle.id));
+    await handle.memory.close();
+    await handle.runs.close();
+    await writeCutoff(dir, { entry: reset });
+    for (const name of await readdir(dir)) {
+      if (name !== CUTOFF_FILE) await rm(join(dir, name), { recursive: true, force: true });
+    }
+    const opened = await this.#openFiles(handle.id, dir, state);
+    handle.memory = opened.memory;
+    handle.runs = opened.runs;
+    handle.inputs.clear();
+    // A new memory announces no change of its own, so its listeners hear the emptied status here.
+    const status = handle.memory.status();
+    for (const listener of [...this.#listeners.get(handle.id) ?? []]) {
+      try { listener(status); } catch { /* a listener's failure is its own */ }
+    }
   }
 
   /** Reopens, in the background, the memories a previous run of the gateway kept. */
@@ -659,24 +855,41 @@ export class OptChatManager {
     return run;
   }
 
-  /** Appends what the store holds past the last projected line: entries read newest first, appended oldest first. */
+  /**
+   * Appends what the store holds past the last projected line: entries read newest first, appended oldest first. The
+   * memory holds the entries after its conversation's latest reset (a clear): a reset among the fresh entries starts the
+   * memory over (`#restart`) and projection goes on from it. A memory with no line starts at its cutoff, so a reopened
+   * one never reads what a reset before it left behind.
+   */
   async #project(handle: Memory): Promise<void> {
-    const { memory, conversation } = handle;
+    const { conversation } = handle;
     let last: Source | undefined;
-    for (let i = memory.length - 1; i >= 0 && !last; i--) last = sourceOf(memory.message(i)?.src);
+    for (let i = handle.memory.length - 1; i >= 0 && !last; i--) last = sourceOf(handle.memory.message(i)?.src);
+    const dir = join(this.#dir, "optchat", String(handle.id));
+    const cutoff = last ? undefined : (await readCutoff(dir, (problem) => this.#report("optchat_memory", problem))).entry;
     const fresh: EntryRecord[] = [];
     let cursor: Cursor | undefined;
+    const from = last ? last.entry as EntryId : cutoff === undefined ? undefined : cutoff as EntryId;
     do {
-      const page = await conversation.entries(last ? { minEntryId: last.entry as EntryId } : {}, PAGE, cursor, context);
+      const page = await conversation.entries(from === undefined ? {} : { minEntryId: from }, PAGE, cursor, context);
       fresh.push(...page.items);
       cursor = page.next;
     } while (cursor);
-    for (const entry of fresh.reverse()) {
+    fresh.reverse();
+    // The latest reset among the fresh entries starts the memory over, and only the entries after it are projected. The
+    // cutoff's own reset, read again from the cutoff, is already absorbed.
+    const reset = fresh.findLastIndex((entry) => ResetEntry.is(entry) && entry.id !== cutoff);
+    if (reset !== -1) {
+      await this.#restart(handle, fresh[reset]!.id, { enabled: true, name: handle.memory.name });
+      last = undefined;
+      fresh.splice(0, reset + 1);
+    }
+    for (const entry of fresh) {
       if (last && entry.id < last.entry) continue;
       const lines = projectEntry(entry);
       for (let part = 0; part < lines.length; part++) {
         if (last && entry.id === last.entry && part <= last.part) continue;
-        await memory.append(lines[part]!.kind, lines[part]!.text, { entry: entry.id, part });
+        await handle.memory.append(lines[part]!.kind, lines[part]!.text, { entry: entry.id, part });
       }
     }
   }
@@ -687,7 +900,7 @@ export class OptChatManager {
    * every line before the run's input is summarized: a later step, a retry or a crash rerun sends the same view.
    */
   async #beforeRequest(request: { readonly messages: readonly Message[] }, api: HookApi, hookContext: Context): Promise<{ readonly messages: readonly Message[] } | undefined> {
-    const state = await api.snapshot(OptChatDoc, api.conversationId, hookContext);
+    const state = await readOptChat(api, api.conversationId, hookContext);
     if (!state?.enabled) return undefined;
     const run = (await api.snapshot(LiveDoc, api.conversationId, hookContext))?.run?.inputs[0];
     if (run === undefined) return undefined;
@@ -751,16 +964,19 @@ export class OptChatManager {
   async #summarize(conversationId: ConversationId, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
     const harness = this.#harness;
     if (!harness) throw new Error("The Durable store is closed.");
-    const state = await harness.snapshot(OptChatDoc, conversationId, context);
+    const state = await readOptChat(harness, conversationId, context);
     const own = modelRef(state?.model);
     const conversationModel = (await harness.snapshot(AgentDoc, conversationId, context))?.model;
     const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
     const refs = own ? [own] : [utility, conversationModel].filter((ref): ref is { provider: string; modelId: string } => Boolean(ref));
     if (!refs.length) throw new Error("The conversation has no model for OptChat's compactor.");
+    // The memory's own provider session, apart from its turns': a provider that routes by session (OpenCode's
+    // x-opencode-session) rejects a call without one, and the turn would wait on it forever.
+    const sessionId = optChatSessionId(conversationId);
     let failure: unknown;
     for (const ref of refs) {
       try {
-        return await this.#summarizeWith(ref, state, request, signal, contextMark);
+        return await this.#summarizeWith(ref, state, request, signal, contextMark, sessionId);
       } catch (error) {
         if (signal.aborted) throw error;
         failure = error;
@@ -769,7 +985,7 @@ export class OptChatManager {
     throw failure;
   }
 
-  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
+  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark, sessionId: string): Promise<SummaryReply> {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);
@@ -789,6 +1005,7 @@ export class OptChatManager {
         : { role: "assistant", content: [{ type: "text", text: message.content }], api: model.api, provider: model.provider, model: model.id, usage: NO_USAGE, stopReason: "stop", timestamp: 0 }),
     }, {
       signal: call.signal,
+      sessionId,
       ...(thinking === "off" ? {} : { reasoning: thinking }),
       // Compactions share the compaction view's start: cache it in blocks, like a turn's view.
       ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => this.#markContext(payload, target, block, contextMark) }),

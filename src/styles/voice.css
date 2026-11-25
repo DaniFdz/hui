@@ -1,4 +1,4 @@
-/* Calls with bots (HUI-18): the call cards in the chat, the bot header's Call,
+/* Calls with bots: the call cards in the chat, the bot header's Call,
  * and the call view with its minimized bar. Built on the shared tokens and the
  * chat classes; only what calls add is here. */
 
@@ -31,6 +31,12 @@
 
 /* ── bot header: Call ── */
 @keyframes voice-dot { 50% { opacity: 0.35; } }
+/* A phone shows the control's word beside the glyph: among the header's icon-only buttons this is the one action an
+   operator has to find without hovering anything. */
+.bot-call-toggle--labelled { gap: 6px; padding-inline: 10px; white-space: nowrap; }
+.bot-call-toggle--labelled svg { width: 16px; height: 16px; }
+.bot-call-toggle__label { font-size: var(--text-sm, 13px); font-weight: 600; }
+
 /* Above the theme's ghost-icon color (:root[data-theme-mode] .btn--icon). */
 :root .chat-icon-btn.bot-call-toggle--active { color: var(--ok); }
 .bot-call-toggle--active svg { animation: voice-dot 1.6s ease-in-out infinite; }

@@ -1,5 +1,6 @@
 /** Delete… removes a session and its subagents from HUI after a confirmation that Cancel backs out of, and a background session's unread mark shows until it is opened or set by hand (SESS-037, SESS-018). */
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 const row = (title: string) => new RegExp(`^${title}, status `, "u");
@@ -10,7 +11,10 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   const child = await hui.createSubagent(parent);
   await hui.createSession({ title: "Keep me" });
   await hui.open(`/sessions/${parent.id}`);
+  await expectChatTitle(screen, "Retire me");
+  await expect(screen.getByTestId("chat-header")).toBeVisible();
 
+  await hui.sessionList();
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
   await expect(question).toBeVisible();
@@ -23,10 +27,14 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
 
   await hui.open(`/sessions/${parent.id}`);
+  await expectChatTitle(screen, "Retire me");
+  await expect(screen.getByTestId("chat-header")).toBeVisible();
+  await hui.sessionList();
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
   await screen.getByRole("button", "Remove from HUI").tap();
   await expect.poll(() => hui.url()).toMatch(/\/$/u);
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Keep me"))).toBeVisible();
   await expect(screen.getByLabel(row("Retire me"))).toBeHidden();
   await hui.open("/sessions");
@@ -60,6 +68,7 @@ test("a background session that settles stays unread until it is opened, and the
   await screen.getByText("Mark as unread", { visible: true }).tap();
   await expect(screen.getByText("Marked as unread.")).toBeVisible();
   await expect(unread).toBeVisible();
+  await hui.sessionList();
   await hui.sessionMenu("Background work");
   await screen.getByText("Mark as read", { visible: true }).tap();
   await expect(screen.getByText("Marked as read.")).toBeVisible();

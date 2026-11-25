@@ -184,6 +184,15 @@ test("loading tolerates garbage and drops unknown kinds, invalid refs and duplic
   assert.deepEqual(parseWorkPaneStore({ sessions: { s1: { views: [{ kind: "vscode" }], active: "vscode" } } }, () => true).s1?.views, [{ kind: "vscode" }]);
 });
 
+test("an extension tab keeps its panel icon when a valid one is saved", () => {
+  const store = openWorkView({}, "s1", { kind: "extension", id: "prs", icon: "pull-request" });
+  assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(serializeWorkPaneStore(store))), () => true).s1?.views, [
+    { kind: "extension", id: "prs", icon: "pull-request" },
+  ]);
+  const damaged = parseWorkPaneStore({ sessions: { s1: { views: [{ kind: "extension", id: "prs", icon: 7 }] } } }, () => true);
+  assert.deepEqual(damaged.s1?.views, [{ kind: "extension", id: "prs" }]);
+});
+
 test("the stored shape round-trips and leaves untouched conversations out", () => {
   let store: WorkPaneStore = openWorkView({}, "s1", { kind: "terminal", terminalId: T1 });
   store = setWorkPaneWidth(store, "s2", 700);
@@ -192,6 +201,17 @@ test("the stored shape round-trips and leaves untouched conversations out", () =
   assert.deepEqual(Object.keys(saved.sessions), ["s1", "s2"]);
   assert.equal(saved.version, 1);
   assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(saved))), { s1: store.s1, s2: store.s2 });
+});
+
+test("an ephemeral view is not saved, so a reload never restores a tab it cannot fill", () => {
+  registerWorkViewKind({ ...fakeKind<{ kind: "side-chat" }>("side-chat", () => "side-chat"), ephemeral: true });
+  const alone = openWorkView({}, "s1", { kind: "side-chat" }, true);
+  assert.deepEqual(serializeWorkPaneStore(alone).sessions, {}, "only the side chat: no record at all, so no open pane");
+
+  const mixed = openWorkView(openWorkView({}, "s1", { kind: "terminal", terminalId: T1 }, false), "s1", { kind: "side-chat" }, true);
+  const saved = serializeWorkPaneStore(mixed);
+  assert.deepEqual(saved.sessions.s1, { open: true, width: WORK_PANE_DEFAULT_WIDTH, views: [{ kind: "terminal", terminalId: T1 }] });
+  assert.equal(parseWorkPaneStore(JSON.parse(JSON.stringify(saved))).s1?.active, `terminal:${T1}`, "the dropped tab cannot stay active");
 });
 
 test("maximizing expands the pane over the chat; restoring keeps it open; hiding it also restores", () => {

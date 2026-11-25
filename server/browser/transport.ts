@@ -4,15 +4,17 @@
  * Same capability model as shared terminals: WebSocket cannot carry x-hui, so
  * a guarded POST mints a short-lived, single-use ticket bound to one
  * conversation, and the upgrade also enforces same-origin and Host checks.
- * The stream is view-only; the only client message picks which tab to watch.
- * Frames go out in the binary layout `encodeBrowserFrame` writes.
+ * The stream is view-only except for a tab the agent handed to the operator or
+ * the operator took: there the socket also carries their pointer, wheel, key
+ * and pasted-text input, the takeover that stops the run, and the Continue that
+ * ends it. Frames go out in the binary layout `encodeBrowserFrame` writes.
  */
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import type { BrowserViewMessage } from "../api/browser.ts";
+import type { BrowserViewControl, BrowserViewMessage } from "../api/browser.ts";
 import { BrowserToolError, type BrowserViewFrame, type BrowserViewHandle, type BrowserViewListener } from "./manager.ts";
 import { validTerminalOrigin } from "../terminals/transport.ts";
 
@@ -24,7 +26,58 @@ const CATCH_UP_MS = 100;
 const MAX_CLIENTS = 32;
 const TICKET_MS = 15_000;
 
-export type BrowserViewSource = { watch(owner: string, listener: BrowserViewListener): BrowserViewHandle };
+export type BrowserViewSource = {
+  watch(owner: string, listener: BrowserViewListener): BrowserViewHandle;
+  /** Operator input for a tab its agent handed over; ignored for every other tab. */
+  operator(owner: string, control: BrowserViewControl, reply?: (text: string) => void): void;
+};
+
+const TAB_ID = /^t\d{1,6}$/u;
+const MAX_COORDINATE = 100_000;
+/** A pasted value the operator's view may insert, in UTF-16 code units. */
+const MAX_INSERTED = 1_024;
+
+/** Untrusted client frame → the control it may be. Anything else is ignored. */
+export function parseBrowserViewControl(value: unknown): BrowserViewControl | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const action = record["action"];
+  if (action === "select") {
+    const tabId = record["tabId"];
+    return tabId === null || (typeof tabId === "string" && TAB_ID.test(tabId)) ? { action: "select", tabId: tabId as string | null } : undefined;
+  }
+  const tabId = record["tabId"];
+  if (typeof tabId !== "string" || !TAB_ID.test(tabId)) return undefined;
+  const coordinate = (raw: unknown): number | undefined =>
+    typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) <= MAX_COORDINATE ? raw : undefined;
+  if (action === "continue") return { action: "continue", tabId };
+  if (action === "takeover") return { action: "takeover", tabId };
+  if (action === "copy") return { action: "copy", tabId };
+  if (action === "insert") {
+    const text = record["text"];
+    return typeof text === "string" && text.length >= 1 && text.length <= MAX_INSERTED ? { action: "insert", tabId, text } : undefined;
+  }
+  if (action === "key") {
+    const key = record["key"];
+    return typeof key === "string" && key.length >= 1 && key.length <= 40 ? { action: "key", tabId, key } : undefined;
+  }
+  const x = coordinate(record["x"]);
+  const y = coordinate(record["y"]);
+  if (x === undefined || y === undefined) return undefined;
+  if (action === "wheel") {
+    const deltaX = coordinate(record["deltaX"]);
+    const deltaY = coordinate(record["deltaY"]);
+    return deltaX === undefined || deltaY === undefined ? undefined : { action: "wheel", tabId, x, y, deltaX, deltaY };
+  }
+  if (action !== "pointer") return undefined;
+  const kind = record["kind"];
+  if (kind !== "move" && kind !== "down" && kind !== "up") return undefined;
+  const button = record["button"];
+  if (button !== "left" && button !== "right") return undefined;
+  const rawCount = record["clickCount"];
+  const clickCount = typeof rawCount === "number" && Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 3 ? rawCount : 1;
+  return { action: "pointer", tabId, kind, x, y, button, clickCount };
+}
 
 const tickets = new Map<string, { owner: string; expires: number }>();
 
@@ -38,7 +91,7 @@ export function browserViewTicket(owner: string): string {
 }
 
 export function attachBrowserTransport(server: EventEmitter, source: BrowserViewSource, allowedHosts?: ReadonlySet<string>): () => void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024, perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024, perMessageDeflate: false });
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname !== BROWSER_STREAM_PATH) return;
@@ -78,11 +131,10 @@ export function attachBrowserTransport(server: EventEmitter, source: BrowserView
       ws.on("message", (data, binary) => {
         if (binary) return;
         try {
-          const message = JSON.parse(data.toString()) as unknown;
-          if (typeof message === "object" && message !== null && (message as Record<string, unknown>)["action"] === "select") {
-            const tabId = (message as Record<string, unknown>)["tabId"];
-            view.select(typeof tabId === "string" ? tabId : null);
-          }
+          const control = parseBrowserViewControl(JSON.parse(data.toString()) as unknown);
+          if (!control) return;
+          if (control.action === "select") view.select(control.tabId);
+          else source.operator(ticket.owner, control, (text) => sendText({ type: "clipboard", text }));
         } catch {
           // Malformed control messages are ignored; the view stays as it is.
         }

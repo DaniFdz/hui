@@ -1,9 +1,9 @@
 /**
  * Pure presentation rules for the browser live view and the chat's browser preview: fitting a frame, placing
- * the agent's pointer, tab options and the status and placeholder text. No sockets or DOM; the controller and
- * views supply the state.
+ * the agent's pointer, tab options, the status and placeholder text, and the words a handoff, a takeover or a
+ * pasted insert uses. No sockets or DOM; the controller and views supply the state.
  */
-import type { BrowserViewState } from "../api/schema/browser.ts";
+import type { BrowserHandoff, BrowserViewState } from "../api/schema/browser.ts";
 import type { PickerOption } from "./picker-options.ts";
 
 export type Size = { width: number; height: number };
@@ -38,6 +38,7 @@ export function browserViewStatus(state: BrowserViewState | undefined, connectio
   if (connection === "reconnecting") return "Reconnecting…";
   if (connection === "disconnected") return "Disconnected";
   if (!state?.running) return "Browser stopped";
+  if (operatorDriving(state)) return state.handoff?.by === "operator" ? "You have control" : "Your turn";
   const mode = state.mode === "windowed" ? "visible window" : "headless";
   return state.watching ? `Live · ${mode}` : `Idle · ${mode}`;
 }
@@ -100,4 +101,81 @@ export function relativeTime(iso: string, now = Date.now()): string {
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   return minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`;
+}
+
+/** True when the view is showing the tab waiting for its operator, whoever opened the wait. */
+export function operatorDriving(state: BrowserViewState | undefined): boolean {
+  return Boolean(state?.handoff && state.watching === state.handoff.tabId);
+}
+
+/**
+ * True when the operator may take the watched tab: a live view of a running browser with a tab and no wait
+ * already holding it. The agent need not be running — an idle tab is theirs to take too.
+ */
+export function takeoverAvailable(state: BrowserViewState | undefined, connection: BrowserViewConnection): boolean {
+  return connection === "live" && Boolean(state?.running && state.watching && !state.handoff);
+}
+
+/**
+ * A handoff's own words: what leads the strip or the card, and the sentence after it. A lease the operator took
+ * has a fixed sentence of its own — the agent is stopped, so its message is not the one to show.
+ */
+export function handoffNotice(handoff: BrowserHandoff): { lead: string; detail: string } {
+  return handoff.by === "operator"
+    ? { lead: "You have control.", detail: "The agent is stopped." }
+    : { lead: "Your turn.", detail: handoff.message };
+}
+
+/** The activity line while the operator drives the tab, and the tooltip that says the same at length. */
+export function drivingActivity(handoff: BrowserHandoff): { line: string; tooltip: string } {
+  return handoff.by === "operator"
+    ? { line: "You have control; the agent is stopped.", tooltip: "You have control of this tab; the agent is stopped." }
+    : { line: "You have control; the agent waits.", tooltip: "You have control of this tab; the agent waits." };
+}
+
+/** What the frame announces while the operator drives it. */
+export function drivingLabel(handoff: BrowserHandoff): string {
+  return handoff.by === "operator" ? "You have control of the page" : "Your turn: the agent is waiting";
+}
+
+/**
+ * The text one insert to the page carries: at most 1024 code units, and nothing at all when there is nothing to
+ * send. The value itself never leaves the input it was read from.
+ */
+export function insertableText(value: string): string | undefined {
+  const text = value.slice(0, 1024);
+  return text === "" ? undefined : text;
+}
+
+
+/** A pointer position in the operator's view as a page coordinate in the frame. */
+export function operatorPoint(
+  event: { clientX: number; clientY: number },
+  rect: { left: number; top: number; width: number; height: number },
+  frame: Size,
+): { x: number; y: number } | undefined {
+  if (!(rect.width > 0 && rect.height > 0 && frame.width > 0 && frame.height > 0)) return undefined;
+  const clamp = (value: number, maximum: number) => Math.min(maximum, Math.max(0, Math.round(value)));
+  return {
+    x: clamp(((event.clientX - rect.left) / rect.width) * frame.width, frame.width),
+    y: clamp(((event.clientY - rect.top) / rect.height) * frame.height, frame.height),
+  };
+}
+
+/** Keys a page never sees as a keystroke: modifiers alone, dead keys and IME in progress. */
+const INVISIBLE_KEYS: ReadonlySet<string> = new Set([
+  "Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock", "AltGraph", "Fn", "Dead", "Unidentified", "Process",
+]);
+
+/**
+ * A KeyboardEvent as the key name the browser tool understands, or undefined
+ * when the pane should leave the key alone. Modified keys become the tool's
+ * chord form ("Control+a"); Shift is already in a printable character.
+ */
+export function operatorKey(event: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): string | undefined {
+  const { key } = event;
+  if (!key || INVISIBLE_KEYS.has(key)) return undefined;
+  const modifier = event.ctrlKey ? "Control+" : event.metaKey ? "Meta+" : event.altKey ? "Alt+" : "";
+  if (!modifier) return key;
+  return key.length === 1 ? `${modifier}${key.toLowerCase()}` : `${modifier}${key}`;
 }

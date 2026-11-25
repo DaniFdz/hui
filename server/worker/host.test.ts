@@ -4,12 +4,12 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { connect } from "node:net";
+import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll, test } from "vitest";
 
 const root = await mkdtemp(join(tmpdir(), "hui-worker-host-"));
@@ -21,8 +21,14 @@ if (!process.env["PLAYWRIGHT_BROWSERS_PATH"] && userHome) process.env["PLAYWRIGH
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["XDG_DATA_HOME"] = join(root, "data");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
-const { workerPaths } = await import("./paths.ts");
-const { WorkerHost } = await import("./host.ts");
+// Every host this file runs binds an ephemeral hook endpoint: the fixed default would collide with the other test
+// files' worker hosts on this machine.
+process.env["HUI_WORKER_HOOK_PORT"] = "0";
+const { workerPaths, mirroredUserSkillPaths } = await import("./paths.ts");
+const { WorkerHost, hostIdles, serveRequested, hookPortFrom } = await import("./host.ts");
+const { mirrorPath } = await import("./sync.ts");
+const { HOOK_QUEUE_DIR } = await import("./hook-endpoint.ts");
+const { waitFor } = await import("../test-support/wait-for.ts");
 const { attachPeer } = await import("./protocol.ts");
 const { brokeredStore, ownLogin } = await import("./credentials.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./gateway-tools.ts");
@@ -31,6 +37,7 @@ const { resolveBrowserExecutable } = await import("../browser/executable.ts");
 type Store = ReturnType<typeof brokeredStore>;
 type Frame = import("./protocol.ts").Frame;
 type HostInfo = import("./protocol.ts").HostInfo;
+type Peer = import("./protocol.ts").Peer;
 
 const host = new WorkerHost(workerPaths());
 await host.listen();
@@ -55,6 +62,168 @@ async function gateway(credentials: Map<string, unknown>) {
 /** The remote's own login, used when the host has no answer from a gateway. */
 const own = { read: async (id: string) => ({ type: "api_key", key: `own-${id}` }) } as unknown as Store;
 const store = brokeredStore("pi", () => own);
+
+/** A listener's report as it reaches this worker's hook endpoint, answered by whatever is connected. */
+async function report(url: string, body: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+  return { status: response.status, body: await response.json() as Record<string, unknown> };
+}
+
+const hookUrl = (port: number, token: string) => `http://127.0.0.1:${port}/__hui/hooks/${token}`;
+
+/** The first connection the host's socket takes, asked for until it takes one: a gateway that starts with the host
+ * connects as early as that socket allows, and the `hello` it gets then is the one it keeps. */
+async function connectWhenAccepted(path: string): Promise<Socket> {
+  return waitFor("the host's socket to take a connection", () => new Promise<Socket | undefined>((resolve) => {
+    const socket = connect(path);
+    socket.once("connect", () => resolve(socket));
+    socket.once("error", () => { socket.destroy(); resolve(undefined); });
+  }));
+}
+
+/** A gateway for this worker that answers `hooks.report` for `token` only, as a gateway that owns the trigger would; any
+ * other token is a 404, its own gateway not holding it. */
+async function hookGateway(token: string, answer: { status: number; body: Record<string, unknown> }) {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const seen: Record<string, unknown>[] = [];
+  peer.handle("hooks.report", (params) => {
+    if (params["token"] !== token) return { status: 404, body: { error: "No trigger has this URL." } };
+    seen.push(params);
+    return answer;
+  });
+  return { peer, seen, disconnect: () => socket.destroy() };
+}
+
+test("a host serves its trigger hook endpoint on loopback and says where in hello", async () => {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const info = await peer.request<HostInfo>("hello");
+    assert.ok(info.features?.includes("trigger-hooks"), "hello names the endpoint's feature");
+    assert.equal(typeof info.hookPort, "number", "and the port it bound");
+    assert.ok((info.hookPort ?? 0) > 0, "a bound port is a real one, even when it was asked for ephemeral");
+  } finally {
+    socket.destroy();
+  }
+});
+
+test("with no gateway attached a report waits on this machine, and the next gateway receives it in order", async () => {
+  const dir = join(host.paths.stateDir, HOOK_QUEUE_DIR);
+  const port = host.info().hookPort;
+  assert.ok(port, "the endpoint is listening");
+  const token = "waiting-report-token-7a1c3e5d9f0b2c4e";
+  const bodies = ["first", "second"].map((text) => JSON.stringify({ events: [{ id: text, summary: text }] }));
+  for (const body of bodies) assert.deepEqual(await report(hookUrl(port, token), body), { status: 202, body: { status: "queued" } });
+  assert.equal((await readdir(dir)).length, 2, "one file per report waits here");
+
+  const gateway = await hookGateway(token, { status: 202, body: { status: "fired" } });
+  try {
+    await gateway.peer.request("hello");
+    // Attaching drains the queue, in order, without anyone asking.
+    await waitFor("the queue to reach the gateway", async () => (await readdir(dir).catch(() => [] as string[])).length === 0);
+    assert.deepEqual(gateway.seen, bodies.map((body) => ({ token, body })), "oldest first, each body as it came");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("a report is relayed to the connected gateway and its answer is the listener's", async () => {
+  const token = "relayed-report-token-3c9a1f5e7b0d2a4c";
+  const gateway = await hookGateway(token, { status: 202, body: { status: "fired" } });
+  const port = host.info().hookPort;
+  assert.ok(port);
+  const body = JSON.stringify({ events: [{ id: "relayed", summary: "there it is" }] });
+  try {
+    await gateway.peer.request("hello");
+    assert.deepEqual(await report(hookUrl(port, token), body), { status: 202, body: { status: "fired" } });
+    assert.deepEqual(gateway.seen, [{ token, body }], "the gateway saw the token and the body as the listener sent them");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("a gateway too old for the relay leaves the report waiting instead of failing it", async () => {
+  const token = "old-gateway-token-5e8d1b7f3a9c0e2d";
+  const port = host.info().hookPort;
+  assert.ok(port);
+  // No `hooks.report` handler: the peer's own unsupported-request refusal, as an older gateway's.
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const dir = join(host.paths.stateDir, HOOK_QUEUE_DIR);
+  try {
+    await peer.request("hello");
+    assert.deepEqual(await report(hookUrl(port, token), JSON.stringify({ events: [{ id: "old", summary: "old" }] })), { status: 202, body: { status: "queued" } });
+    assert.equal((await readdir(dir)).some((name) => name.endsWith(".json")), true, "it waits for a gateway that can take it");
+  } finally {
+    socket.destroy();
+  }
+  // The next gateway takes what waited.
+  const gateway = await hookGateway(token, { status: 202, body: { status: "ignored" } });
+  try {
+    await gateway.peer.request("hello");
+    await waitFor("the older gateway's report to be taken by the newer one", async () => (await readdir(dir).catch(() => [] as string[])).length === 0);
+    assert.equal(gateway.seen.length, 1, "the report the older gateway left behind");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("the host keeps answering its gateway while a report is waiting on it", async () => {
+  const token = "reentrant-report-token-9b2e4f6a8c0d1e3f";
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  let nested: HostInfo | undefined;
+  peer.handle("hooks.report", async (params) => {
+    if (params["token"] !== token) return { status: 404, body: { error: "No trigger has this URL." } };
+    // The host must answer a request of its own while this one is pending, as it does for sessions.
+    nested = await peer.request<HostInfo>("hello");
+    return { status: 202, body: { status: "ignored" } };
+  });
+  try {
+    const { hookPort } = await peer.request<HostInfo>("hello");
+    assert.ok(hookPort);
+    assert.deepEqual(await report(hookUrl(hookPort, token), JSON.stringify({ events: [] })), { status: 202, body: { status: "ignored" } });
+    assert.ok(nested, "the host answered while the relay was pending");
+  } finally {
+    socket.destroy();
+  }
+});
+
+test("a host asked to serve, or holding a report, never stops; a plain daemon with nothing to do does", () => {
+  const now = 1_000_000_000;
+  const idle = { persistent: false, hookBusy: false, sessions: 0, peers: 0, starting: 0, lastActivity: now - 31 * 60_000 };
+  assert.equal(hostIdles(idle, now), true, "nothing to do for half an hour");
+  assert.equal(hostIdles({ ...idle, lastActivity: now }, now), false, "a host still at work");
+  assert.equal(hostIdles({ ...idle, sessions: 1 }, now), false, "a session here");
+  assert.equal(hostIdles({ ...idle, peers: 1 }, now), false, "a gateway attached");
+  assert.equal(hostIdles({ ...idle, starting: 1 }, now), false, "a session starting");
+  assert.equal(hostIdles({ ...idle, persistent: true }, now), false, "asked to keep serving");
+  assert.equal(hostIdles({ ...idle, hookBusy: true }, now), false, "holding a listener's report");
+});
+
+test("a host was asked to serve by its flag or its environment, and by nothing else", () => {
+  assert.equal(serveRequested(["node", "main.ts", "daemon", "--serve"], {}), true);
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], {}), false);
+  assert.equal(serveRequested(["node", "main.ts", "connect"], {}), false);
+  assert.equal(serveRequested(["node", "main.ts", "connect", "--serve"], {}), false, "only the daemon serves");
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: "1" }), true);
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: "yes" }), true);
+  for (const value of ["0", "false", "FALSE", " "]) {
+    assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: value }), false, `HUI_WORKER_SERVE=${JSON.stringify(value)}`);
+  }
+});
+
+test("the hook port a host binds is HUI_WORKER_HOOK_PORT when it names a port, and the default when it does not", () => {
+  assert.equal(hookPortFrom({}), 4180, "the port a listener on the machine can expect");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "" }), 4180, "an empty value is no choice");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "0" }), 0, "any free one, for a machine running several");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: "4319" }), 4319, "the port it names");
+  assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: " 4319 " }), 4319, "as typed around spaces");
+  for (const value of ["http", "1.5", "-1", "65536", "4319abc"]) {
+    assert.equal(hookPortFrom({ HUI_WORKER_HOOK_PORT: value }), 4180, `HUI_WORKER_HOOK_PORT=${JSON.stringify(value)} is not a port`);
+  }
+});
 
 test("cached gateway credentials end at their expiry or deletion; then the remote's own login answers", async () => {
   const connected = await gateway(new Map<string, unknown>([
@@ -117,16 +286,28 @@ test("transcript search reads the worker's own session files", async () => {
   }
 });
 
-/** A gateway's view of the host's bot operations: requests, and the frames the host sends it. */
-async function botGateway() {
+/** A gateway's view of the host's bot operations: requests, and the frames the host sends it. `project` is its
+ * answer to a bot's `bot.project`; `chief` its answer to `bot.section`'s title question. Without either the gateway
+ * predates that request. */
+async function botGateway(options: { project?: string | null; chief?: boolean } = {}) {
   const socket = connect(host.paths.socket);
   const peer = attachPeer(socket, socket);
   const frames: Frame[] = [];
+  const projects: unknown[] = [];
   peer.onFrame((frame) => frames.push(frame));
   // No logins: the host's models list nothing.
   peer.handle("credential", (params) => params["op"] === "list" ? [] : null);
+  if (options.project !== undefined) {
+    peer.handle("bot.project", (params) => {
+      projects.push(params);
+      return { cwd: options.project };
+    });
+  }
+  if (options.chief !== undefined) {
+    peer.handle("bot.section", (params) => ({ section: `Roster for ${String(params["botId"])}: none.`, name: "Chief", chief: options.chief }));
+  }
   const hello = await peer.request<HostInfo>("hello");
-  return { peer, frames, hello, disconnect: () => socket.destroy() };
+  return { peer, frames, hello, projects, disconnect: () => socket.destroy() };
 }
 
 async function until<T>(read: () => T | undefined, label: string): Promise<T> {
@@ -135,6 +316,18 @@ async function until<T>(read: () => T | undefined, label: string): Promise<T> {
     if (value !== undefined) return value;
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
     await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/** A bot's chat as its model requests see it: the host's inspection renders the prompt they lead with, so what it says a
+ * chat carries is what the gateway's own inspection of a local chief says. */
+async function chatPrompt(peer: Peer, key: string, chat: { reference: string; cwd: string }): Promise<string> {
+  await peer.request("session.start", { key, tool: "durable", launch: { cwd: chat.cwd, sessionFile: chat.reference } });
+  try {
+    const called = await peer.request<{ result?: { prompt?: string } }>("session.call", { key, method: "inspect" });
+    return called.result?.prompt ?? "";
+  } finally {
+    await peer.request("session.dispose", { key });
   }
 }
 
@@ -259,9 +452,11 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     assert.equal(before.live, false);
     assert.deepEqual(["read", "bash", "message_bot"].map((name) => before.tools.some((tool) => tool.name === name)), [true, true, true]);
     assert.equal(before.tools.find((tool) => tool.name === "bash")?.powerful, true);
-    assert.deepEqual(before.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "never what stays on the gateway's machine: the terminal and watchers");
+    assert.deepEqual(before.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "never what stays on the gateway's machine: the watchers");
+    // What a worker bot keeps: its terminal opens a shell here and its browser runs here, so only the watchers are missing.
+    assert.deepEqual(["terminal", "browser", "watcher"].map((name) => before.tools.some((tool) => tool.name === name)), [true, true, false]);
     assert.deepEqual(before.skills.filter((skill) => skill.name === "alpha"), [{ ...alpha, description: "Alpha.", source: "~/data/hui-worker/mirror/agent/skills" }]);
-    assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+    assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date", "search_chat"]);
     assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-lists")), false, "asking made nothing");
     await assert.rejects(peer.request("bot.offer", { cwd: "~/missing" }), /No such directory on the remote/u);
     await assert.rejects(peer.request("bot.offer", {}), /A bot id is required/u);
@@ -285,6 +480,111 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     await assert.rejects(peer.request("bot.access.read", { reference: "/tmp/session.jsonl" }), /conversation reference is required/u);
     await peer.request("bot.forget", { reference });
     await assert.rejects(peer.request("bot.access.write", { reference, access: { disabledTools: [] } }), /no bot's chat/u);
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("the gateway's ~/.agents/skills reach this host only through the mirror, where its Durable prompt lists them", async () => {
+  const { mirrorDir } = host.paths;
+  const homeSkills = join(host.paths.home, ".agents", "skills");
+  // Where the sync keeps them (`sync.ts`), rather than that layout restated here, so the two cannot drift apart.
+  const mirrored = join(mirrorDir, mirrorPath(homeSkills, { agentDir: host.paths.agentDir, home: host.paths.home }));
+  // No path while the directory is absent, on a mirror no other test makes and on this host's before the sync has
+  // run: the absence is part of the loader's key, so the sync's first copy is a fresh loader rather than a stale one.
+  assert.deepEqual(mirroredUserSkillPaths({ mirrorDir: join(root, "no-mirror") }), []);
+  assert.deepEqual(mirroredUserSkillPaths({ mirrorDir }), []);
+
+  const gateway = await botGateway();
+  const { peer } = gateway;
+  try {
+    await mkdir(join(mirrored, "mirrored-user-agents-skill"), { recursive: true });
+    await writeFile(join(mirrored, "mirrored-user-agents-skill", "SKILL.md"), "---\nname: mirrored-user-agents-skill\ndescription: Mirrored from the gateway.\n---\n\n# mirrored\n");
+    assert.deepEqual(mirroredUserSkillPaths(host.paths), [mirrored]);
+
+    type Offer = { skills: Array<{ name: string; path: string; source: string; description: string }> };
+    // The PI launch reads this directory too (`HostLaunch.hostSkillPaths`); workers.test.ts runs that end to end. Here
+    // a folder no earlier loader read proves the Durable prompt lists the skill from the mirror as it is now.
+    const offer = (await peer.request<{ offer: Offer }>("bot.offer", { botId: "bot-mirrored-skills" })).offer;
+    assert.deepEqual(offer.skills.filter((skill) => skill.name === "mirrored-user-agents-skill"), [{
+      name: "mirrored-user-agents-skill", path: join(mirrored, "mirrored-user-agents-skill", "SKILL.md"),
+      description: "Mirrored from the gateway.", source: "~/data/hui-worker/mirror/home/.agents/skills",
+    }]);
+  } finally {
+    gateway.disconnect();
+    // No leftover mirror for the tests after this one, which would then list a skill of the gateway's home.
+    await rm(join(mirrorDir, "home"), { recursive: true, force: true });
+  }
+});
+
+test("a bot's chat here carries its group's project file, as the gateway answers it, and none without a project", async () => {
+  const project = join(root, "chief-project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  // The project a bot's group names is the gateway's (`bot.project`): this host keeps none.
+  const gateway = await botGateway({ project });
+  try {
+    const chat = await gateway.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-chief", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(gateway.peer, "chief-chat", chat);
+    assert.ok(prompt.includes(`<project_instructions path="${join(project, "AGENTS.md")}">`), prompt);
+    assert.match(prompt, /PROJECT_RULES/u);
+    assert.deepEqual(gateway.projects, [{ botId: "bot-chief" }], "asked for this bot's group, by its id only");
+  } finally {
+    gateway.disconnect();
+  }
+
+  // A bot of no group, and a gateway too old to answer (its reply refuses the request): no project's context file.
+  for (const [label, options, botId] of [["a bot of no group", { project: null }, "bot-nogroup"], ["a gateway that does not serve it", {}, "bot-oldgateway"]] as const) {
+    const other = await botGateway(options);
+    try {
+      const chat = await other.peer.request<{ reference: string; cwd: string }>("bot.create", { botId, memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+      const prompt = await chatPrompt(other.peer, `${botId}-chat`, chat);
+      assert.doesNotMatch(prompt, /<project_instructions|PROJECT_RULES/u, `${label} carries none`);
+    } finally {
+      other.disconnect();
+    }
+  }
+});
+
+test("a chief's chat here carries its delegation rule, as the gateway answers, and an ordinary bot's carries none", async () => {
+  const chief = await botGateway({ chief: true });
+  try {
+    const chat = await chief.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-chief", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(chief.peer, "chief-rules", chat);
+    assert.ok(prompt.length > 0, "the chat's prompt");
+    assert.match(prompt, /## Delegate by default/u);
+    assert.match(prompt, /- Fast iteration is a child:.*`sessions_spawn`/u);
+    assert.match(prompt, /- Everything else is a session:.*`create_session`.*lead for one PR/u);
+  } finally {
+    chief.disconnect();
+  }
+
+  // A title that is not a chief's, and a gateway too old to answer for one: no section.
+  for (const [label, options, botId] of [["an ordinary bot", { chief: false }, "bot-helper"], ["a gateway that predates the answer", {}, "bot-oldgateway"]] as const) {
+    const other = await botGateway(options);
+    try {
+      const chat = await other.peer.request<{ reference: string; cwd: string }>("bot.create", { botId, memory: { name: "Bot" }, soul: "# Who I am\nBot." });
+      const prompt = await chatPrompt(other.peer, `${botId}-rules`, chat);
+      assert.ok(prompt.length > 0, `the ${label}'s prompt`);
+      assert.doesNotMatch(prompt, /Delegate by default/u, `${label} carries none`);
+    } finally {
+      other.disconnect();
+    }
+  }
+});
+
+test("a group's project named from the worker's home reaches its chief's prompt", async () => {
+  const project = join(root, "home-project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "HOME_PROJECT_RULES\n");
+  // A group stores its remote directory as typed, and only this host knows what `~` names: the answer is expanded here,
+  // before the context file is read.
+  const gateway = await botGateway({ project: "~/home-project" });
+  try {
+    const chat = await gateway.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-home-project", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(gateway.peer, "home-project-chat", chat);
+    assert.ok(prompt.includes(`<project_instructions path="${join(project, "AGENTS.md")}">`), prompt);
+    assert.match(prompt, /HOME_PROJECT_RULES/u);
   } finally {
     gateway.disconnect();
   }
@@ -455,4 +755,122 @@ test("Git operations run on the worker, and a new worktree lands in its own fold
   } finally {
     socket.destroy();
   }
+});
+
+// A second WorkerHost re-registers the process-wide bridge and credential hooks, so the three tests below, which each
+// start their own host, are the end of this file: nothing after them may rely on the first host's hooks.
+test("a host whose hook port is taken still serves its socket, and its hello leaves the endpoint out", async (t) => {
+  const taken = createServer((_request, response) => response.end());
+  taken.listen(0, "127.0.0.1");
+  await once(taken, "listening");
+  t.onTestFinished(() => { taken.close(); });
+  const address = taken.address();
+  assert.ok(address && typeof address !== "string");
+  const env = {
+    ...process.env,
+    HOME: join(root, "taken", "home"),
+    XDG_DATA_HOME: join(root, "taken", "data"),
+    XDG_CONFIG_HOME: join(root, "taken", "config"),
+  };
+  const paths = workerPaths(env);
+  const other = new WorkerHost(paths, { persistent: true });
+  // The host reads its hook port from this process's environment, as `main.ts` gives it; a bind that fails is reported,
+  // never fatal.
+  const configured = process.env["HUI_WORKER_HOOK_PORT"];
+  process.env["HUI_WORKER_HOOK_PORT"] = String(address.port);
+  try {
+    await other.listen();
+  } finally {
+    if (configured === undefined) delete process.env["HUI_WORKER_HOOK_PORT"];
+    else process.env["HUI_WORKER_HOOK_PORT"] = configured;
+  }
+  try {
+    const info = other.info();
+    assert.equal(info.hookPort, undefined, "the endpoint could not bind, so no port is offered");
+    assert.equal(info.features?.includes("trigger-hooks") ?? false, false, "and no gateway is told there is one");
+    const socket = connect(paths.socket);
+    const peer = attachPeer(socket, socket);
+    try {
+      const hello = await peer.request<HostInfo>("hello");
+      assert.equal(hello.hookPort, undefined);
+      assert.equal(hello.features?.includes("trigger-hooks") ?? false, false);
+      assert.equal(hello.hostname, info.hostname, "the host serves its sessions either way");
+    } finally {
+      socket.destroy();
+    }
+  } finally {
+    await other.close();
+  }
+});
+
+test("a host's socket never answers hello before its hook endpoint is listening", async (t) => {
+  const env = {
+    ...process.env,
+    HOME: join(root, "early", "home"),
+    XDG_DATA_HOME: join(root, "early", "data"),
+    XDG_CONFIG_HOME: join(root, "early", "config"),
+  };
+  const paths = workerPaths(env);
+  // A stop that left a queue behind: the endpoint clears those temporary names before it binds, so this is the work a
+  // gateway's first hello must not beat.
+  const queue = join(paths.stateDir, HOOK_QUEUE_DIR);
+  await mkdir(queue, { recursive: true, mode: 0o700 });
+  await Promise.all(Array.from({ length: 3_000 }, (_, index) => writeFile(join(queue, `.tmp-${index}`), "")));
+  const early = new WorkerHost(paths, { persistent: true });
+  t.onTestFinished(() => early.close());
+  const listening = early.listen();
+  const socket = await connectWhenAccepted(paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const hello = await peer.request<HostInfo>("hello");
+    assert.ok((hello.hookPort ?? 0) > 0, "the endpoint a listener reports to was up before the socket answered");
+    assert.ok(hello.features?.includes("trigger-hooks"), "and hello says where on this machine to report");
+  } finally {
+    socket.destroy();
+    await listening;
+  }
+});
+
+test("a host whose socket bind fails leaves the socket it found in place, and frees the hook port it had bound", async (t) => {
+  const env = {
+    ...process.env,
+    HOME: join(root, "unbound", "home"),
+    XDG_DATA_HOME: join(root, "unbound", "data"),
+    XDG_CONFIG_HOME: join(root, "unbound", "config"),
+  };
+  const paths = workerPaths(env);
+  // Another host already serves this path: this host's bind fails the way a second HUI on one machine does.
+  await mkdir(dirname(paths.socket), { recursive: true, mode: 0o700 });
+  const occupying = createNetServer((socket) => socket.destroy());
+  occupying.listen(paths.socket);
+  await once(occupying, "listening");
+  t.onTestFinished(async () => {
+    occupying.close();
+    await rm(paths.socket, { force: true });
+  });
+  // A port this test knows, so it can watch the endpoint the host bound before its socket refused give it back.
+  const probe = createNetServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const probeAddress = probe.address();
+  assert.ok(probeAddress && typeof probeAddress !== "string");
+  await new Promise<void>((done) => probe.close(() => done()));
+  const unbound = new WorkerHost(paths);
+  const configured = process.env["HUI_WORKER_HOOK_PORT"];
+  process.env["HUI_WORKER_HOOK_PORT"] = String(probeAddress.port);
+  try {
+    await assert.rejects(unbound.listen(), /EADDRINUSE/u, "the socket at this host's path is another host's");
+  } finally {
+    if (configured === undefined) delete process.env["HUI_WORKER_HOOK_PORT"];
+    else process.env["HUI_WORKER_HOOK_PORT"] = configured;
+  }
+  // The endpoint went with the socket instead of holding a port nothing can reach: the port answers again.
+  const freed = createNetServer();
+  await new Promise<void>((resolve, reject) => {
+    freed.once("error", reject);
+    freed.listen(probeAddress.port, "127.0.0.1", () => resolve());
+  });
+  await new Promise<void>((done) => freed.close(() => done()));
+  await unbound.close();
+  assert.equal(existsSync(paths.socket), true, "the socket belongs to the host that holds it, not to one that never bound it");
 });

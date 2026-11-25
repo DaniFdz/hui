@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { renderWatcherActivity, renderWatcherEvent, watcherTargetLabel, type WatcherActivityProps } from "./watcher-activity.ts";
+import { renderWatcherEvent, renderWatcherRows, watcherTargetLabel, type WatcherActivityProps } from "./watcher-activity.ts";
 import type { Watcher } from "../../api/watchers.ts";
 
 function text(value: unknown): string {
@@ -27,9 +27,9 @@ const running: Watcher = {
 
 function render(watchers: Watcher[], overrides: Partial<WatcherActivityProps> = {}): string {
   const noop = () => {};
-  return text(renderWatcherActivity({
+  return text(renderWatcherRows({
     watchers, pendingId: "", log: null, expanded: new Set(),
-    onGroupToggle: noop, onToggle: noop, onStop: noop, onRestart: noop, onDismiss: noop,
+    onToggle: noop, onStop: noop, onRestart: noop, onDismiss: noop,
     ...overrides,
   }));
 }
@@ -67,11 +67,10 @@ test("an opened dead row explains itself and offers Restart and Dismiss", () => 
   assert.doesNotMatch(dead, />Stop</u);
 });
 
-test("several watchers collapse into one summary line", () => {
-  const group = render([running, { ...running, id: "w2", purpose: "Post /merge", state: "done" }]);
-  assert.match(group, /chat-subagents--group/u);
-  assert.match(group, /2 watchers/u);
-  assert.match(group, /1 running · Wait for #21532 approval/u);
+test("every watcher keeps its own row, and none means nothing", () => {
+  const rows = render([running, { ...running, id: "w2", purpose: "Post /merge", state: "done" }]);
+  assert.equal(rows.match(/class="chat-watcher"/gu)?.length, 2);
+  assert.match(rows, /Post \/merge/u);
   assert.equal(render([]), "");
 });
 

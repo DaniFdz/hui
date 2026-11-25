@@ -2,6 +2,7 @@
   "reference": "OpenClaw 2026.9.5, ec9c1a13db8938e5a3eaa51fca2e981cde2395a9",
   "normalization": "SVG body, whitespace collapsed and trimmed",
   "icons": [
+    { "name": "package", "upstream": "package", "source": "lucide", "sha256": "7ddf409fa8e517853beedf513b4d4ca78597e09e96f09d36507ed190cb57f560" },
     {"name": "messageSquare", "upstream": "messageSquare", "source": "ui/src/components/icons.ts", "sha256": "10f15e7022dc00b406543caffb28a9321246d64662a6d312ad48ec73b35a5497"},
     { "name": "columns2", "upstream": "columns2", "source": "ui/src/components/icons.ts", "sha256": "f69f94308da71d0958abf939d3210f26d4e477ed726708a0035717d91d4d5dfd" },
     { "name": "panelRightOpen", "upstream": "panelRightOpen", "source": "ui/src/components/icons.ts", "sha256": "78f0cb00859c07cffd695493b96985ce93d7ed959875af92fba3ec72704f0f9a" },

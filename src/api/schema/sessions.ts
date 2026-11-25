@@ -9,11 +9,15 @@ export type ProgressStep = { "step": string; "status": ("pending") | ("in_progre
 
 export type QuestionnaireAnswer = { "header": string; "question": string; "selected": Array<string>; "preview"?: string; };
 
-export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; };
+export type QuestionnaireInput = ("options") | ("slider") | ("text");
 
-export type QuestionnaireQuestion = { "header": string; "question": string; "multiSelect": boolean; "options": Array<QuestionnaireOption>; };
+export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; "previewHtml"?: string; };
+
+export type QuestionnaireQuestion = { "header": string; "question": string; "multiSelect": boolean; "options": Array<QuestionnaireOption>; "input": QuestionnaireInput; "min"?: number; "max"?: number; "step"?: number; "unit"?: string; "placeholder"?: string; };
 
 export type QuestionnaireResult = { "cancelled": boolean; "answers": Array<QuestionnaireAnswer>; "timedOut"?: true; "timeoutMinutes"?: number; };
+
+export type SessionAutonomousResponse = { "autonomous": boolean; };
 
 export type SessionConnectResponse = { "url": string; };
 
@@ -28,6 +32,8 @@ export type SessionGoalRequest = ({ "action": "start"; "objective": string; }) |
 export type SessionGoalStatus = ("active") | ("paused") | ("blocked") | ("complete");
 
 export type SessionGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "worker"?: string; "sessions": Array<SessionView>; };
+
+export type SessionGroupCreateRequest = { "name": string; "cwd"?: string; "worker"?: string; "workspaceMode"?: ("branch") | ("worktree") | (""); "baseRef"?: string; };
 
 export type SessionJiraIssue = { "key": string; "url": string; "summary"?: string; "status"?: string; "statusCategory"?: JiraStatusCategory; "issueType"?: string; "description"?: string; };
 
@@ -61,7 +67,7 @@ export type SessionStatusUpdate = { "id": string; "status": SessionStatus; "unre
 
 export type SessionSubagent = { "taskId": string; "label"?: string; "status": SubagentStatus; "startedAt": string; "updatedAt": string; "endedAt"?: string; "error"?: string; "completionDelivery"?: ("pending") | ("delivered"); "collect"?: true; };
 
-export type SessionView = { "progress"?: ProgressCard; "pullRequests"?: Array<SessionPullRequest>; "jiraIssues"?: Array<SessionJiraIssue>; "id": string; "title": string; "group": string; "cwd": string; "displayCwd": string; "worker"?: { "id": string; "name": string; }; "tool": string; "status": SessionStatus; "creating"?: WorktreeProgress; "creationError"?: string; "initialPrompt"?: string; "runtime"?: { "active": true; "memoryBytes"?: number; "bootDurationMs"?: number; }; "interrupted"?: true; "runFailed"?: true; "background"?: true; "model"?: string; "thinking"?: string; "pinned"?: true; "archived"?: true; "unread"?: true; "icon"?: string; "parentId"?: string; "subagent"?: SessionSubagent; "bot"?: { "id": string; "handle": string; "name": string; }; "stage": SessionStage; "stageOrigin": SessionStageOrigin; "goal"?: SessionGoal; "createdAt": string; "updatedAt": string; };
+export type SessionView = { "progress"?: ProgressCard; "pullRequests"?: Array<SessionPullRequest>; "jiraIssues"?: Array<SessionJiraIssue>; "id": string; "title": string; "group": string; "cwd": string; "displayCwd": string; "worker"?: { "id": string; "name": string; }; "tool": string; "status": SessionStatus; "creating"?: WorktreeProgress; "creationError"?: string; "initialPrompt"?: string; "runtime"?: { "active": true; "memoryBytes"?: number; "bootDurationMs"?: number; }; "interrupted"?: true; "runFailed"?: true; "question"?: { "id": string; "method": ("select") | ("confirm") | ("input") | ("editor") | ("secret") | ("questionnaire"); "title": string; "options"?: Array<string>; }; "failure"?: string; "background"?: true; "model"?: string; "thinking"?: string; "pinned"?: true; "archived"?: true; "unread"?: true; "icon"?: string; "parentId"?: string; "subagent"?: SessionSubagent; "bot"?: { "id": string; "handle": string; "name": string; }; "createdBy"?: { "id": string; "handle": string; "name": string; }; "stage": SessionStage; "stageOrigin": SessionStageOrigin; "goal"?: SessionGoal; "createdAt": string; "updatedAt": string; };
 
 export type SubagentStatus = ("starting") | ("running") | ("completed") | ("failed") | ("cancelled") | ("timed_out") | ("interrupted");
 

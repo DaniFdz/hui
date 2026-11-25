@@ -24,8 +24,9 @@ import { DiffRequestError, loadDiffChanges, loadDiffFile, loadDiffInfo, type Dif
 import { chosenParent, initialComparison, readDiffViewState, writeDiffViewState, type DiffLayout } from "../lib/diff/view-state.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/files/file-link-store.ts";
 import { onTurnEnd } from "../lib/session/turn-end.ts";
+import { DIFF_LIST_WIDTH, DIFF_MAIN_MIN_WIDTH, maxPanelWidth, readPanelWidth, rememberPanelWidth, startPanelResize } from "../lib/panel-width.ts";
 
-loadViewAssets(() => import("../styles/diff-view.css"));
+loadViewAssets(() => import("../styles/diff-view.css"), () => import("../styles/panel-resizer.css"));
 
 /** Side by side needs this much room for the view; below it the toggle says why it is off. */
 export const SPLIT_MIN_WIDTH = 900;
@@ -108,6 +109,7 @@ export class HuiDiffView extends HuiElement {
     fileErrors: { state: true },
     expanded: { state: true },
     highlights: { state: true },
+    listWidth: { state: true },
   };
 
   declare sessionId: string;
@@ -135,6 +137,8 @@ export class HuiDiffView extends HuiElement {
   /** Large files the operator chose to show anyway. */
   declare expanded: Set<string>;
   declare highlights: Map<string, LineHighlights>;
+  /** The changed-file list width this browser chose, before this pane's room narrows it. */
+  declare listWidth: number;
 
   private generation = 0;
   private abort: AbortController | undefined;
@@ -145,6 +149,10 @@ export class HuiDiffView extends HuiElement {
   private stale = false;
   private parsed = new Map<string, ParsedFile>();
   private highlighting = new Set<string>();
+  /** The view's width, kept out of render state: only the boundary's width and ARIA depend on it. */
+  private availableWidth = 0;
+  /** The width a drag is showing; it is not a render state until the pointer settles. */
+  private dragListWidth: number | undefined;
 
   constructor() {
     super();
@@ -169,15 +177,21 @@ export class HuiDiffView extends HuiElement {
     this.fileErrors = new Map();
     this.expanded = new Set();
     this.highlights = new Map();
+    this.listWidth = readPanelWidth(DIFF_LIST_WIDTH);
+    this.dragListWidth = undefined;
   }
 
   override connectedCallback() {
     super.connectedCallback();
     if (this.sessionId) this.subscribeTurnEnd();
+    this.availableWidth = this.clientWidth;
     if (typeof ResizeObserver !== "undefined") {
       this.resize = new ResizeObserver(([entry]) => {
         const width = entry?.contentRect.width ?? 0;
         if (width <= 0) return;
+        this.availableWidth = width;
+        this.applyListWidth();
+        this.syncListResizer();
         this.wide = width >= SPLIT_MIN_WIDTH;
         this.compact = width < STACKED_MAX_WIDTH;
       });
@@ -200,6 +214,59 @@ export class HuiDiffView extends HuiElement {
       if (this.stale || this.info.available) void this.refresh();
     }
     if (changed.has("visible")) this.wasVisible = this.visible;
+    this.applyListWidth();
+    this.syncListResizer();
+  }
+
+  /** The widest the list may get while the diff keeps its room in this pane. */
+  private get listMax(): number {
+    return maxPanelWidth(this.availableWidth, DIFF_LIST_WIDTH, DIFF_MAIN_MIN_WIDTH);
+  }
+
+  /** The list width drawn now: the browser's choice, limited by the pane's room. */
+  private get listWidthInUse(): number {
+    return this.dragListWidth ?? Math.min(this.listWidth, this.listMax);
+  }
+
+  private applyListWidth() {
+    this.style.setProperty("--hui-diff-list-width", `${this.listWidthInUse}px`);
+  }
+
+  /** A pane resize changes the bounds without re-rendering the diff; keep the separator's values current. */
+  private syncListResizer() {
+    const handle = this.querySelector<HTMLElement>(".hui-diff-list + .hui-panel-resizer");
+    if (!handle) return;
+    handle.setAttribute("aria-valuemax", String(this.listMax));
+    handle.setAttribute("aria-valuenow", String(Math.round(this.listWidthInUse)));
+  }
+
+  private resizeList(event: PointerEvent) {
+    startPanelResize(event, {
+      panel: this.querySelector<HTMLElement>(".hui-diff-list"),
+      bounds: DIFF_LIST_WIDTH,
+      minRemaining: DIFF_MAIN_MIN_WIDTH,
+      onWidth: (width) => {
+        this.dragListWidth = width;
+        this.style.setProperty("--hui-diff-list-width", `${width}px`);
+      },
+      onEnd: (width, changed) => {
+        this.dragListWidth = undefined;
+        if (!changed) return;
+        this.listWidth = Math.round(width);
+        rememberPanelWidth(DIFF_LIST_WIDTH, width);
+      },
+    });
+  }
+
+  private resizeListWithKeys(event: KeyboardEvent) {
+    const direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (!direction) return;
+    const current = Math.round(this.querySelector<HTMLElement>(".hui-diff-list")?.getBoundingClientRect().width ?? this.listWidthInUse);
+    const next = Math.max(DIFF_LIST_WIDTH.min, Math.min(this.listMax, current + (event.shiftKey ? 48 : 16) * direction));
+    if (next === current) return;
+    event.preventDefault();
+    this.listWidth = next;
+    rememberPanelWidth(DIFF_LIST_WIDTH, next);
   }
 
   private subscribeTurnEnd() {
@@ -241,11 +308,14 @@ export class HuiDiffView extends HuiElement {
     this.info = undefined;
     this.changes = undefined;
     this.detailOpen = false;
-    await this.refresh(state.comparison);
+    // A view that remembers nothing starts from what the repository offers; `undefined` here would be read as the
+    // field's initial value and pin a clean tree to uncommitted changes.
+    await this.refresh(state.comparison ?? null);
   }
 
-  /** Re-reads what can be compared, then the changes of the current comparison. */
-  private async refresh(remembered: DiffComparison | undefined = this.comparison) {
+  /** Re-reads what can be compared, then the changes of the current comparison. `remembered` is `null` for a view
+   * that has not chosen one yet. */
+  private async refresh(remembered: DiffComparison | null = this.comparison) {
     const generation = ++this.generation;
     this.abort?.abort();
     const abort = new AbortController();
@@ -266,7 +336,7 @@ export class HuiDiffView extends HuiElement {
       this.changes = undefined;
       return;
     }
-    this.comparison = initialComparison(info, remembered);
+    this.comparison = initialComparison(info, remembered ?? undefined);
     this.parent = chosenParent(info, this.parent);
     await this.loadChanges(generation, abort);
   }
@@ -507,6 +577,7 @@ export class HuiDiffView extends HuiElement {
           const folder = folderOf(file.path);
           return html`<li>
             <button type="button" class="hui-diff-file ${selected ? "is-selected" : ""}" data-path=${file.path} aria-current=${selected ? "true" : "false"}
+              data-hui-tooltip=${file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
               @click=${() => this.select(file.path)}>
               ${this.renderStatus(file)}
               <span class="hui-diff-file__text">
@@ -588,10 +659,10 @@ export class HuiDiffView extends HuiElement {
       ${this.stacked ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label="Back to changed files" data-hui-tooltip="Changed files" @click=${() => { this.detailOpen = false; }}>${arrowLeftIcon}</button>` : nothing}
       ${this.renderStatus(file)}
       <span class="hui-diff-main__path">
-        ${file.oldPath ? html`<span class="hui-diff-main__old"><bdi dir="ltr">${file.oldPath}</bdi></span><span class="hui-diff-main__arrow" aria-label="renamed to">→</span>` : nothing}
+        ${file.oldPath ? html`<span class="hui-diff-main__old" data-hui-tooltip=${file.oldPath}><bdi dir="ltr">${file.oldPath}</bdi></span><span class="hui-diff-main__arrow" aria-label="renamed to">→</span>` : nothing}
         ${openable
-          ? html`<button type="button" class="hui-diff-main__open" data-hui-tooltip="Open in Files" @click=${() => this.openInFiles(file, line)}><bdi dir="ltr">${file.path}</bdi></button>`
-          : html`<span class="hui-diff-main__deleted"><bdi dir="ltr">${file.path}</bdi></span>`}
+          ? html`<button type="button" class="hui-diff-main__open" data-hui-tooltip=${file.path} @click=${() => this.openInFiles(file, line)}><bdi dir="ltr">${file.path}</bdi></button>`
+          : html`<span class="hui-diff-main__deleted" data-hui-tooltip=${file.path}><bdi dir="ltr">${file.path}</bdi></span>`}
       </span>
       ${openable ? nothing : html`<span class="hui-diff-main__hint">deleted: nothing to open</span>`}
       <span class="hui-diff-toolbar__spacer"></span>
@@ -672,6 +743,9 @@ export class HuiDiffView extends HuiElement {
       ${this.renderSummary(info)}
       <div class="hui-diff-body">
         ${showList ? this.renderList() : nothing}
+        ${showList && !this.stacked ? html`<div class="hui-panel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize changed files"
+          aria-valuemin=${DIFF_LIST_WIDTH.min} aria-valuemax=${this.listMax} aria-valuenow=${Math.round(this.listWidthInUse)}
+          tabindex="0" @pointerdown=${this.resizeList} @keydown=${this.resizeListWithKeys}></div>` : nothing}
         ${showMain ? this.renderMain(info) : nothing}
       </div>
     </div>`;

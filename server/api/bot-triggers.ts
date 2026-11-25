@@ -1,4 +1,4 @@
-/** Public bot trigger payloads (HUI-18) and the routes that exchange them; the stored record with its token hash is not one. */
+/** Public bot trigger payloads and the routes that exchange them; the stored record with its token hash is not one. */
 import { Type, type Static } from "typebox";
 
 export const BotTriggerSource = Type.Literal("listener", { $id: "BotTriggerSource" });
@@ -65,8 +65,27 @@ export const BotTriggersList = Type.Object({
 }, { $id: "BotTriggersList" });
 export type BotTriggersList = Static<typeof BotTriggersList>;
 
+/** The worker a trigger's listener reports to, and where on that machine: its own loopback URL (a listener there reaches
+ * it directly), or why HUI has none to give. */
+export const BotTriggerHookWorker = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  url: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
+}, { $id: "BotTriggerHookWorker" });
+export type BotTriggerHookWorker = Static<typeof BotTriggerHookWorker>;
+
+/** A trigger's URL, shown once when it is made or rotated: its token, its path on the gateway, and where a bot on a
+ * worker takes it instead. */
+export const BotTriggerHook = Type.Object({
+  token: Type.String(),
+  path: Type.String(),
+  worker: Type.Optional(BotTriggerHookWorker),
+}, { $id: "BotTriggerHook" });
+export type BotTriggerHook = Static<typeof BotTriggerHook>;
+
 export const BotTriggerCreated = Type.Object({
-  trigger: BotTrigger, hook: Type.Object({ token: Type.String(), path: Type.String() }),
+  trigger: BotTrigger, hook: BotTriggerHook,
 }, { $id: "BotTriggerCreated" });
 export type BotTriggerCreated = Static<typeof BotTriggerCreated>;
 

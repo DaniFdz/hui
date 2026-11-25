@@ -10,7 +10,7 @@ import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
 import { forgetConversation } from "./lib/session/offline-store.ts";
-import { isSubagentActive } from "./lib/subagent-activity.ts";
+import { isSubagentActive, latestSubagentBatch } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -45,6 +45,7 @@ import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { createStaffChief } from "./api/staff.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
@@ -61,11 +62,13 @@ import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBo
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
+import { renderGatewayDialog } from "./views/gateway-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
-import { renderPowerNotice } from "./views/power-notice.ts";
+import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
-import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
-import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
+import { childSessionsByParent, customGroupOrder, mergeChildAndStartedSessions, moveGroupLabel, readSidebarSessionOptions, startedSessionsByBot, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
+import { composerEditorFor, type ComposerEditor } from "./lib/composer/rich/editor.ts";
+import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
   deleteComposerDraft,
   mergeComposerDraft,
@@ -87,7 +90,8 @@ import { DashboardController, GATEWAY_MACHINE } from "./controllers/dashboard-co
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
-import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
+import { GatewaysController } from "./controllers/gateways-controller.ts";
+import { QUESTION_FOCUS_SELECTOR, launchInput, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps, type LaunchInput, type LaunchIntent } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
 import { renderPanelPicker, type PanelSelectorProps } from "./views/panel-selector.ts";
@@ -104,7 +108,9 @@ import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postC
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, closeNavigationDrawerOnBack, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { nativeShell } from "./lib/native-shell.ts";
+import { endDrawerEdgeTouch, holdDrawerEdgeDrag, startDrawerSwipe, trackDrawerEdgeTouch } from "./views/shell-drawer-swipe.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
@@ -118,8 +124,8 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
+import { activeSessionPane, closeSessionPane, isChatPane, parseSessionLayout, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, showSessionLayout, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
   retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
@@ -128,8 +134,14 @@ import {
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { OPEN_EXTENSION_PANEL_EVENT, type OpenExtensionPanelDetail } from "./lib/extensions/open-panel.ts";
+import { EXTENSION_NAVIGATE_EVENT } from "./lib/extensions/bridge.ts";
+import { extensionPageLinks, type ExtensionPageLink } from "./lib/extensions/pages.ts";
+import { loadExtensions } from "./api/extensions.ts";
+import "./components/extension-page.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
+import "./components/side-chat-view.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
@@ -141,6 +153,7 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
+import { inAppLinkHandled, installInAppLinkNavigation } from "./lib/in-app-links.ts";
 import { appHandoffPath, appHandoffUrl } from "./lib/app-link.ts";
 import { openChatInApp } from "./api/app.ts";
 
@@ -153,7 +166,7 @@ const HUI_UPDATE_SESSION_TITLE = "HUI update";
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
-/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+/** A bot pane's Call button: offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
@@ -166,12 +179,15 @@ const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: un
  * renders it again, not a bot's status or latest message. */
 const botFaces = (bots: unknown) => JSON.stringify((bots as readonly BotView[] | undefined)?.map(({ id, handle, name, avatar }) => [id, handle, name, avatar]));
 const paneBotsProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => botFaces(value) !== botFaces(old) };
+const paneBotCostProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 /** Defined by `defineHuiApp`, not on import: main.ts loads this module while the
  * saved appearance is still being read, and the app must not paint before it. */
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
+  @state() private extensionPages: readonly ExtensionPageLink[] = [];
+  @state() private activeExtensionPageId = "";
   @state() private search = "";
   private readonly sessions = new SessionsController(this, {
     presented: (id) => this.isSessionPresented(id),
@@ -223,7 +239,7 @@ export class HuiApp extends HuiElement {
     draftCommands: () => this.launcher.worker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills),
     defaultCwd: () => this.launcher.defaults?.cwd,
     mentionable: () => this.mentionable(),
-    textarea: () => this.composerTextarea,
+    editor: () => this.composerEditor,
     launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
@@ -247,9 +263,13 @@ export class HuiApp extends HuiElement {
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
   @state() private continuing = false;
+  /** Only lazy panel content follows these events; Web Awesome still owns opening and dismissal. */
+  @state() private runStatusOpenFor = "";
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
+  /** A submit the New Session form sent while its folder's checkout was still being inspected, waiting for that answer. */
+  private pendingLaunch: { intent: LaunchIntent; form: HTMLFormElement } | undefined;
   /** A launch whose session the gateway lists only once its worktree exists. */
   private unlistedLaunch: { id: string; open: (app: HuiApp) => void } | undefined;
   @state() private note = "";
@@ -265,6 +285,8 @@ export class HuiApp extends HuiElement {
   @state() private groupDefaultMode: "branch" | "worktree" = "branch";
   @state() private groupDefaultRef = "";
   @state() private groupDefaultWorker = "";
+  /** The checkbox on a new group: also create its Chief of Staff in the same step. */
+  @state() private groupCreateChief = false;
   @state() private groupCheckout: GitCheckoutInfo | undefined;
   @state() private groupCheckoutLoading = false;
   @state() private groupCheckoutError = "";
@@ -279,6 +301,7 @@ export class HuiApp extends HuiElement {
       this.note = message;
       this.noteLevel = "error";
     },
+    notified: (message, failed) => this.sessions.notify(message, failed),
   });
   private updatingSelectedId: string | undefined;
   private renderedSelected: SessionView | undefined;
@@ -287,9 +310,10 @@ export class HuiApp extends HuiElement {
   private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
   private renderedQueueEditingId: string | undefined;
-  private renderedDraftRevision = 0;
   private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
+  /** One group chief creation at a time; the route is idempotent, but two clicks need one request. */
+  private chiefPending = false;
 
   @state() private settingsOpen = false;
   @state() private settingsPage: SettingsPage = "appearance";
@@ -297,7 +321,13 @@ export class HuiApp extends HuiElement {
   @state() private renamingFor = "";
   @state() private deletingFor = "";
   @state() private updateSessionCreating = false;
-  private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
+  private readonly updates = new UpdateController(this, () => this.composerEditor?.focus());
+  /** This device's gateway list, shared by Settings → Gateway and the sidebar's footer (SPEC.md "A device keeps a list
+   * of gateways"). */
+  private readonly gateways = new GatewaysController(this, undefined, {
+    saveCurrentName: (name) => this.control.saveGatewayName(name),
+    closeRenderedDialog: () => closeModal(this.renderRoot.querySelector<HTMLDialogElement>(".gateway-dialog") ?? undefined),
+  });
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
   @state() private commandPaletteOpen = false;
@@ -338,6 +368,8 @@ export class HuiApp extends HuiElement {
   private transcriptClockTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
+  /** What that pane's bot has cost, so its chat's meter can say it: the shell app reads it. */
+  @property(paneBotCostProperty) paneBotCost: HomeProps["botCost"];
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
   /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
   @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
@@ -347,7 +379,8 @@ export class HuiApp extends HuiElement {
     activePane: () => this.activePaneApp(),
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
-    terminalFont: () => this.control.settings.fontTerminal,
+    chatShown: () => this.view === "home",
+    terminalFont: () => this.control.appearance.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
   });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -362,13 +395,11 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneMobileNav = false;
   /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
   @property({ attribute: false }) panePanelPicker?: TemplateResult;
+  /** The sleep-prevention notice the shell hands the one pane that may draw it, so no pane reads the power state. */
+  @property({ attribute: false }) panePowerNotice?: PowerNoticeProps;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
-  @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
-  @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
   /** Opens this session's browser view in the Work pane: the larger live view beside the chat. */
   @property(paneCallback) onPaneBrowser: (() => void) | undefined;
-  @state() private terminalOpening = false;
-  @state() private terminalError = "";
   @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
   @property(paneCallback) onPaneRegistryChange: (() => Promise<void>) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
@@ -397,9 +428,16 @@ export class HuiApp extends HuiElement {
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
   private mobileNavMedia: MediaQueryList | undefined;
+  /** The phone shell's back button, while this app is the one answering it. */
+  private stopNativeBack: (() => void) | undefined;
+  /** Markdown links to HUI's own routes navigate in place, in the shell and in a pane alike. */
+  private stopInAppLinks: (() => void) | undefined;
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
-  private composerTextarea: HTMLTextAreaElement | null = null;
+  private composerEditorHost: HTMLElement | null = null;
+  /** The mounted composer editor, which the controller completes and focuses through. A render that replaces its host
+   * destroys it: a discarded editor stays reachable from its ProseMirror view, observers and listeners otherwise. */
+  private composerEditor: ComposerEditor | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
     // The bot panel moves between the side and a sheet; what it reads follows.
@@ -429,10 +467,6 @@ export class HuiApp extends HuiElement {
   };
 
   private readonly onGlobalKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.composer.sideChat) {
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
@@ -465,42 +499,86 @@ export class HuiApp extends HuiElement {
    */
   private handleGlobalEscape(event: KeyboardEvent) {
     if (event.defaultPrevented || event.isComposing || this.commandPaletteOpen) return;
-    if (hasOpenWebAwesomePopup(event) || document.querySelector("dialog[open]")) return;
-    if (this.composer.sideChat) {
+    // A Web Awesome popup closes on Escape from its own document listener; leave that press to it.
+    if (hasOpenWebAwesomePopup(event)) return;
+    if (this.closeTopOverlay()) {
       event.preventDefault();
-      this.composer.closeSideChat();
       return;
     }
-    if (this.settingsOpen) {
-      event.preventDefault();
-      this.closeSettings();
+    // Escape's own job, and the one thing the phone's back button leaves alone: stopping the turn of the pane that
+    // shows it. Only an app with no pane of its own has a turn of its own to stop.
+    const pane = this.paneApp();
+    if (pane) {
+      pane.handleGlobalEscape(event);
       return;
     }
-    if (!this.embeddedPane && this.view === "bot") {
-      if (this.mobileNavLayout && this.bots.sheetOpen) {
-        event.preventDefault();
-        this.closeBotPanel();
-        return;
-      }
-      // An expanded panel hides the chat: Escape brings the chat back and never stops a turn the operator cannot see.
-      if (this.botPanelShownExpanded()) {
-        event.preventDefault();
-        this.expandBotPanel(false);
-        return;
-      }
-      this.botPaneApp()?.handleGlobalEscape(event);
-      return;
-    }
-    if (!this.embeddedPane && this.view === "home" && this.conversation.selected) {
-      // A maximized Work pane hides the chat: Escape never stops a turn the operator cannot see.
-      if (this.work.maximized()) return;
-      this.activePaneApp()?.handleGlobalEscape(event);
-      return;
-    }
-    if (this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
+    if (this.embeddedPane && this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
       event.preventDefault();
       this.composer.abort();
     }
+  }
+
+  /**
+   * Closes the topmost thing the page has open and answers whether it took the press. Escape and the phone's back
+   * button share this one order, so the phone can never close something other than what the key would: the topmost
+   * dialog (the command palette and every modal are one), the side chat, Settings, the bot sheet and an expanded bot
+   * panel, the navigation drawer, the Work pane, and a pane's own app one level down.
+   */
+  private closeTopOverlay(): boolean {
+    // The last open dialog is the topmost one: a dialog opened from a dialog stacks above it.
+    const dialog = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].at(-1);
+    if (dialog) {
+      // A dialog closes on Escape through `cancel`; a back press is the same intent, and one that prevents it keeps
+      // its own closing in flight.
+      if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
+      return true;
+    }
+     if (this.settingsOpen) {
+      this.closeSettings();
+      return true;
+    }
+    if (!this.embeddedPane && this.view === "bot") {
+      if (this.mobileNavLayout && this.bots.sheetOpen) {
+        this.closeBotPanel();
+        return true;
+      }
+      // An expanded panel hides the chat: closing it brings the chat back.
+      if (this.botPanelShownExpanded()) {
+        this.expandBotPanel(false);
+        return true;
+      }
+    }
+    if (closeNavigationDrawerOnBack(this.renderRoot)) return true;
+    if (this.workPaneShown()) {
+      // A shown Work pane hides the chat: back to the conversation, never stopping its turn.
+      this.work.leave();
+      return true;
+    }
+    // A pane's own app holds the same overlays one level down; its streaming turn is not one of them.
+    return this.paneApp()?.closeTopOverlay?.() ?? false;
+  }
+
+  /** Whether a Work pane hides the chat, so showing the conversation again is what a press means first. */
+  private workPaneShown(): boolean {
+    if (this.embeddedPane || this.view !== "home" || !this.conversation.selected) return false;
+    return this.work.narrow ? this.work.narrowShown : this.work.maximized();
+  }
+
+  /** The app embedded in the visible pane, whose overlays and turn belong to the same press: the bot workspace's pane,
+   * or the active chat pane's. An embedded app has no pane of its own. */
+  private paneApp(): HuiApp | undefined {
+    if (this.embeddedPane) return undefined;
+    if (this.view === "bot") return this.botPaneApp();
+    if (this.view === "home" && this.conversation.selected) return this.activePaneApp();
+    return undefined;
+  }
+
+  /**
+   * The phone's back button: the same overlays Escape closes, in the same order, and nothing more. Answering `false`
+   * leaves the press to the shell, which goes back in the page's history and, at the root, leaves the app.
+   */
+  private handleSystemBack(): boolean {
+    return this.closeTopOverlay();
   }
 
   private readonly onPageHide = () => {
@@ -520,10 +598,24 @@ export class HuiApp extends HuiElement {
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
+      // A phone has no Escape key: the shell's back press closes the same overlays in the same order, and never stops a
+      // running turn.
+      this.stopNativeBack = nativeShell()?.onBack(() => this.handleSystemBack());
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
+      this.addEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+      this.addEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
+      this.addEventListener("hui-extensions-changed", this.onExtensionsChanged);
+      void this.loadExtensionPages();
     }
+    // This delegation covers every in-app anchor in the shell: an anchor that relies on the browser's own navigation to a
+    // HUI route must call `event.preventDefault` itself, or be left out of what its view renders here.
+    this.stopInAppLinks = installInAppLinkNavigation(this.renderRoot, (target) => {
+      if (!inAppLinkHandled(target, { embedded: this.embeddedPane, paneNavigates: Boolean(this.onPaneNavigate) })) return false;
+      this.navigate(target);
+      return true;
+    });
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
       this.sessions.start();
@@ -539,14 +631,22 @@ export class HuiApp extends HuiElement {
     window.clearInterval(this.sessionProgressPoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
-    if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
-    this.composerTextarea = null;
+    if (this.composerEditor) this.composerEditor.destroy();
+    this.composerEditor = null;
+    this.composerEditorHost = null;
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     this.removeEventListener("hui-files-connection", this.onFilesConnection);
+    this.removeEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+    this.removeEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
+    this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
+    this.stopNativeBack?.();
+    this.stopNativeBack = undefined;
+    this.stopInAppLinks?.();
+    this.stopInAppLinks = undefined;
     this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
     this.followResize?.disconnect();
@@ -643,9 +743,12 @@ export class HuiApp extends HuiElement {
   }
 
   override willUpdate(changed: PropertyValues) {
+    // Loading/navigation can remove the popover without an after-hide event: later closed pills retain no rows.
+    if (this.conversation.opening || this.conversation.openError || this.conversation.selected?.status === "starting" || this.view !== "home") this.runStatusOpenFor = "";
     // Subagent trees follow the selection: moving elsewhere folds the old tree.
     if (this.updatingSelectedId !== this.conversation.selected?.id) {
       this.updatingSelectedId = this.conversation.selected?.id;
+      this.runStatusOpenFor = "";
       this.sessions.toggledSessionTrees = new Set();
       this.transcriptWindowStart = undefined;
     }
@@ -688,11 +791,17 @@ export class HuiApp extends HuiElement {
     ) {
       this.applyNavigation({ kind: "session", id: this.paneSessionId });
     }
+    // Check after pane synchronization: removing its last goal/plan also removes the surface without a hide event.
+    // Restoring a child later must start closed, not inherit the removed surface's lazy rows.
+    if (this.runStatusOpenFor && !this.conversation.selected?.goal && !this.conversation.selected?.progress
+      && !this.childSessions.length && !this.backlog.watchers.length
+      && !latestSubagentBatch(this.conversation.subagents, Date.now()).length) this.runStatusOpenFor = "";
   }
 
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
+    this.flushPendingLaunch();
     if (this.embeddedPane) {
       const connection = `${this.paneSessionId}\0${this.paneCanAccessFiles()}`;
       if (connection !== this.renderedFilesConnection) {
@@ -700,25 +809,16 @@ export class HuiApp extends HuiElement {
         this.dispatchEvent(new Event("hui-files-connection", { bubbles: true, composed: true }));
       }
     }
-    // Session and bot panes measure their own composers.
-    const textarea = !this.embeddedPane && ((this.view === "home" && this.conversation.selected) || this.view === "bot")
-      ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
-    const draftReplaced = this.renderedDraftRevision !== this.composer.draftRevision;
-    this.renderedDraftRevision = this.composer.draftRevision;
-    if (textarea !== this.composerTextarea) {
-      if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
-      this.composerTextarea = textarea;
-      if (textarea) {
-        observeTextareaOverflow(textarea);
-        scheduleTextareaHeightAdjustment(textarea);
-      }
-    } else if (textarea && draftReplaced) {
-      // Typing measures its own textarea in the input handler; only a draft that
-      // code replaced under it needs a measuring pass after the render.
-      scheduleTextareaHeightAdjustment(textarea);
+    // Session and bot panes mount their own composers; this element keeps the one it renders itself and lets go of it
+    // when a render or a route replaces it, or the view it belonged to is gone.
+    const host = this.ownComposerHost();
+    if (host !== this.composerEditorHost) {
+      this.composerEditor?.destroy();
+      this.composerEditorHost = host;
+      this.composerEditor = host ? composerEditorFor(host) ?? null : null;
     }
-    if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
-      this.composer.browseCommands(textarea);
+    if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && host) {
+      this.composer.browseCommands();
     }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.bots.callsStatus) void this.bots.loadCallsStatus();
@@ -770,6 +870,8 @@ export class HuiApp extends HuiElement {
     const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
     const updateDialog = this.updates.open ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
     if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
+    const gatewayDialog = this.gateways.dialog ? this.renderRoot.querySelector?.(".gateway-dialog") : null;
+    if (gatewayDialog instanceof HTMLDialogElement) ensureModal(gatewayDialog);
     if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
     const resourceReader = this.control.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
     if (resourceReader instanceof HTMLDialogElement) ensureModal(resourceReader);
@@ -786,7 +888,8 @@ export class HuiApp extends HuiElement {
     this.renderedCompaction = this.conversation.compaction;
     const transcriptChanged = this.renderedTranscript !== this.conversation.transcript;
     this.renderedTranscript = this.conversation.transcript;
-    if ((transcriptChanged || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
+    // A pending question is the transcript's last row now, so it follows the live edge with it.
+    if ((transcriptChanged || compactionChanged || questionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -797,8 +900,18 @@ export class HuiApp extends HuiElement {
     }
   }
 
+  /** The text a phone's Share sheet opened this page with, `<gateway>/new-session?share=…`, and whether the address has
+   * been read for it. Read once, before the route's canonicalising `replaceState` drops the query, and consumed by the
+   * New Session route, so a second sync cannot seed the composer again. */
+  private shareSeed: string | undefined;
+  private shareSeedRead = false;
+
   private syncFromLocation() {
     const resolved = resolveNavigation(window.location.pathname);
+    if (!this.embeddedPane && !this.shareSeedRead && resolved.target.kind === "page" && resolved.target.page.id === "new-session") {
+      this.shareSeedRead = true;
+      this.shareSeed = shareSeedFromSearch(window.location.search);
+    }
     if (resolved.target.kind === "session") {
       let saved = parseSessionLayout(window.history.state?.huiSessionLayout);
       if (!saved) try { saved = parseSessionLayout(JSON.parse(localStorage.getItem(SESSION_LAYOUT_KEY) ?? "null")); } catch { /* Use a single view. */ }
@@ -813,8 +926,7 @@ export class HuiApp extends HuiElement {
           window.history.replaceState({ ...window.history.state, huiSessionLayout: saved }, "");
         }
       }
-      this.work.layout = saved ?? singleSessionLayout(resolved.target.id);
-      if (activeSessionPane(this.work.layout).sessionId !== resolved.target.id) this.work.layout = replacePaneSession(this.work.layout, this.work.layout.activePaneId, resolved.target.id);
+      this.work.layout = showSessionLayout(saved ?? singleSessionLayout(resolved.target.id), resolved.target.id);
     }
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const canonical = resolved.path;
@@ -841,7 +953,7 @@ export class HuiApp extends HuiElement {
     }
     if (target.kind === "session") {
       const layout = this.work.layout ?? singleSessionLayout(target.id);
-      this.work.layout = replacePaneSession(layout, layout.activePaneId, target.id);
+      this.work.layout = showSessionLayout(layout, target.id);
       this.work.persistLayout();
     }
     const path = navigationPath(target);
@@ -867,15 +979,14 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
-    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
-      this.navigate({ kind: "home" }, true);
-      return;
-    }
+    if (target.kind !== "extension-page") this.activeExtensionPageId = "";
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
       this.loadSettingsData();
+      if (target.page === "connection") void this.gateways.checkKnown();
       if (target.page === "appearance") this.control.loadPreviews();
+      if (target.page === "notifications") this.control.loadPushStatus();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
       if (target.page === "automation") this.automation.startPolling();
@@ -918,11 +1029,24 @@ export class HuiApp extends HuiElement {
       void this.backlog.refresh();
       return;
     }
+    if (target.kind === "extension-page") {
+      this.conversation.suspend();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      this.activeExtensionPageId = target.id;
+      this.view = "surface";
+      return;
+    }
     if (target.kind === "page") {
       this.conversation.suspend();
       this.resetSessionEphemeral();
       if (target.page.id === "new-session") {
-        this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
+        // A share's text seeds the composer ahead of any draft the form already holds, and only once: the address that
+        // carried it is canonical again by now, so a popstate or a later visit must not paste it a second time.
+        const seed = this.shareSeed;
+        this.shareSeed = undefined;
+        this.composer.switchDraft(NEW_SESSION_DRAFT_KEY, seed);
         this.loadLaunchPreferences();
         this.launcher.requestCheckout(this.launcher.defaults?.cwd ?? "~/");
         this.launcher.loadWorkers();
@@ -1036,7 +1160,7 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       groups: this.listedGroups,
       bots: this.bots.list,
       onQuery: (query) => {
@@ -1192,6 +1316,19 @@ export class HuiApp extends HuiElement {
     ></hui-jira-create-dialog>`;
   }
 
+  /** Add and Edit share one dialog, opened by the sidebar's gateway menu and by Settings → Gateway. */
+  private renderGatewayDialog() {
+    const dialog = this.gateways.dialog;
+    if (!dialog) return null;
+    return renderGatewayDialog({
+      dialog,
+      onName: (name) => this.gateways.setDialogName(name),
+      onAddress: (address) => this.gateways.setDialogAddress(address),
+      onClose: this.gateways.closeGatewayDialog,
+      onSubmit: () => void this.gateways.submitGatewayDialog(),
+    });
+  }
+
   private moveSession = (session: SessionView, group: string) => {
     if (this.sessionMovePendingId || session.group === group) return;
     this.menuFor = "";
@@ -1336,8 +1473,6 @@ export class HuiApp extends HuiElement {
     }
     // Choosing a conversation shows its chat; its Work pane stays one selector choice away on narrow screens.
     this.work.hideNarrow();
-    const existing = this.work.layout && sessionPanes(this.work.layout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
-    if (existing && this.work.layout) this.work.layout = focusSessionPane(this.work.layout, existing.id);
     this.navigate({ kind: "session", id: session.id });
   };
 
@@ -1396,19 +1531,31 @@ export class HuiApp extends HuiElement {
   private focusActiveComposer() {
     void this.updateComplete.then(() => {
       const app = this.activePaneApp();
-      const target = app?.querySelector<HTMLElement>("textarea") ?? app?.querySelector<HTMLElement>(".chat-pane__header");
-      target?.focus({ preventScroll: true });
+      // A bot's chat, or the only chat, is rendered by this element itself. A split layout is not: its composers belong
+      // to pane apps, and this element's light DOM holds every pane's copy, so the fallback would focus the first one.
+      const host = app?.querySelector<HTMLElement>("[data-composer-editor]")
+        ?? (this.work.layout ? undefined : this.renderRoot.querySelector<HTMLElement>("[data-composer-editor]"));
+      const editor = host ? composerEditorFor(host) : undefined;
+      if (editor) editor.focus();
+      else app?.querySelector<HTMLElement>(".chat-pane__header")?.focus({ preventScroll: true });
     });
   }
 
-  private openTerminal = async () => {
-    if (this.conversation.connection !== "live") return;
-    this.terminalOpening = true;
-    this.terminalError = "";
-    try { await this.onPaneTerminal?.(); }
-    catch (error) { this.terminalError = error instanceof Error ? error.message : "Could not open terminal."; }
-    finally { this.terminalOpening = false; }
-  };
+  /** The composer host this element renders itself: a pane app's copy lives inside another `hui-app`, and the shell's
+   * light DOM reaches every pane's, so the nearest app ancestor decides whose host it is. */
+  private ownComposerHost(): HTMLElement | null {
+    const current = this.composerEditorHost;
+    if (current?.isConnected && current.closest("hui-app") === this) return current;
+    const host = this.renderRoot.querySelector<HTMLElement>("[data-composer-editor]");
+    return host && host.closest("hui-app") === this ? host : null;
+  }
+
+  /** The element the update dialog hands focus back to: the rich surface editing the draft, not the host around it. */
+  private composerFocusTarget(): HTMLElement | null {
+    const host = this.composerEditorHost;
+    if (!host) return null;
+    return host.querySelector<HTMLElement>(":scope > .ProseMirror");
+  }
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
     if (!this.work.layout || !this.sessions.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
@@ -1533,7 +1680,7 @@ export class HuiApp extends HuiElement {
     this.note = "";
     this.noteLevel = "info";
     this.composer.closeCommands();
-    this.updates.review(this.composerTextarea, command === "check", () => this.openUpdateSession(command));
+    this.updates.review(this.composerFocusTarget(), command === "check", () => this.openUpdateSession(command));
     return true;
   }
 
@@ -1624,11 +1771,74 @@ export class HuiApp extends HuiElement {
   private showEarlierRows = async (start: number) => {
     const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
     if (!(scroller instanceof HTMLElement)) return;
-    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    const row = scroller.querySelector<HTMLElement>(".chat-thread-inner > .chat-history-boundary + *");
+    if (!row) return;
+    // Preserve the content, not its outer grid: a retained first row can acquire
+    // a different internal offset when earlier groups are inserted.
+    const content = row.querySelector<HTMLElement>(".chat-text");
+    const anchor = content?.getClientRects().length ? content : row;
+    const top = anchor.getBoundingClientRect().top;
     this.autoFollow = false;
     this.transcriptWindowStart = start;
     await this.updateComplete;
-    scroller.scrollTop = scroller.scrollHeight - fromBottom;
+    // Flush layout BEFORE reading scrollTop: layout can apply native anchoring.
+    const movement = anchor.getBoundingClientRect().top - top;
+    const target = scroller.scrollTop + movement;
+    let best = target;
+    let bestError = Infinity;
+    let bestPreservesPixel = false;
+    const pixel = Math.round(top);
+    const measured = new Map<number, number>();
+    const measure = (candidate: number) => {
+      scroller.scrollTop = candidate;
+      // This is one synchronous correction with no intervening DOM update.
+      // Repeated attainable offsets reuse their measured content geometry.
+      let error = measured.get(scroller.scrollTop);
+      if (error === undefined) {
+        error = anchor.getBoundingClientRect().top - top;
+        measured.set(scroller.scrollTop, error);
+      }
+      // Prefer the original rendered pixel: the smallest fractional movement
+      // can cross its boundary while an adjacent attainable position does not.
+      // Within that pixel (or if none is attainable), minimize real movement.
+      const preservesPixel = Math.round(top + error) === pixel;
+      if ((preservesPixel && !bestPreservesPixel) || (preservesPixel === bestPreservesPixel && Math.abs(error) < bestError)) {
+        best = candidate;
+        bestError = Math.abs(error);
+        bestPreservesPixel = preservesPixel;
+      }
+      return error;
+    };
+    const error = measure(target);
+    if (error === 0) return;
+
+    // Quantized offsets need not read back as integers. Bracket the original
+    // content position locally, expanding only if the engine has a wider step.
+    // Ask beyond rounded scrollHeight at the edge, letting the engine clamp.
+    const limit = error > 0 ? scroller.scrollHeight + 1 : 0;
+    const bounded = (value: number) => error > 0 ? Math.min(value, limit) : Math.max(value, limit);
+    let edge = bounded(target + 2 * error);
+    let edgeError = measure(edge);
+    while (edgeError * error > 0 && edge !== limit) {
+      const next = bounded(target + 2 * (edge - target));
+      edge = next === edge ? limit : next;
+      edgeError = measure(edge);
+    }
+    if (edgeError * error <= 0 && edgeError !== 0) {
+      let lower = Math.min(target, edge);
+      let upper = Math.max(target, edge);
+      // End at adjacent floating-point requests, not a guessed pixel quantum:
+      // the neighboring measured positions decide pixel preservation and proximity.
+      while (lower < upper) {
+        const candidate = lower + (upper - lower) / 2;
+        if (candidate === lower || candidate === upper) break;
+        const residual = measure(candidate);
+        if (residual === 0) break;
+        if (residual > 0) lower = candidate;
+        else upper = candidate;
+      }
+    }
+    scroller.scrollTop = best;
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {
@@ -1755,7 +1965,7 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
+  private launch = (input: LaunchInput) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -1819,8 +2029,36 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /** The launch form's submit. Start session stays enabled while the folder is inspected, so a submit can arrive during
+   * that window: it is kept and started with the checkout the answer brings, and a newer submit replaces it. */
+  private requestLaunch = (intent: LaunchIntent, form: HTMLFormElement) => {
+    if (this.launcher.checkoutLoading || this.launching) {
+      this.pendingLaunch = { intent, form };
+      return;
+    }
+    this.launch(launchInput(intent, this.homeProps()));
+  };
+
+  /** Starts a submit kept back by an inspection. Called on every render: the inspection's answer and a settled launch
+   * both request one, so no timer is needed. */
+  private flushPendingLaunch() {
+    const pending = this.pendingLaunch;
+    if (!pending || this.embeddedPane) return;
+    if (!pending.form.isConnected) {
+      // The form left the page: nobody is waiting for this launch anymore.
+      this.pendingLaunch = undefined;
+      return;
+    }
+    if (this.launcher.checkoutLoading || this.launching) return;
+    this.pendingLaunch = undefined;
+    // The folder was edited after the submit, so the checkout that answered is another folder's.
+    if (this.launcher.inspectedDirectory !== pending.intent.cwd) return;
+    this.launch(launchInput(pending.intent, this.homeProps()));
+  }
+
   private requestDirectorySuggestions = (input: string) => {
-    if (this.groupAction?.action === "defaults") {
+    const action = this.groupAction?.action;
+    if (action === "defaults" || action === "new") {
       this.launcher.loadDirectorySuggestions(input, this.groupDefaultWorker || undefined);
       this.requestGroupCheckout(input);
     } else {
@@ -1868,6 +2106,31 @@ export class HuiApp extends HuiElement {
   }
 
   /* ── bots ─────────────────────────────────────────────────────────────── */
+
+  /** Every pane reading the same registry shares one child projection, including the empty-array identity. */
+  private static readonly childSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
+  /** Same sharing, for what a bot's chat started through `create_session`; built lazily, only while a bot's own chat
+   * is open, so an ordinary conversation never pays for it. */
+  private static readonly startedSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
+  private static readonly noChildSessions: readonly SessionView[] = [];
+  private get childSessions(): readonly SessionView[] {
+    // Embedded panes overlay only their own status. Their children come from the canonical shared list.
+    const groups = this.embeddedPane && this.paneGroups ? this.paneGroups : this.sessions.groups;
+    let index = HuiApp.childSessionIndexes.get(groups);
+    if (!index) {
+      index = childSessionsByParent(groups);
+      HuiApp.childSessionIndexes.set(groups, index);
+    }
+    const children = index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
+    const bot = this.conversation.selected?.bot;
+    if (!bot) return children;
+    let startedIndex = HuiApp.startedSessionIndexes.get(groups);
+    if (!startedIndex) {
+      startedIndex = startedSessionsByBot(groups);
+      HuiApp.startedSessionIndexes.set(groups, startedIndex);
+    }
+    return mergeChildAndStartedSessions(children, startedIndex.get(bot.id) ?? HuiApp.noChildSessions);
+  }
 
   /** Session lists never show bot chats; the Bots tab lists their bots. The
    * unfiltered registry stays in `groups` so a bot pane can open its chat. */
@@ -2033,10 +2296,21 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTriggers.follow(bot);
   }
 
-  /** The overview shows the bot's cost, read again whenever its chat changes state. A worker keeps its own. */
+  /** The overview and the open bot's chat meter show the bot's cost, read again whenever its chat changes state. A
+   * worker keeps its own. */
   private followBotUsage() {
-    const bot = this.botPanelShows("overview") ? this.activeBot() : undefined;
+    const bot = this.botPanelShows("overview") || this.view === "bot" ? this.activeBot() : undefined;
     if (bot && !bot.worker) void this.botUsage.show(bot);
+  }
+
+  /** A bot's recorded spend, its chat's, its subagents' and its memory summaries', as the bot panel totals it. */
+  private botCost(): HomeProps["botCost"] {
+    const bot = this.activeBot();
+    if (!bot) return undefined;
+    if (bot.worker) return { remote: bot.worker.name };
+    const state = this.botUsage.state.botId === bot.id ? this.botUsage.state : { usage: undefined, error: "" };
+    if (!state.usage) return state.error ? { unavailable: true } : { reading: true };
+    return { usd: state.usage.costUsd, memory: bot.memory?.usage.cost ?? 0, subagents: Math.max(0, state.usage.sessions - 1) };
   }
 
   /** The panel's page decides what is read: the overview and Routines poll Automation like its page, the overview and
@@ -2170,7 +2444,9 @@ export class HuiApp extends HuiElement {
           .paneVisible=${true}
           .paneNarrow=${sheet}
           .paneMobileNav=${this.mobileNavLayout}
+          .panePowerNotice=${this.powerNoticeState()}
           .paneBot=${paneBot}
+          .paneBotCost=${this.botCost()}
           .onPaneBotPanel=${this.toggleBotPanel}
           .onPaneBotAction=${(action: BotHeaderAction) => {
             if (action === "edit") this.openEditBot(bot);
@@ -2256,7 +2532,7 @@ export class HuiApp extends HuiElement {
     return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
   }
 
-  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+  /* ── calls with bots ─────────────────────────────────────────── */
 
   /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
   private paneCallAction(bot: BotView): () => void {
@@ -2282,7 +2558,14 @@ export class HuiApp extends HuiElement {
   /** After the call view closes, focus returns to the chat it covered. */
   private focusBotChat() {
     void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
-      this.botPaneApp()?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle, .agent-chat__composer-combobox > textarea")?.focus();
+      const pane = this.botPaneApp();
+      const toggle = pane?.renderRoot.querySelector<HTMLElement>(".bot-call-toggle");
+      if (toggle) {
+        toggle.focus();
+        return;
+      }
+      const host = pane?.renderRoot.querySelector<HTMLElement>("[data-composer-editor]");
+      if (host) composerEditorFor(host)?.focus();
     });
   }
 
@@ -2376,6 +2659,40 @@ export class HuiApp extends HuiElement {
    * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
    * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
   private stopSettingsScroll: (() => void) | undefined;
+  private onExtensionsChanged = () => { void this.loadExtensionPages(); };
+
+  private async loadExtensionPages() {
+    try {
+      const { extensions } = await loadExtensions();
+      // A page that was open when its extension was disabled stays on screen; its component reports the state.
+      this.extensionPages = extensionPageLinks(extensions);
+    } catch {
+      this.extensionPages = [];
+    }
+    this.requestUpdate();
+  }
+
+  private onExtensionNavigate = (event: Event) => {
+    const path = (event as CustomEvent<{ path?: unknown }>).detail?.path;
+    if (typeof path !== "string") return;
+    const resolved = resolveNavigation(path);
+    if (resolved.target.kind !== "session") return;
+    event.preventDefault();
+    this.navigate(resolved.target);
+  };
+
+  private onOpenExtensionPanelRequest = (event: Event) => {
+    const layout = this.work.layout;
+    const sessionId = layout ? activeSessionPane(layout).sessionId : undefined;
+    if (!sessionId) return;
+    event.preventDefault();
+    const detail = (event as CustomEvent<OpenExtensionPanelDetail>).detail;
+    const id = detail?.id;
+    const icon = detail?.icon;
+    this.closeSettings();
+    this.work.showView(sessionId, { kind: "extension", ...(id ? { id } : {}), ...(icon ? { icon } : {}) }, true);
+  };
+
   private onOpenSettingsRequest = (event: Event) => {
     const detail = (event as CustomEvent<Partial<Record<keyof OpenSettingsDetail, unknown>> | undefined>).detail;
     const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
@@ -2432,6 +2749,10 @@ export class HuiApp extends HuiElement {
   };
 
   private openGroupAction = (action: GroupMenuAction, group?: SessionGroup) => {
+    if (action === "chief" && group) {
+      void this.createChiefForGroup(group);
+      return;
+    }
     const next: typeof this.groupAction = action === "new" ? { action } : group ? { action, group } : undefined;
     if (!next) return;
     this.groupMutationError = "";
@@ -2439,6 +2760,20 @@ export class HuiApp extends HuiElement {
       group ? `[data-group-menu-trigger="${CSS.escape(group.label)}"]` : "[data-new-group-trigger]",
     ) ?? undefined;
     this.groupAction = next;
+    if (next.action === "new") {
+      this.groupDefaultCwd = "";
+      this.groupDefaultMode = "branch";
+      this.groupDefaultRef = "";
+      this.groupDefaultWorker = "";
+      this.groupCheckout = undefined;
+      this.groupCheckoutDirectory = "";
+      this.groupCheckoutLoading = false;
+      this.groupCheckoutError = "";
+      // A checkout read from a dialog opened earlier must not land in this one.
+      this.groupCheckoutRequest += 1;
+      this.groupCreateChief = false;
+      this.launcher.loadWorkers();
+    }
     if (next.action === "defaults") {
       this.groupDefaultCwd = next.group.cwd ?? next.group.sessions[0]?.cwd ?? "~/";
       this.groupDefaultMode = next.group.workspaceMode ?? "branch";
@@ -2449,6 +2784,46 @@ export class HuiApp extends HuiElement {
       this.requestGroupCheckout(this.groupDefaultCwd, true);
     }
   };
+
+  /** The group's own chief: one bot in its own folder, on the group's machine, whose chat carries the project's
+   * context. The group's directory is where the sessions it starts run. Asking twice opens the one it already has. */
+  private createChiefForGroup = async (group: SessionGroup): Promise<void> => {
+    if (this.chiefPending) return;
+    this.chiefPending = true;
+    try {
+      const bot = await createStaffChief({ group: group.label });
+      this.bots.selectTab("bots");
+      this.ensureBots();
+      void this.bots.refresh();
+      this.openBot(bot.id);
+    } catch (error) {
+      this.sessions.notify(error instanceof Error ? error.message : "The chief could not be created.", true);
+    } finally {
+      this.chiefPending = false;
+    }
+  };
+
+  /** A group created with the checkbox already exists, so its chief's failure only reports; the group's menu can
+   * create it again. */
+  private createChiefForCreatedGroup = async (group: string): Promise<void> => {
+    if (this.chiefPending) return;
+    this.chiefPending = true;
+    try {
+      await createStaffChief({ group });
+      this.ensureBots();
+      void this.bots.refresh();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "The chief could not be created.";
+      this.sessions.notify(`Group “${group}” was created, but its Chief of Staff was not: ${reason} Create it from the group's ⋯ menu.`, true);
+    } finally {
+      this.chiefPending = false;
+    }
+  };
+
+  /** A directory whose Git read has not settled cannot be saved as a group's target. */
+  private groupCheckoutBlocked(): boolean {
+    return Boolean(this.groupDefaultCwd.trim()) && (this.groupCheckoutLoading || Boolean(this.groupCheckoutError));
+  }
 
   private requestGroupCheckout(input: string, initial = false) {
     this.groupDefaultCwd = input;
@@ -2501,21 +2876,29 @@ export class HuiApp extends HuiElement {
   private submitGroupAction = (event: SubmitEvent) => {
     event.preventDefault();
     if (!this.groupAction || this.groupMutationPending) return;
-    if (this.groupAction.action === "defaults" && (this.groupCheckoutLoading || this.groupCheckoutError)) return;
+    if ((this.groupAction.action === "defaults" || this.groupAction.action === "new") && this.groupCheckoutBlocked()) return;
     const form = event.currentTarget;
     if (!(form instanceof HTMLFormElement)) return;
     const data = new FormData(form);
     const value = (name: string) => String(data.get(name) ?? "").trim();
     const state = this.groupAction;
+    const name = value("name");
+    const directory = value("cwd");
+    const wantsChief = state.action === "new" && this.groupCreateChief;
+    if (wantsChief && !directory) {
+      this.groupMutationError = "Choose a working directory first: a Chief of Staff starts this group's sessions there.";
+      return;
+    }
     this.groupMutationPending = true;
     this.groupMutationError = "";
     const git = this.groupCheckout?.available;
     const operation = state.action === "new"
-      ? createSessionGroup(value("name"))
+      ? createSessionGroup({ name, cwd: directory, worker: this.groupDefaultWorker,
+          workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
       : state.action === "rename"
-        ? updateSessionGroup(state.group.label, { name: value("name") })
+        ? updateSessionGroup(state.group.label, { name })
         : state.action === "defaults"
-          ? updateSessionGroup(state.group.label, { cwd: value("cwd"), worker: this.groupDefaultWorker,
+          ? updateSessionGroup(state.group.label, { cwd: directory, worker: this.groupDefaultWorker,
               workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
           : deleteSessionGroup(state.group.label);
     void operation
@@ -2525,13 +2908,14 @@ export class HuiApp extends HuiElement {
           // A successful creation must be visible even when filters hid every row.
           this.search = "";
           this.updateSessionOptions({ ...this.sessionOptions, groupBy: "custom", status: "all", hideEmpty: "filtering" });
-          this.sessions.expandGroup(value("name"));
+          this.sessions.expandGroup(name);
         }
         if (this.conversation.selected) {
           const refreshed = groups.flatMap((entry) => entry.sessions).find((session) => session.id === this.conversation.selected?.id);
           if (refreshed) this.conversation.select(refreshed);
         }
         this.closeGroupAction();
+        if (wantsChief) void this.createChiefForCreatedGroup(name);
       })
       .catch((error: unknown) => {
         this.groupMutationError = error instanceof Error ? error.message : "Could not update that group.";
@@ -2540,6 +2924,47 @@ export class HuiApp extends HuiElement {
         this.groupMutationPending = false;
       });
   };
+
+  /** The machine, directory and Git targets a group's sessions start in, shared by creating a group and editing its
+   * New session defaults. */
+  private renderGroupTargetFields() {
+    return html`
+      ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
+        ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
+          options: [{ value: "", label: "Local", description: "This machine." },
+            ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
+              description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
+          showSelectedDescription: true,
+          onChange: (value) => {
+            this.groupDefaultWorker = value;
+            this.groupCheckoutDirectory = "";
+            this.requestGroupCheckout(this.groupDefaultCwd, true);
+          } })}
+      </div>` : null}
+      <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
+        ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
+      </div>
+      ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
+      ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
+      ${this.groupCheckout?.available ? html`
+        <div class="field input-dialog__field"><span>Environment</span>
+          ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
+            options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },
+              { value: "worktree", label: "New worktree", description: "Start each session in an isolated Git worktree." }],
+            showSelectedDescription: true,
+            onChange: (value) => { this.groupDefaultMode = value === "worktree" ? "worktree" : "branch"; } })}
+        </div>
+        <div class="field input-dialog__field"><span>Base branch</span>
+          ${renderPicker({ label: "Base branch", value: this.groupDefaultRef, disabled: this.groupMutationPending,
+            options: [...new Set([this.groupDefaultRef, this.groupCheckout.defaultBranch, ...this.groupCheckout.branches].filter(Boolean))].map((value) => ({ value, label: value })),
+            searchable: true, searchPlaceholder: "Search branches or enter a commit",
+            customOption: (query) => query.trim() ? { value: query.trim(), label: query.trim() } : null,
+            onChange: (value) => { this.groupDefaultRef = value; } })}
+        </div>
+        ${this.groupDefaultMode === "worktree" ? html`<p class="exec-approval-sub">Choose a branch suffix when starting each session.</p>` : null}
+      ` : null}
+    `;
+  }
 
   private renderGroupActionDialog() {
     const state = this.groupAction;
@@ -2561,55 +2986,52 @@ export class HuiApp extends HuiElement {
         <div class="exec-approval-title" id="group-action-title">${title}</div>
         ${state.action === "defaults" ? html`
           <div class="exec-approval-sub">Choose where sessions created from this group start.</div>
-          ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
-            ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
-              options: [{ value: "", label: "Local", description: "This machine." },
-                ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
-                  description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
-              showSelectedDescription: true,
-              onChange: (value) => {
-                this.groupDefaultWorker = value;
-                this.groupCheckoutDirectory = "";
-                this.requestGroupCheckout(this.groupDefaultCwd, true);
-              } })}
-          </div>` : null}
-          <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
-            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
+          ${this.renderGroupTargetFields()}
+        ` : state.action === "new" ? html`
+          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" /></label>
+          ${this.renderGroupTargetFields()}
+          <div class="input-dialog__field group-action-dialog__chief">
+            <label class="group-action-dialog__chief-choice"><input type="checkbox" aria-describedby="group-action-chief-description" .checked=${this.groupCreateChief} ?disabled=${this.groupMutationPending}
+              @change=${(event: Event) => { this.groupCreateChief = (event.currentTarget as HTMLInputElement).checked; }} /><span>Create a Chief of Staff</span></label>
+            <span class="exec-approval-sub" id="group-action-chief-description">A chief plans and starts this group's work from its own chat, using this directory for the sessions it creates.</span>
           </div>
-          ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
-          ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
-          ${this.groupCheckout?.available ? html`
-            <div class="field input-dialog__field"><span>Environment</span>
-              ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
-                options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },
-                  { value: "worktree", label: "New worktree", description: "Start each session in an isolated Git worktree." }],
-                showSelectedDescription: true,
-                onChange: (value) => { this.groupDefaultMode = value === "worktree" ? "worktree" : "branch"; } })}
-            </div>
-            <div class="field input-dialog__field"><span>Base branch</span>
-              ${renderPicker({ label: "Base branch", value: this.groupDefaultRef, disabled: this.groupMutationPending,
-                options: [...new Set([this.groupDefaultRef, this.groupCheckout.defaultBranch, ...this.groupCheckout.branches].filter(Boolean))].map((value) => ({ value, label: value })),
-                searchable: true, searchPlaceholder: "Search branches or enter a commit",
-                customOption: (query) => query.trim() ? { value: query.trim(), label: query.trim() } : null,
-                onChange: (value) => { this.groupDefaultRef = value; } })}
-            </div>
-            ${this.groupDefaultMode === "worktree" ? html`<p class="exec-approval-sub">Choose a branch suffix when starting each session.</p>` : null}
-          ` : null}
         ` : action === "delete" ? html`
           <div class="exec-approval-sub">The group is removed. Its sessions move back to OTHER.</div>
         ` : html`
-          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" .value=${state.action === "rename" ? state.group.label : ""} /></label>
+          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" .value=${state.group.label} /></label>
         `}
         ${this.groupMutationError ? html`<p class="group-action-dialog__error" role="alert">${this.groupMutationError}</p>` : null}
         <div class="exec-approval-actions">
-          <button type="submit" class="btn ${action === "delete" ? "danger" : "primary"}" ?disabled=${this.groupMutationPending || (action === "defaults" && (this.groupCheckoutLoading || Boolean(this.groupCheckoutError)))}>${this.groupMutationPending ? "Saving…" : action === "delete" ? "Delete" : action === "new" ? "Create group" : "Save"}</button>
+          <button type="submit" class="btn ${action === "delete" ? "danger" : "primary"}" ?disabled=${this.groupMutationPending || ((action === "defaults" || action === "new") && this.groupCheckoutBlocked())}>${this.groupMutationPending ? "Saving…" : action === "delete" ? "Delete" : action === "new" ? "Create group" : "Save"}</button>
           <button type="button" class="btn" @click=${this.closeGroupAction}>Cancel</button>
         </div>
       </form>
     </dialog>`;
   }
 
+  /** The sleep-prevention notice's state; its buttons change that state and leave focus to the chat that draws it. */
+  private powerNoticeState(): PowerNoticeProps {
+    return {
+      power: this.control.power,
+      dismissed: this.control.powerNoticeDismissed,
+      onTurnOff: () => this.control.setLidAwake(false),
+      onDismiss: () => this.control.dismissPowerNotice(),
+    };
+  }
+
+  /** The notice a chat this element renders draws in flow, its buttons returning focus to that chat's composer. */
+  private chatPowerNotice(notice: PowerNoticeProps | undefined): PowerNoticeProps | undefined {
+    if (!notice) return undefined;
+    const focusComposer = () => this.embeddedPane ? this.composerEditor?.focus() : this.focusActiveComposer();
+    return {
+      ...notice,
+      onTurnOff: () => { notice.onTurnOff(); focusComposer(); },
+      onDismiss: () => { notice.onDismiss(); focusComposer(); },
+    };
+  }
+
   private homeProps(): HomeProps {
+    const sessionId = this.conversation.selected?.id;
     const launchModels = this.control.pi?.model.catalog ?? [];
     const launchModel = resolveLaunchModel(
       launchModels,
@@ -2620,9 +3042,17 @@ export class HuiApp extends HuiElement {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
       fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
+      // A chat without a Work pane (`/btw` in a bot's chat, or a chat rendered without the multiplexer) draws its side
+      // chat in the inline rail; everywhere else it is a Work view (`views/work/side-chat.ts`).
+      sideChatRail: !this.embeddedPane || Boolean(this.paneBot),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,
+      // The open chat draws the sleep notice in flow under its header; a pane draws the one the shell hands it, so
+      // no pane reads the power state, and the launcher draws none.
+      ...(this.conversation.selected
+        ? { powerNotice: this.chatPowerNotice(this.embeddedPane ? this.panePowerNotice : this.powerNoticeState()) }
+        : {}),
       groups: this.listedGroups,
       findSession: (id) => this.listedSession(id),
       ...(this.paneBot && this.onPaneBotPanel ? { bot: {
@@ -2634,12 +3064,22 @@ export class HuiApp extends HuiElement {
       bots: this.mentionable(),
       onOpenBot: this.embeddedPane ? this.onPaneOpenBot : this.openBot,
       subagents: this.conversation.subagents,
+      childSessions: this.childSessions,
+      runStatusPanelOpen: this.runStatusOpenFor === this.conversation.selected?.id,
+      onRunStatusPanelOpenChange: (open) => {
+        if (sessionId !== this.conversation.selected?.id) return;
+        this.runStatusOpenFor = open ? sessionId ?? "" : "";
+      },
       opening: this.conversation.opening,
       openError: this.conversation.openError,
       streaming: this.conversation.streaming,
       stopping: this.conversation.stopping,
       continuing: this.continuing,
-      chatPreferences: this.control.settings.chat,
+      chatPreferences: {
+        ...this.control.appearance.chat,
+        toolMarks: this.control.settings.chat.toolMarks,
+        toolIcons: this.control.settings.chat.toolIcons,
+      },
       question: this.conversation.question,
       connection: this.conversation.connection,
       copiedId: this.conversation.copiedId,
@@ -2648,6 +3088,7 @@ export class HuiApp extends HuiElement {
       transcriptWindowStart: this.transcriptWindowStart,
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
+      ...(this.embeddedPane && this.paneBotCost ? { botCost: this.paneBotCost } : {}),
       compaction: this.conversation.compaction,
       launching: this.launching,
       note: this.note,
@@ -2657,20 +3098,13 @@ export class HuiApp extends HuiElement {
       savedCopy: this.conversation.savedCopy,
       offlineSupported: typeof window === "undefined" || (window.isSecureContext && "serviceWorker" in navigator),
       onForgetSaved: () => void this.conversation.forgetSaved(),
-      onLaunch: this.launch,
+      onLaunch: this.requestLaunch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
-      onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
-      onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
-        : undefined,
       browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
-      terminalOpening: this.terminalOpening,
-      terminalError: this.terminalError,
       onSelectSubagent: (sessionId) => {
         const openBot = this.embeddedPane ? this.onPaneOpenBot : this.openBot;
         const open = (session: SessionView) => session.bot && openBot ? openBot(session.bot.id) : this.selectSession(session);
@@ -2701,7 +3135,6 @@ export class HuiApp extends HuiElement {
         pendingId: this.backlog.watcherPendingId,
         log: this.backlog.watcherLog,
         expanded: this.expandedActivityIds,
-        onGroupToggle: (open) => this.setActivityExpanded("watchers", open),
         onToggle: this.toggleWatcher,
         onStop: this.backlog.stopWatcher,
         onRestart: this.backlog.restartWatcher,
@@ -2754,21 +3187,14 @@ export class HuiApp extends HuiElement {
         onReview: this.reviewUpdate,
         onDismiss: () => {
           this.updates.dismiss();
-          this.composerTextarea?.focus();
+          this.composerEditor?.focus();
         },
-      })}
-      ${this.embeddedPane ? null : renderPowerNotice({
-        power: this.control.power,
-        dismissed: this.control.powerNoticeDismissed,
-        inert: noticesInert,
-        onTurnOff: () => { this.control.setLidAwake(false); this.composerTextarea?.focus(); },
-        onDismiss: () => { this.control.dismissPowerNotice(); this.composerTextarea?.focus(); },
       })}
       ${this.embeddedPane ? null : renderAppLinkNotice({
         href: this.appLink,
         dismissed: this.appLinkDismissed,
         inert: noticesInert,
-        onDismiss: () => { this.appLinkDismissed = true; this.composerTextarea?.focus(); },
+        onDismiss: () => { this.appLinkDismissed = true; this.composerEditor?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.sessions.actionToast ? html`<div class="app-toast action-toast" data-level=${this.sessions.actionToast.failed ? "error" : "info"}>
@@ -2811,10 +3237,10 @@ export class HuiApp extends HuiElement {
       groups: this.sessions.revision ? this.sessions.groups : undefined,
       mobileNav: this.mobileNavLayout,
       panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
+      // At most one split pane draws the sleep notice, and the shell hands it so panes never read the power state.
+      powerNotice: pane.id === this.work.layout?.activePaneId ? this.powerNoticeState() : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
-      onSplit: controls.split,
-      onTerminal: () => this.work.openTerminal(pane),
       onBrowser: () => this.work.openBrowser(pane),
       onNavigate: (id) => this.work.changePaneSession(pane.id, id),
       onRegistryChange: () => this.refreshSessions(true).then(() => this.updateComplete).then(() => {}),
@@ -2953,15 +3379,34 @@ export class HuiApp extends HuiElement {
           onToggleMachine: this.dashboard.toggleMachine,
         },
         expandedLists: this.dashboard.expandedLists,
+        filters: this.dashboard.filters,
+        busy: this.dashboard.busy,
+        actionError: this.dashboard.actionError,
         now: Date.now(),
         onRetry: this.dashboard.refresh,
         onToggleList: this.dashboard.toggleList,
+        onFilters: this.dashboard.setFilters,
+        onClearFilters: this.dashboard.clearFilters,
+        onDismissActionError: this.dashboard.dismissActionError,
+        onAnswer: this.dashboard.answer,
+        onResume: this.dashboard.resume,
         onOpenSession: this.selectSession,
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
       onOpenStartedSession: this.openStartedSession,
     };
+  }
+
+  private switchGateway = (url: string): void => {
+    void this.gateways.switchTo(url).catch((error: unknown) => {
+      this.sessions.notify(error instanceof Error ? error.message : "Could not switch gateways.", true);
+    });
+  };
+
+  /** The name this page's gateway reports: its Settings health poll once it ran, else the name read at boot. */
+  private get gatewayName(): string {
+    return this.control.health?.name || this.gateways.currentName;
   }
 
   private renderWorkspace() {
@@ -2979,19 +3424,28 @@ export class HuiApp extends HuiElement {
             onCopyPath: this.copyPath,
           },
           ...this.control.props(),
+          gateways: this.gateways.views(this.gatewayName),
+          onAddGateway: () => this.gateways.openAddGateway(),
+          onEditGateway: (gateway) => this.gateways.openEditGateway(gateway, gateway.state === "current" ? this.control.settings.name : undefined),
+          onSwitchGateway: this.switchGateway,
+          onRemoveGateway: (url: string) => this.gateways.remove(url),
+          onRetryGateway: (url: string) => void this.gateways.retry(url),
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
+          canOpenExtensionPanel: Boolean(this.work.layout),
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
             this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
+          onStartChat: () => this.openNewSession(),
           onClose: this.closeSettings,
           ...this.automationProps(),
         })}
         ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${renderUpdateDialog(this.updates.dialogProps())}
+        ${this.renderGatewayDialog()}
         ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       </div>`;
     }
@@ -2999,7 +3453,10 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
+      extensionPages: this.extensionPages,
+      activeExtensionPageId: this.activeExtensionPageId,
+      onOpenExtensionPage: (id: string) => this.navigate({ kind: "extension-page", id }),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
@@ -3041,6 +3498,7 @@ export class HuiApp extends HuiElement {
       onOpenKanban: () => this.navigate({ kind: "kanban" }),
       onOpenPage: this.openPage,
       onSelectSession: this.selectSession,
+      onOpenBot: this.openBot,
       onSplitSession: this.openSplitSession,
       onToggleGroup: this.sessions.toggleGroup,
       toggledSessionTrees: this.sessions.toggledSessionTrees,
@@ -3080,17 +3538,29 @@ export class HuiApp extends HuiElement {
       onOpenSettings: () => {
         this.openSettings();
       },
+      gateways: this.gateways.views(this.gatewayName),
+      onSwitchGateway: this.switchGateway,
+      onAddGateway: () => this.gateways.openAddGateway(),
+      gatewayOffline: this.sessions.unreachable,
+      onRetryGateway: () => { void this.refreshSessions(); },
       onSearch: this.updateSearch,
     };
 
+    // New Session draws the launch form, not a chat pane, so it keeps the
+    // shell's topbar on a phone: merging the chrome would leave the page with
+    // no Open navigation control and no way back to the drawer.
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.conversation.selected)) ||
-      this.view === "bot" ||
-      (this.view === "surface" && this.activePage?.id === "new-session");
+      this.view === "bot";
 
     return html`<div
       class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
       @keydown=${closeDrawerOnEscape}
+      @pointerdown=${startDrawerSwipe}
+      @touchstart=${trackDrawerEdgeTouch}
+      @touchmove=${holdDrawerEdgeDrag}
+      @touchend=${endDrawerEdgeTouch}
+      @touchcancel=${endDrawerEdgeTouch}
     >
       ${renderSidebar(props)}
       ${this.renderGroupActionDialog()}
@@ -3103,6 +3573,7 @@ export class HuiApp extends HuiElement {
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${renderUpdateDialog(this.updates.dialogProps())}
+      ${this.renderGatewayDialog()}
       ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       ${renderMain(
         props,
@@ -3110,6 +3581,8 @@ export class HuiApp extends HuiElement {
           ? this.renderSessionMultiplex()
           : this.view === "bot"
             ? this.renderBotWorkspace()
+          : this.view === "surface" && this.activeExtensionPageId
+            ? html`<hui-extension-page .extensionId=${this.activeExtensionPageId}></hui-extension-page>`
           : this.view === "kanban"
             ? renderKanbanPage({
                 groups: this.listedGroups,

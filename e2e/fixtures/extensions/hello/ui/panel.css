@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; font: 14px/1.4 system-ui, sans-serif; }
+body { margin: 16px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+p { margin: 0 0 12px; opacity: 0.75; }
+button { margin-left: 6px; }
+output { display: block; margin-top: 12px; font-weight: 600; }
+output[data-status="error"] { color: #b3261e; }

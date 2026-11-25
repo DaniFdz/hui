@@ -10,6 +10,7 @@
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { agentReplyTo } from "../../server/bots-format.ts";
+import { chiefsScripts } from "./chiefs-scene.ts";
 
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
@@ -21,7 +22,7 @@ type Call = { name: string; input: Record<string, unknown> };
  * and a script's first calls on the message that started it. */
 type Turn = { wait?: number; think?: string; say?: string | ((results: string[]) => string); calls?: Call[] | ((results: string[], prompt: string) => Call[]) };
 /** A script starts when the latest user message contains `when`; `title` and `branch` answer HUI's naming prompts. */
-type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
+export type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
 const page = (path: string) => `http://127.0.0.1:${port}${path}`;
 /** The Datadog widget graph the recorder uploads (PUT /demo/datadog-graph.png) and HUI fetches as its snapshot. */
@@ -45,6 +46,24 @@ function terminalId(results: string[]): string {
 function replyTo(prompt: string): string {
   return agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })();
 }
+/** The task progress card HUI asks the utility model for after a settled turn: the summary and plan its parser reads,
+ * picked by what the conversation is about. */
+const PROGRESS_CARDS: readonly [match: string, summary: string, steps: string[]][] = [
+  ["toCsv", "The CSV export is written; the tests are running in the project.",
+    ["done: read the orders page", "done: write the CSV formatter", "doing: run the tests", "todo: report back"]],
+  ["formatTotal", "Totals are formatted, and the tests in your terminal come next.",
+    ["done: write the currency formatter", "doing: use it on the orders page", "todo: run the tests"]],
+  ["merchant validation", "Apple Pay is in the payment sheet; merchant validation is the last piece.",
+    ["done: wire Apple Pay into the payment sheet", "doing: add the merchant validation endpoint", "todo: cover it with a Safari test"]],
+  ["ownership check", "The reviews are in; the ownership check is the next fix.",
+    ["done: read the refund endpoint", "done: run the three reviews", "doing: add the ownership check", "todo: leave partial-refund tests"]],
+];
+function progressAnswer(digest: string): string {
+  const [, summary, steps] = PROGRESS_CARDS.find(([match]) => digest.includes(match))
+    ?? ["", "The change is underway.", ["done: read the request", "doing: work through the change", "todo: report back"]];
+  return [`Summary: ${summary}`, "Plan:", ...steps.map((step) => `- ${step}`)].join("\n");
+}
+
 /** A browser snapshot's ref for an element, from the latest result that has it; a page without it fails the turn. */
 function ref(results: string[], pattern: RegExp): string {
   for (const result of results) {
@@ -100,6 +119,36 @@ button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;backgr
 <label for="team">Team name</label><input id="team" placeholder="Acme Inc.">
 <button id="create">Create account</button><div id="result" role="status"></div></main>
 <script>document.getElementById("create").addEventListener("click",()=>{const email=document.getElementById("email").value;document.getElementById("result").textContent=email?"Welcome aboard! We sent a link to "+email+".":"Enter your email."});</script>
+</body></html>`;
+
+/** The checkout page the phone clip pays on: one order, its total, and a Confirm button whose status line is the only
+ * proof the payment went through. Its layout is fixed so a tap through the live view lands on the button: the operator
+ * sees the page's image, never its DOM. */
+const CHECKOUT_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Acme · Checkout</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#f8fafc;color:#0f172a}
+body{font:16px/1.5 -apple-system,system-ui,sans-serif}
+main{position:relative;height:100vh;box-sizing:border-box;padding:28px 26px}
+header{font-size:13px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#94a3b8}
+h1{margin:24px 0 8px;font-size:28px;letter-spacing:-.01em}
+.order{margin:0;font-size:17px;color:#475569}
+.total{position:absolute;left:26px;right:26px;top:210px;font-size:58px;font-weight:700;letter-spacing:-.02em}
+.terms{position:absolute;left:26px;right:26px;top:294px;font-size:15px;color:#64748b}
+button{position:absolute;left:26px;right:26px;top:560px;height:76px;border:0;border-radius:14px;background:#4f46e5;color:#fff;font:600 21px system-ui;cursor:pointer}
+button:disabled{background:#a5b4fc}
+#result{position:absolute;left:26px;right:26px;top:660px;font-size:15px;font-weight:600;line-height:1.45;color:#15803d}
+</style></head>
+<body><main>
+<header>Acme Store · Secure checkout</header>
+<h1>Order #A-1042</h1>
+<p class="order">Acme annual plan for the storefront team.</p>
+<div class="total">$240.00</div>
+<div class="terms">Billed once, renews in 12 months.</div>
+<button id="confirm">Confirm payment</button>
+<p id="result" role="status"></p>
+</main>
+<script>document.getElementById("confirm").addEventListener("click",()=>{document.getElementById("result").textContent="Payment confirmed. $240.00 charged to the card ending 4242.";document.getElementById("confirm").disabled=true;});</script>
 </body></html>`;
 
 const scripts: Script[] = [
@@ -185,6 +234,14 @@ const scripts: Script[] = [
       { wait: 600, say: "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging." },
     ],
   },
+  // Subagents: a goal the conversation keeps pursuing after the reviews are in.
+  {
+    when: "Continue the goal.",
+    turns: [
+      { wait: 900, think: "The ownership check is in and the watcher merges #142 when CI is green. Two follow-ups are left.", calls: [{ name: "read", input: { path: "src/refunds/route.js" } }] },
+      { wait: 1_400, say: "Goal update: the ownership check is in, and **#142** merges when CI passes. Left to do: batch the line-item queries, and add the partial-refund and over-refund tests." },
+    ],
+  },
   {
     when: "Fix the ownership check",
     title: "Review PR #142 in parallel",
@@ -214,6 +271,16 @@ const scripts: Script[] = [
       { say: (results) => /pass 3\b/u.test(results[0] ?? "")
         ? "Done: totals now show as **$1,234.50**. The formatter is in `src/orders/format-total.js`, and its 3 tests pass in your terminal."
         : `The tests did not pass in your terminal: ${(results[0] ?? "").slice(-300)}` },
+    ],
+  },
+  // Share: a link shared from a phone opens a session, whose agent reads the code the post is about.
+  {
+    when: "Look this post in Instagram",
+    title: "Order totals from an Instagram post",
+    branch: "order-totals-currency",
+    turns: [
+      { wait: 700, think: "An order total shown as 1234.5. Let me read how the orders page builds its rows.", calls: [{ name: "read", input: { path: "src/orders/orders-page.js" } }] },
+      { wait: 500, say: "That's a real one: the orders page returns `rows: orders`, so `total` prints as **1234.5**. I'd put a currency formatter in front of it and cover the rounding with a test. Want me to start?" },
     ],
   },
   // Phone: checking in on a session.
@@ -308,6 +375,68 @@ const scripts: Script[] = [
     when: "Reverted acme/payments-api#148",
     turns: [{ wait: 900, say: "Resolved: #148 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
+  // Bots: a chief starts the sessions itself, with one brief each.
+  {
+    when: "Start the orders CSV export",
+    turns: [
+      { wait: 900, think: "Two pieces of storefront work, two sessions: the export and the flaky test.", say: "Splitting this into two sessions, one brief each.", calls: [
+        { name: "create_session", input: {
+          title: "Orders CSV export",
+          group: "Storefront",
+          watch: false,
+          prompt: "Add the CSV export button to the orders page. Read src/orders/orders-page.js, build the CSV from the rows the page already holds, cover it in test/export-csv.test.js, and run `node --test`. Report what you saw.",
+        } },
+        { name: "create_session", input: {
+          title: "Flaky checkout test",
+          group: "Storefront",
+          watch: false,
+          prompt: "Fix the flaky checkout e2e test: it clicks Pay before the totals request settles. Read test/checkout.spec.js, make the click wait for the totals response, then run the spec ten times.",
+        } },
+      ] },
+      { wait: 1_800, say: "Two sessions are up: **Orders CSV export** and **Flaky checkout test**, each with its own brief. They work in the storefront checkout, and I keep an eye on both." },
+    ],
+  },
+  {
+    when: "Add the CSV export button",
+    title: "Orders CSV export",
+    turns: [{ wait: 600, say: "The export is ready: `toCsv()` writes the header and one row per order, and `node --test` passes all four tests." }],
+  },
+  {
+    when: "Fix the flaky checkout e2e test",
+    title: "Flaky checkout test",
+    turns: [{ wait: 600, say: "The test is fixed: the click waits for the totals response, and the spec passed ten runs in a row." }],
+  },
+  // On your phone: the agent opens the checkout, and the operator takes the page to pay.
+  {
+    when: "Pay for the storefront order",
+    title: "Confirm the checkout payment",
+    turns: [
+      { wait: 600, think: "I'll open the checkout at phone size and read the order first.", calls: () => [{ name: "browser", input: { action: "open", url: page("/demo/checkout") } }] },
+      { wait: 700, calls: () => [{ name: "browser", input: { action: "resize", width: 390, height: 844 } }] },
+      { wait: 500, calls: () => [{ name: "browser", input: { action: "text", selector: ".total" } }] },
+      { wait: 600, say: (results) => {
+        const total = /\$[\d.,]+/u.exec(results[0] ?? "")?.[0];
+        return total
+          ? `The order total is **${total}**. I can't confirm a payment myself: take control of the page, tap **Confirm payment**, and tell me to continue.`
+          : "The checkout page did not show a total, so I can't tell you what this order costs.";
+      } },
+    ],
+  },
+  {
+    when: "Did the payment go through?",
+    turns: [
+      { wait: 500, calls: () => [{ name: "browser", input: { action: "text" } }] },
+      { wait: 600, say: (results) => {
+        // Only what the page really says: a missing line is never reported as a payment.
+        const confirmed = /Payment confirmed[^\n]*/u.exec(results[0] ?? "")?.[0];
+        return confirmed
+          ? `Yes: the checkout page says **${confirmed}**`
+          : "The page does not say the payment went through, so I can't confirm it.";
+      } },
+    ],
+  },
+  // The chiefs clip's delegation and the three sessions it starts, kept beside the scene (chiefs-scene.ts).
+  ...chiefsScripts,
 ];
 
 // Anthropic Messages streaming.
@@ -357,6 +486,10 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return response.end(SIGNUP_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/demo/checkout") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    return response.end(CHECKOUT_PAGE);
+  }
   if (url.pathname === "/demo/datadog-graph.png" && request.method === "PUT") {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(chunk as Buffer);
@@ -391,6 +524,7 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
   }
   // HUI's naming prompts quote the first message or task.
   const named = scripts.find((script) => source.includes(script.when));
+  if (source.includes("Track the task progress of this coding-agent session")) return plain(response, progressAnswer(source));
   if (source.includes("Name this coding-agent session and its Git branch")) return plain(response, `Title: ${named?.title ?? "Demo session"}\nBranch: ${named?.branch ?? "demo-change"}`);
   if (source.includes("Generate a concise session title")) return plain(response, named?.title ?? "Demo session");
   if (source.includes("Name the Git branch")) return plain(response, named?.branch ?? "demo-change");

@@ -190,11 +190,25 @@ test("renders inline and display math without treating ordinary currency as math
 });
 
 test("renders GitHub-style alert blockquotes and preserves ordinary quotes", () => {
+  // The markup the composer's note block draws is this one (`../composer/rich/schema.ts`'s `toDOM`), so a note draft and
+  // the transcript it becomes are the same callout: the kind's class, its label as the aria-label and the title.
+  assert.equal(
+    markdownToHtml("> [!NOTE]\n> hi"),
+    '<aside class="markdown-alert markdown-alert--note" aria-label="Note"><div class="markdown-alert__title">Note</div><div class="markdown-alert__body"><p>hi</p>\n</div></aside>\n',
+  );
   const html = markdownToHtml("> [!WARNING]\n> Check **the inputs**.\n\n> Ordinary quote");
   assert.match(html, /<aside class="markdown-alert markdown-alert--warning" aria-label="Warning">/u);
   assert.match(html, /<div class="markdown-alert__title">Warning<\/div>/u);
   assert.match(html, /Check <strong>the inputs<\/strong>\./u);
   assert.match(html, /<blockquote>\n<p>Ordinary quote<\/p>\n<\/blockquote>/u);
+  // Only the five kinds are an alert, and only a quote's first line names one: everything else is the quote it reads as.
+  assert.equal(markdownToHtml("> [!FOO]"), "<blockquote>\n<p>[!FOO]</p>\n</blockquote>\n");
+  assert.equal(markdownToHtml("> one\n> [!NOTE]"), "<blockquote>\n<p>one<br>\n[!NOTE]</p>\n</blockquote>\n");
+  // An alert inside a quote nests in it.
+  assert.equal(
+    markdownToHtml("> > [!NOTE]\n> > body"),
+    '<blockquote>\n<aside class="markdown-alert markdown-alert--note" aria-label="Note"><div class="markdown-alert__title">Note</div><div class="markdown-alert__body"><p>body</p>\n</div></aside>\n</blockquote>\n',
+  );
 });
 
 test("embeds only isolated bare X post URLs and keeps other link forms ordinary", () => {
@@ -285,4 +299,77 @@ test("file references are escaped and absent from other Markdown", () => {
   assert.match(html, /<hui-file-ref data-path="\/srv\/app\/main\.go" data-line="3">x<\/hui-file-ref>/u);
   assert.doesNotMatch(html, /javascript:/u);
   assert.match(agentMarkdownToHtml("`a/<b>.ts`"), /<code>a\/&lt;b&gt;\.ts<\/code>/u);
+});
+
+test("keeps in-app Markdown links as links and still wraps real file paths", () => {
+  const html = agentMarkdownToHtml([
+    "[open the chat](/sessions/abc-123) [settings](/settings/models)",
+    "",
+    "[a file](docs/design.md) [a folder](/abs/dir/x.md)",
+  ].join("\n"));
+  assert.match(html, /<a href="\/sessions\/abc-123">open the chat<\/a>/u, "a chat link stays the link the app navigates");
+  assert.match(html, /<a href="\/settings\/models">settings<\/a>/u, "so does a Settings link");
+  assert.equal(html.match(/<hui-file-ref /gu)?.length, 2, "the in-app links are not file references");
+  assert.match(html, /<hui-file-ref data-path="docs\/design\.md">a file<\/hui-file-ref>/u);
+  assert.match(html, /<hui-file-ref data-path="\/abs\/dir\/x\.md">a folder<\/hui-file-ref>/u);
+});
+
+test("a session reference becomes a chip in prose and nowhere else", () => {
+  const chip = (query: string, typed = query) => `<hui-session-ref data-query="${query}">session:${typed}</hui-session-ref>`;
+  const prose = agentMarkdownToHtml("See session:195c3659 and session:195c3659-aaaa-4aaa-8aaa-aaaaaaaaaaaa.");
+  assert.match(prose, new RegExp(chip("195c3659"), "u"), "a hex prefix of eight characters is a chip");
+  assert.match(prose, new RegExp(chip("195c3659-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), "u"), "so is a full id");
+  assert.match(prose, /<p>See <hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref> and/u, "the prose around it is untouched");
+
+  const kept = agentMarkdownToHtml([
+    "`session:195c3659`",
+    "$session:195c3659$",
+    "```",
+    "session:195c3659",
+    "```",
+    "[session:195c3659](/sessions/195c3659-aaaa-4aaa-8aaa-aaaaaaaaaaaa)",
+    "xsession:195c3659 a/session:195c3659 session:195c365 session:195c365z",
+  ].join("\n\n"));
+  assert.match(kept, /<code>session:195c3659<\/code>/u, "an inline code span stays code");
+  assert.match(kept, /<a href="\/sessions\/195c3659-aaaa-4aaa-8aaa-aaaaaaaaaaaa">session:195c3659<\/a>/u, "a link's own label stays the link");
+  assert.match(kept, /xsession:195c3659 a\/session:195c3659 session:195c365 session:195c365z/u, "a reference inside a word, a path or with no hex after it is prose");
+  assert.equal(kept.match(/<hui-session-ref /gu)?.length ?? 0, 0, "math, a fence and a link label never hold a chip");
+  assert.doesNotMatch(markdownToHtml("session:195c3659"), /hui-session-ref/u, "the plain parser (user text, hovercards) never chips");
+});
+
+test("a session reference ends at a separator and never swallows the one after it", () => {
+  // The run is hexadecimal digits and dashes: a separator ends it instead of joining the query.
+  assert.match(
+    agentMarkdownToHtml("See session:195c3659_."),
+    /<hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref>_/u,
+    "a trailing underscore ends the run, the chip is drawn and the `_` stays text",
+  );
+
+  // An underscore glued to another word makes one word, so the first reference here is prose; the scan resumes after
+  // its `session:` prefix and still finds the second, which the greedy run used to swallow.
+  const glued = agentMarkdownToHtml("See session:0badc0de_session:195c3659.");
+  assert.match(
+    glued,
+    /<p>See session:0badc0de_<hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref>\.<\/p>/u,
+    "the first is the text that was typed, the second is the chip",
+  );
+  assert.equal(glued.match(/<hui-session-ref /gu)?.length ?? 0, 1, "exactly one chip");
+
+  // A script that runs on without spaces between words is not a word the run is glued to.
+  assert.match(
+    agentMarkdownToHtml("chat session:195c3659です"),
+    /<hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref>です/u,
+    "CJK text right after the reference is text beside the chip, not part of a longer word",
+  );
+});
+
+test("a session reference inside a file reference's label stays plain", () => {
+  const html = agentMarkdownToHtml("[session:195c3659](docs/design.md)");
+  assert.match(html, /<hui-file-ref data-path="docs\/design\.md">session:195c3659<\/hui-file-ref>/u, "the link is the file reference, its label untouched");
+  assert.doesNotMatch(html, /hui-session-ref/u, "a file reference is one control: its label never chips inside it");
+  assert.match(
+    agentMarkdownToHtml("See session:195c3659"),
+    /<hui-session-ref data-query="195c3659">session:195c3659<\/hui-session-ref>/u,
+    "the same text in prose still chips",
+  );
 });

@@ -1,7 +1,8 @@
 /**
  * Appearance preferences that are not themes: independent interface/chat
- * typefaces and the shared type scale. The font catalogue and stacks mirror
- * OpenClaw 2026.9.5; settings.ts owns persistence.
+ * typefaces, the shared type scale and the accent preset validator. The font
+ * catalogue and stacks mirror OpenClaw 2026.9.5; `appearance/store.ts` owns
+ * persistence, on this device.
  */
 
 const FALLBACK_STACKS = {
@@ -134,6 +135,16 @@ export function normalizeAppearance(fontUi: unknown, fontChat: unknown, textScal
     fontChat: fontChat === undefined ? normalizedUi : normalizeTypeface(fontChat),
     textScale: TEXT_SCALE_STOPS.find((stop) => stop === scale) ?? DEFAULT_APPEARANCE.textScale,
   };
+}
+
+/**
+ * A complete hex accent override, or an empty string for the theme's own accent. A preset's own value passes
+ * unchanged, so a stored choice always names one of `ACCENTS` or a colour this browser's picker produced.
+ */
+export function normalizeAccent(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().toLowerCase();
+  return ACCENTS.some((item) => item.value === normalized) || /^#[0-9a-f]{6}$/u.test(normalized) ? normalized : "";
 }
 
 function typeface(id: TypefaceId): (typeof TYPEFACES)[number] {

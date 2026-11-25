@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { binding, HELP, parseCli } from "./main.ts";
+import { BROWSER_IMPORT_NEEDS_FILE } from "./commands.ts";
 
 test("CLI parses doctor with only --fix and --json", () => {
   assert.equal(parseCli(["doctor"]).command, "doctor");
@@ -44,6 +45,28 @@ test("CLI parses workers commands, their target and only their own flags", () =>
     ["workers", "remove"], ["workers", "remove", "box", "extra"], ["workers", "list", "box"], ["workers", "remove", "box", "--name", "x"], ["workers", "sync"], ["doctor", "--name", "x"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
+});
+
+test("CLI parses the browser cookie import, its one file unchanged and no other word after browser", () => {
+  const imported = parseCli(["browser", "cookies", "import", "/home/me/exports/state.json"]);
+  assert.equal(imported.command, "browser cookies import");
+  assert.deepEqual(imported.operands, ["/home/me/exports/state.json"]);
+  assert.deepEqual({ ...parseCli(["browser", "cookies", "import", "/home/me/exports/state.json", "--json"]).values }, { json: true });
+  // The path is the operator's, kept exactly as typed: a relative one and `-` are the route's to refuse.
+  for (const path of ["cookies.json", "-", "/home/me/My Cookies.json"]) assert.deepEqual(parseCli(["browser", "cookies", "import", path]).operands, [path], path);
+  assert.equal(parseCli(["browser"]).command, "browser", "browser alone is still the alias of ui");
+  assert.equal(parseCli(["browser", "--no-open"]).values["no-open"], true);
+  for (const [args, message] of [
+    [["browser", "cookies"], "Unknown command. Run hui --help."],
+    [["browser", "cookies", "nope"], "Unknown command. Run hui --help."],
+    [["browser", "nope"], "Unknown command. Run hui --help."],
+    [["browser", "cookies", "import"], BROWSER_IMPORT_NEEDS_FILE],
+    [["browser", "cookies", "import", "a.json", "b.json"], BROWSER_IMPORT_NEEDS_FILE],
+    [["browser", "cookies", "import", "/home/me/state.json", "--no-open"], "--no-open is not valid for browser cookies import."],
+  ] as const) {
+    assert.throws(() => parseCli([...args]), (error: unknown) => error instanceof Error && error.message === message, args.join(" "));
+  }
+  assert.match(HELP, /^ {2}hui browser cookies import <file> \[--json\]$/mu);
 });
 
 test("CLI parses bot commands, accepting bot and bots, with their operands and only their own flags", () => {
@@ -268,6 +291,27 @@ test("CLI parses the shell completion program it prints, and nothing else for it
   assert.equal(parsed.command, "completion");
   assert.ok("shell" in parsed && parsed.shell === "zsh");
   for (const args of [["completion"], ["completion", "fish"], ["completion", "bash", "--json"], ["completion", "bash", "extra"]]) {
+    assert.throws(() => parseCli(args), Error, args.join(" "));
+  }
+});
+
+test("CLI parses extension list and toggles, and refuses a missing or extra id", () => {
+  assert.equal(parseCli(["extension"]).command, "extension list");
+  assert.equal(parseCli(["extension", "list"]).command, "extension list");
+  assert.equal(parseCli(["extensions", "list"]).command, "extension list");
+  const enable = parseCli(["extension", "enable", "hello"]);
+  assert.equal(enable.command, "extension enable");
+  assert.equal("target" in enable ? enable.target : undefined, "hello");
+  assert.equal(parseCli(["extension", "disable", "hello", "--json"]).values.json, true);
+  const add = parseCli(["extension", "add", "/tmp/hello", "--link"]);
+  assert.equal(add.command, "extension add");
+  assert.equal("target" in add ? add.target : undefined, "/tmp/hello");
+  assert.equal(add.values.link, true);
+  const remove = parseCli(["extension", "remove", "hello", "--delete"]);
+  assert.equal(remove.command, "extension remove");
+  assert.equal("target" in remove ? remove.target : undefined, "hello");
+  assert.equal(parseCli(["extension", "reload", "hello"]).command, "extension reload");
+  for (const args of [["extension", "enable"], ["extension", "disable", "hello", "extra"], ["extension", "list", "extra"], ["extension", "enable", "hello", "--force"], ["extension", "add"], ["extension", "remove"], ["extension", "reload"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
 });

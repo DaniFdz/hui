@@ -33,9 +33,25 @@ test("golden frames decode and malformed frames are rejected", async () => {
   ]) assert.equal(decodeBrowserFrame(bad), undefined);
 });
 
+test("a handoff carries who holds the tab, and an older state is the agent's wait", () => {
+  const handoffOf = (value: unknown) => {
+    const message = parseBrowserViewMessage({
+      type: "state", running: true, tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }],
+      current: "t1", watching: "t1", following: true, handoff: value,
+    });
+    return message?.type === "state" ? message.handoff : undefined;
+  };
+  assert.deepEqual(handoffOf({ tabId: "t1", message: "You took control. The agent is stopped.", since: "now", by: "operator" }), {
+    tabId: "t1", message: "You took control. The agent is stopped.", since: "now", by: "operator",
+  });
+  assert.deepEqual(handoffOf({ tabId: "t1", message: "Sign in.", since: "now" }), { tabId: "t1", message: "Sign in.", since: "now", by: "agent" }, "a state from before the field is the agent's wait");
+  assert.equal(handoffOf({ tabId: "t1", message: "Sign in.", by: "someone" })?.by, "agent", "an unknown holder is the agent");
+  assert.equal(handoffOf({ message: "Sign in.", by: "operator" }), null, "a handoff naming no tab is none");
+});
+
 test("view messages are validated before the pane uses them", () => {
   assert.deepEqual(parseBrowserViewMessage({ type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: 7, url: "u" }, { id: "../x" }, null], current: "t1", watching: "bogus", following: false }), {
-    type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: "", url: "u" }], current: "t1", watching: null, following: false,
+    type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: "", url: "u" }], current: "t1", watching: null, following: false, handoff: null,
   });
   assert.deepEqual(parseBrowserViewMessage({ type: "action", tabId: "t2", text: "Clicked e2", point: { x: 5, y: "7" }, at: "now" }), {
     type: "action", tabId: "t2", text: "Clicked e2", at: "now",

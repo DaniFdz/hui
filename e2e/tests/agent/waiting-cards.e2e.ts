@@ -51,7 +51,7 @@ test("a reload shows the waiting question card from its first question, and the 
   await expect(card.getByText("Where should it run first?")).toBeVisible();
   await hui.reload();
   await expect(card.getByText("What should the first release cover?")).toBeVisible();
-  await expect(card.getByText("1/2")).toBeVisible();
+  await expect(card.getByText("STEP 1 OF 2")).toBeVisible();
   await expect(waiting).toBeVisible();
 
   await send(hui, screen, "Secret reloaded", "E2E_SECRET_REQUEST");

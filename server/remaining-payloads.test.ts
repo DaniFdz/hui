@@ -63,7 +63,7 @@ type UiErrorReport = {
 type UiErrorBatch = { reports: UiErrorReport[]; suppressed: number };
 
 type GatewayHealth = {
-  status: "online"; transport: "HTTP + SSE"; uptimeSeconds: number; access: "Full Access";
+  status: "online"; transport: "HTTP + SSE"; uptimeSeconds: number; access: "Full Access"; name: string;
   sessions: Record<SessionStatus | "registered" | "processes", number>;
 };
 type LocalPathSuggestion = { path: string; kind: "directory" | "file" };

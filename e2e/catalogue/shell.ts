@@ -7,20 +7,18 @@ const GATEWAY = "SPEC.md#installed-gateway";
 const OFFLINE = "SPEC.md#offline-reading-and-connection-recovery";
 const UPDATES = "docs/api.md#browser-updates";
 const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
-const ESCAPE_ONLY =
-  "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.";
 
 const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
     behaviour:
-      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
+      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions, Usage and Settings in that order, with no Home entry, for the Agents and the Bots lists alike. The sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs, and the footer below both lists is this page's gateway.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-002",
@@ -31,7 +29,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-003",
@@ -46,7 +44,7 @@ const cases: UseCase[] = [
       "webawesome-controls",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-004",
@@ -57,7 +55,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-005",
@@ -68,7 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-006",
@@ -79,7 +77,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-007",
@@ -94,13 +92,13 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-011",
     title: "Use the navigation drawer on a narrow screen",
     behaviour:
-      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. Nothing overflows horizontally.",
+      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. A group's + keeps **Open navigation** on New Session instead of leaving its launch form without a way back to the drawer. Nothing overflows horizontally.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page"],
     journeys: [
@@ -110,7 +108,7 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-012",
@@ -126,7 +124,7 @@ const cases: UseCase[] = [
       "sidebar-toolbar",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-013",
@@ -143,7 +141,7 @@ const cases: UseCase[] = [
       "openclaw-primary-ui-parity",
     ],
     web: "required",
-    ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
+    phone: { excluded: "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-014",
@@ -154,11 +152,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: {
-      excluded: "Resizing a browser window; the iPhone app is always narrow.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: { excluded: "Resizing a browser window; the phone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-015",
@@ -174,12 +168,7 @@ const cases: UseCase[] = [
       "update-notice",
     ],
     web: "required",
-    ios: {
-      excluded:
-        "The collapse toggle exists only in the wide layout; the iPhone app is always narrow.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: { excluded: "The collapse toggle exists only in the wide layout; the phone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-018",
@@ -190,10 +179,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["visual-parity-2026-09-24", "shell-navigation"],
     web: "required",
-    ios: {
-      excluded: "A keyboard chord, which an iPhone cannot press.",
-      decision: KEYBOARD,
-    },
+    phone: { excluded: "A keyboard chord, which a phone cannot press.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-019",
@@ -204,7 +190,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
-    ios: "backlog",
+    phone: { excluded: "The search is the *Search or jump to…* palette, which only the ⌘K/Ctrl+K chord opens (SHELL-018); a phone cannot press it, and a session row, a navigation item and a Settings page are each one tap away on their own screens.", decision: KEYBOARD },
   },
   {
     id: "SHELL-020",
@@ -215,12 +201,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: "backlog",
   },
   {
     id: "SHELL-021",
@@ -231,12 +212,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: "backlog",
   },
   {
     id: "SHELL-022",
@@ -247,23 +223,18 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: "backlog",
   },
   {
     id: "SHELL-023",
     title: "Open a long conversation over a slow connection",
     behaviour:
-      "Selecting a long session over a slow link shows *Loading the conversation…* with a progress bar in the transcript area, then the whole conversation arrives intact. It never shows an empty *Start a conversation* or an aborted-request toast meanwhile.",
+      "Selecting a long session over a slow link shows *Loading the conversation…* with skeleton rows in the transcript area, then the whole conversation arrives intact. It never shows an empty *Start a conversation* or an aborted-request toast meanwhile.",
     spec: [BEHAVIOUR, "docs/api.md#post-__huisessionsidopen"],
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-024",
@@ -274,7 +245,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SHELL-025",
@@ -283,8 +254,8 @@ const cases: UseCase[] = [
       "A request the browser could not get to the gateway, or an uncaught error in the page, appears in Logs as a `ui` entry such as *UI request could not reach the gateway*, with repeats merged into one entry with a count. Failures from while the gateway was unreachable appear once it is back, unless the page was reloaded meanwhile.",
     spec: ["docs/api.md#post-__huidiagnosticsui-errors"],
     surfaces: ["route:POST /__hui/diagnostics/ui-errors"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-026",
@@ -295,7 +266,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-027",
@@ -306,7 +277,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-028",
@@ -316,7 +287,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-029",
@@ -327,7 +298,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["clipboard-fallback"],
     web: "required",
-    ios: { excluded: "A fallback for pages without the Clipboard API; the iOS app uses the system clipboard.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+    phone: "required",
   },
   {
     id: "SHELL-031",
@@ -337,8 +308,8 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#get-__huiupdatecheck"],
     surfaces: ["route:GET /__hui/update/check"],
     journeys: ["update-notice"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-032",
@@ -349,7 +320,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-033",
@@ -369,7 +340,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update-notice"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-034",
@@ -380,7 +351,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
-    ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
+    phone: { excluded: "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-035",
@@ -396,7 +367,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-036",
@@ -407,7 +378,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-037",
@@ -418,7 +389,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update"],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-038",
@@ -428,8 +399,8 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#post-__huiupdatecheck"],
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-039",
@@ -440,7 +411,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update"],
     journeys: ["update"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-040",
@@ -450,8 +421,8 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#post-__huiupdate"],
     surfaces: ["route:POST /__hui/update", "route:GET /__hui/update"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-041",
@@ -462,7 +433,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:GET /__hui/update"],
     journeys: ["update"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-042",
@@ -472,8 +443,8 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-043",
@@ -487,21 +458,17 @@ const cases: UseCase[] = [
         "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.",
       decision: "SPEC.md#desktop-downloads-ask-where-to-save-them",
     },
-    ios: {
-      excluded:
-        "The save dialog is a macOS desktop app behaviour; the iPhone app has no file save dialog.",
-      decision: "SPEC.md#desktop-downloads-ask-where-to-save-them",
-    },
+    phone: { excluded: "The save dialog is the desktop app's; the phone app hands a download to the system's own download handling.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
   },
   {
     id: "SHELL-044",
     title: "Open a saved conversation without the gateway",
     behaviour:
-      "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The composer keeps its draft, the band under it reads Saved conversation · draft preserved. Send waits for a live connection. and Send message stays disabled.",
+      "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The last saved row is followed by a placeholder saying newer messages may follow. The composer keeps its draft, Send message stays disabled, and the band under it spins with the live connection note (for example Reconnecting; your draft stays on this device.).",
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-045",
@@ -511,7 +478,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-046",
@@ -521,32 +488,139 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-047",
     title: "Use a phone's chat without a second header row",
     behaviour:
-      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers. The Task progress card starts folded to its current step and count, and opening it shows its steps.",
+      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers, and the actions group's leftmost Run status control keeps its mark and dot-only live-work indicator, without a plan count. Like every window, a phone's Run status popover opens only when the operator presses that trigger: the Plan is always open with a noninteractive section head, done/total and Recompute, and the panel's whole first line is that close — the pill's mark, state word, count, live dots and the head's own padding as one button named by the copy it shows, with the chevron held in the pill's slot at the box's right edge as its decorative mark — so a tap or press anywhere on that line closes the panel and the pill paints again. The navigation menu is the header's leading control at its left edge, the 318px-wide panel's top-right equals the actions group's top-right and its left edge clears that menu (panel.x >= menu.x + menu.width), and a tap on navigation dismisses the open panel in the same press that opens the drawer.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
-    ios: {
-      excluded:
-        "The iPhone app draws its own chat header and does not use the web's narrow layout or its header chooser.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
+    phone: "required",
   },
   {
     id: "SHELL-048",
     title: "Widen or narrow the sidebar",
-    behaviour: "Dragging the boundary at the sidebar's right edge widens or narrows it, and it stops at 200px and at 460px. The boundary is a separator named **Resize sidebar** that also takes the arrow keys, 16px a press and 48px with Shift, and the sidebar comes back at the width it was left at after a reload.",
+    behaviour: "Dragging the boundary at the sidebar's right edge widens or narrows it, and it stops at 200px and at 460px. The boundary is a separator named **Resize sidebar** that also takes the arrow keys, 16px a press and 48px with Shift, and the sidebar comes back at the width it was left at after a reload. The Settings shell's rail is the same sidebar at the same width, with the same boundary, and resizing either one moves both.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation"],
     web: "required",
-    ios: { excluded: "The iPhone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+    phone: { excluded: "The phone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "SHELL-050",
+    title: "Clear of the phone's own chrome",
+    behaviour:
+      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
+    spec: [LAYOUT],
+    surfaces: ["nav:session", "nav:home"],
+    journeys: ["phone", "shell-navigation"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-049",
+    title: "See this page's gateway and switch from the sidebar footer",
+    behaviour:
+      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page (the native app rebuilds its bridge on that gateway), and **Add a gateway…** opens the Add gateway dialog in place, with its **Name** and **Address**, the same dialog Settings → Gateway uses.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", GATEWAY, "docs/api.md#adding-a-gateway"],
+    surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
+    journeys: ["gateway-settings"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-051",
+    title: "Close the gateway menu with Escape",
+    behaviour: "Escape closes the open gateway picker and returns focus to the sidebar's gateway button.",
+    spec: ["SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
+    surfaces: [],
+    journeys: ["gateway-settings"],
+    web: "required",
+    phone: { excluded: "Escape and its focus-return path require a hardware keyboard; the gateway menu itself is shared as SHELL-049.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "SHELL-052",
+    title: "Keep gateway links and switches inside the desktop window",
+    behaviour:
+      "In HUI's desktop app, switching to another gateway — **Switch** in Settings → Gateway, or choosing it in the sidebar footer — loads that gateway in the same window, and so does a link to a gateway this device lists or to one on this device's own network that answers as HUI. A `hui://` chat link opens its chat on the gateway the window shows. A page of the gateway on screen that asks for a new tab still opens in the browser, and a public web or mail link still opens in the system browser. View → Back returns to the gateway left behind. A phone has no such window: switching rebuilds its native bridge in place (SHELL-049), and a link to another gateway is the system browser's.",
+    spec: ["SPEC.md#the-window-belongs-to-the-gateways-this-device-knows", "SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11"],
+    surfaces: [],
+    web: {
+      excluded:
+        "Switching gateways happens in the page on the web, but keeping the window belongs to HUI's Electron shell, which the web runner cannot drive; desktop/main.test.mjs covers the switch, the gateways this device lists, the identity handshake and the links left to the browser.",
+      decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+    phone: {
+      excluded:
+        "A phone has no window to keep and no View → Back: switching rebuilds its native bridge on the chosen gateway (SHELL-049, proved on the android target), and its WebView hands a link to another origin to the system browser (SPEC.md \"The phone apps wrap the web UI\").",
+      decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+  },
+  {
+    id: "SHELL-053",
+    title: "Sit the composer on the phone's keyboard",
+    behaviour:
+      "While the phone's soft keyboard is open the composer ends on its top edge instead of keeping the home-indicator gap, and the native strip the keyboard uncovers is painted in the page's own background rather than black. New Session's recent chats below the composer make way until the keyboard closes.",
+    spec: [LAYOUT, "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09"],
+    surfaces: [],
+    journeys: ["phone"],
+    web: "required",
+    phone: {
+      excluded:
+        "Neither phone target can open a soft keyboard: the Android app's is the system's and WebKit has none. The device procedure in e2e/phone.browser.md checks the real keyboard and the iOS window colour.",
+      decision: "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09",
+    },
+  },
+  {
+    id: "SHELL-054",
+    title: "Read a session's name in the phone drawer",
+    behaviour:
+      "On a phone-sized screen the navigation drawer stays at 86% of the width, up to 320px, and a session row gives its name the width it saves by keeping one trailing control, **Actions for <name>**, whose menu still carries **Pin session** and **Unpin session**, and by dropping the empty details slot. Nothing overflows sideways.",
+    spec: [BEHAVIOUR, LAYOUT],
+    surfaces: [],
+    journeys: ["shell-navigation", "sidebar-toolbar"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-055",
+    title: "Open the phone drawer by dragging from the chat",
+    behaviour:
+      "On a phone-sized screen, dragging right from the screen's left edge brings the navigation drawer with the finger and opens it when released past about a third of its width; a shorter drag springs back, and a vertical drag there leaves the drawer closed. Nothing covers the chat at that edge, so taps and vertical scrolling work as before. **Open navigation** still opens the drawer by click or keyboard.",
+    spec: [BEHAVIOUR],
+    surfaces: [],
+    journeys: ["shell-navigation"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-056",
+    title: "Pin a session from its row's button",
+    behaviour:
+      "On the wide layout a session row's **Pin session** button pins the session and becomes **Unpin session**, which unpins it, and the row's accessible name ends with *pinned* while it is pinned. Narrow screens keep one trailing control on a row, whose **Actions** menu carries **Pin session** (SESS-031).",
+    spec: [BEHAVIOUR],
+    surfaces: [],
+    journeys: ["shell-navigation", "session-menu-shortcuts"],
+    web: "required",
+    phone: {
+      excluded: "The row's pin shortcut exists only in the wide layout; the phone drawer keeps one row control whose Actions menu carries Pin session (SESS-031).",
+      decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
+    },
+  },
+  {
+    id: "SHELL-057",
+    title: "Switch gateways when the one serving the page cannot be reached",
+    behaviour:
+      "At ten seconds without the app, or when `GET /__hui/health` does not answer after six seconds, the boot screen replaces its slow line with a recovery card: the heading **Can't reach this gateway.** (or **HUI is taking longer than usual to start.** when the gateway answered), the address this page came from, **Retry**, an **Other gateways** list with every other gateway this device saved — each by name, with its address and **Switch** — and **Add a gateway** with **Name**, **Address** and **Add and switch**. Add refuses an address that is not `http://` or `https://` (*Enter an http:// or https:// address.*), this page's gateway (*This is the gateway serving this page.*), one already saved (*That gateway is already in your list.*), one carrying credentials, a query or a fragment, and one that does not answer as HUI; a refusal never moves the page, while a successful **Add and switch** opens that gateway in this page. **Switch** opens the chosen gateway in this page, which keeps the gateway it left as one of its rows. After the app has painted, a lost connection shows **Offline** on the sidebar's gateway button, whose menu keeps **Retry connection**, the other gateways and **Add a gateway…**, and the button names the gateway again once it answers.",
+    spec: [BEHAVIOUR, "SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", OFFLINE],
+    surfaces: ["route:GET /__hui/health", "route:GET /__hui/update"],
+    journeys: ["gateway-settings", "remote-loading"],
+    web: "required",
+    phone: "required",
   },
 ];
 

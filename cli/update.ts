@@ -51,7 +51,7 @@ export async function updateRelease(installation: Installation, options: { from?
     // A nightly replaces any different build, including a newer stable one: asking for it is the opt-in.
     if (options.nightly ? release.version === current : !newerVersion(release.version, current)) return { version: current, restarted: false };
     const downloaded = await downloadRelease(release);
-    try { return await updateRelease(installation, { from: downloaded.path, sha256: downloaded.sha256, expectedVersion: release.version }); }
+    try { return await updateRelease(installation, { from: downloaded.path, sha256: downloaded.sha256, expectedVersion: release.version, force: options.force }); }
     finally { await downloaded.dispose(); }
   }
   const directory = updateDirectory(installation.installationRoot);

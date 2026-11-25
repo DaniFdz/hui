@@ -1,6 +1,7 @@
 /** The Work pane beside a conversation: its empty state and launchers, its tabs, hiding to the rail, closing the last view, maximizing, the narrow panel selector, what a reload restores and the banner a refused launch shows (WORK-001, 002, 003, 006, 007, 008, 010, 011, 014). */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 const launchers = ["New terminal", "Browser", "Files", "VS Code", "Diff"];
 /** A + menu entry, found by the shortcut only that kind shows. */
@@ -36,10 +37,8 @@ test("the plus menu lists every launcher and its shortcut and adds the chosen vi
   const pane = screen.getByLabel("Work pane");
   const menu = screen.getByRole("button", "Open Work view");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
 
   await menu.tap();
@@ -74,10 +73,8 @@ test("clicking a tab shows its view while the others stay mounted, and a close b
   const connected = screen.getByText("Shared · Connected");
   const terminal = screen.getByLabel("Shared terminal input");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   await expect(connected).toBeVisible();
   await expect(terminal).toBeVisible();
@@ -214,6 +211,8 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   const pane = screen.getByLabel("Work pane");
   const message = screen.getByLabel("Message");
   const selector = screen.getByRole("button", { name: /^Active panel/u });
+  // The chooser's own list, so what else the screen says "Open" or "Work" about is not counted as one of its options.
+  const chooser = () => screen.getByRole("listbox");
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
 
   await hui.phoneScreen();
@@ -222,7 +221,7 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(selector).toHaveAttribute("aria-label", /Chat/u);
   await selector.tap();
   await expect(screen.getByText("Chat").last()).toBeVisible();
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(5);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(5);
   for (const name of launchers) await expect(screen.getByText(name).first()).toBeVisible();
   await screen.getByText("New terminal").first().tap();
 
@@ -234,8 +233,8 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(selector).toHaveAttribute("aria-label", /Chat/u);
 
   await selector.tap();
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(1);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(5);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(1);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(5);
   await screen.getByText("Terminal 1").first().tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   await screen.getByRole("button", "Back to chat").tap();
@@ -246,14 +245,14 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await screen.getByRole("button", "Back to chat").tap();
   await selector.tap();
   // The Browser's view is open, so its launcher is gone and four launchers remain.
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(2);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(4);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(2);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(4);
   await screen.getByText("VS Code").first().tap();
   await expect(pane.getByRole("tab", "VS Code")).toBeVisible();
   await screen.getByRole("button", "Back to chat").tap();
   await selector.tap();
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(3);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(3);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(3);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(3);
   await screen.getByText("Browser").last().tap();
   await pane.getByRole("button", "Close Browser").tap();
   await expect(pane.getByRole("tab", "VS Code")).toBeVisible();
@@ -268,7 +267,6 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(screen.getByText(/The managed browser is off/u).first()).toBeVisible();
   await screen.getByText("Browser").first().tap();
   await expect(screen.getByRole("button", "Back to chat")).toBeHidden();
-  await hui.wideScreen();
 });
 
 test("a reload restores the pane open, maximized and at its width, with its tabs, their order and the active view, and its terminal reconnects", { tags: ["WORK-011"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -316,10 +314,8 @@ test("a launch the gateway refuses shows its reason in a banner over the pane an
   const reason = "Terminal limit reached. End an unused terminal first.";
   const refused = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/terminals$/u);
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await refused.arrived();
   await refused.reject(409, reason);
   await expect(pane.getByText(reason)).toBeVisible();

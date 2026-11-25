@@ -48,6 +48,9 @@ export type BrowserState = { cookies: StoredCookie[]; origins: StoredOrigin[] };
 export const EMPTY_BROWSER_STATE: BrowserState = { cookies: [], origins: [] };
 /** A mirror stays small: past this, the oldest origins go before any cookie does. */
 export const MAX_STATE_BYTES = 2 * 1024 * 1024;
+/** How many cookies one document keeps: the one owner of that ceiling, for a mirror and for an import waiting in a
+ * file, so neither can hand back a document its own reader will cut. */
+export const MAX_STATE_COOKIES = 2_000;
 /** Anything read from a file or a worker's frame: only what the document can hold comes through, bounded. */
 export function normalizeBrowserState(value: unknown): BrowserState {
   if (typeof value !== "object" || value === null) return EMPTY_BROWSER_STATE;
@@ -67,7 +70,7 @@ export function normalizeBrowserState(value: unknown): BrowserState {
       ...(cookie["secure"] === true ? { secure: true } : {}),
       ...(sameSite ? { sameSite } : {}),
     }];
-  }).slice(0, 2_000);
+  }).slice(0, MAX_STATE_COOKIES);
   const origins = (Array.isArray((value as { origins?: unknown }).origins) ? (value as { origins: unknown[] }).origins : []).filter(record).flatMap((origin) => {
     const url = text(origin["origin"]);
     if (!isHttpOrigin(url)) return [];

@@ -32,18 +32,26 @@ export type MessageSender =
 const INTER_SESSION = /^\[Inter-session message from (.*) \(([^()\s]+)\)\]\n/u;
 /** A subagent's first prompt, its task from the session that spawned it (server/agent-tools/subagents.ts). */
 const SUBAGENT_TASK = "[Subagent Task]\n";
+/**
+ * A header a bot wrote itself into a message HUI delivered untagged: the handle without its `@`, or a note after it.
+ * Presentation only: the gateway judges a turn by HUI's own headers, never by one a bot wrote.
+ */
+const WRITTEN_BOT_TAG = /^\[from @?([a-z0-9-]+)(?: · [^\]\n]*)?\] /u;
 
 /**
  * A message's sender and the text after its header; undefined for the operator's own words. Bots' and sessions' tags,
  * routines and triggers are read by the gateway's own `botTurnOrigin`, so the chat attributes the headers its gated
- * tools refuse to treat as the operator's.
+ * tools refuse to treat as the operator's, plus the near miss a bot wrote before HUI tagged a new session's brief.
  */
 export function attributedMessage(text: string): { sender: MessageSender; body: string } | undefined {
   if (text.startsWith(SUBAGENT_TASK)) return { sender: { kind: "parent" }, body: text.slice(SUBAGENT_TASK.length) };
   const relayed = INTER_SESSION.exec(text);
   if (relayed) return { sender: { kind: "session", title: relayed[1]!, id: relayed[2]! }, body: text.slice(relayed[0].length) };
   const origin = botTurnOrigin(text);
-  if (origin.kind === "operator" || origin.kind === "kickoff" || origin.kind === "imported") return undefined;
+  if (origin.kind === "operator" || origin.kind === "kickoff" || origin.kind === "imported") {
+    const written = WRITTEN_BOT_TAG.exec(text);
+    return written ? { sender: { kind: "bot", handle: written[1]! }, body: text.slice(written[0].length) } : undefined;
+  }
   // A header ends at its first `]` (handles, sanitized titles, trigger names and summaries hold none), a routine's after
   // its name, which may hold one.
   const end = text.indexOf("]", origin.kind === "routine" ? "[routine: ".length + origin.name.length : 0);

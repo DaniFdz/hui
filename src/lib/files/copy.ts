@@ -1,7 +1,6 @@
 /**
  * The words the Files view shows: its navigator's labels, the new file and folder dialog, and the delete
- * confirmation's list of what goes. The web renders them and the iOS core hands the same ones to the app, so both
- * platforms say the same thing and a shared test reads one set of words.
+ * confirmation's list of what goes, kept in one place so a shared test reads one set of words.
  */
 
 export const FILES_COPY = {

@@ -72,7 +72,7 @@ repeated names, compact summaries, prefilled edits, rename, removal, optional
 thinking, reload persistence, editing at the limit and unavailable-model preservation,
 the routed child's model and thinking, the unchanged parent, and unknown-route
 or route-plus-model refusal before a child exists. Both cases are required on
-the web; iOS remains backlog. `src/lib/settings/settings-store.test.ts` covers
+the web. `src/lib/settings/settings-store.test.ts` covers
 failed add/edit saves and retries, a model-role change queued during a route save,
 and invalid replacements refused before writing, through the real write queue
 with controlled request responses.

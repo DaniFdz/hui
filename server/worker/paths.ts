@@ -1,6 +1,7 @@
 /** Remote worker layout. Everything HUI writes on a remote lives under one
  * per-user data directory; the remote user's own files are never touched. */
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { resolvePiAgentDir } from "../pi/paths.ts";
@@ -19,6 +20,15 @@ export type WorkerPaths = {
   /** The remote user's own PI login, used when no gateway is connected. */
   fallbackAgentDir: string;
 };
+
+/** The gateway's `~/.agents/skills` where the sync keeps it (`sync.ts` mirrors it under `home/`), once it is there.
+ * PI finds a user-agents skills dir under the home it runs with, and on this host that is the host user's own home.
+ * Nothing until that directory exists is load-bearing: the absence is part of Durable's loader cache key (`loader` in
+ * `durable-prompt.ts`), so the sync that first brings it builds a fresh loader rather than a stale one. */
+export function mirroredUserSkillPaths(paths: Pick<WorkerPaths, "mirrorDir">): string[] {
+  const dir = join(paths.mirrorDir, "home", ".agents", "skills");
+  return existsSync(dir) ? [dir] : [];
+}
 
 export function workerPaths(env: NodeJS.ProcessEnv = process.env, home = env["HOME"] || homedir()): WorkerPaths {
   const dataDir = join(env["XDG_DATA_HOME"] || join(home, ".local", "share"), "hui-worker");

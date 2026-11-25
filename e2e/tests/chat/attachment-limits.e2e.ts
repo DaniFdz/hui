@@ -1,4 +1,4 @@
-/** Attachments over the count, size or total limits, or with unsafe names, are refused with a toast and never sent, while names with spaces and Unicode are fine (CHAT-014). */
+/** Attachments over the count, size or total limits, or with unsafe names, are refused with a toast and never sent, a size refusal pointing larger files at the Files pane, while names with spaces and Unicode are fine (CHAT-014). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -23,15 +23,15 @@ test("attachments over the limits or with unsafe names are refused with a toast 
   await hui.attach(files, parts.map((name) => ({ name, bytes: 16 })));
   await expect(attached.getByRole("button", "Remove part 8.txt")).toBeVisible();
   await hui.attach(files, [{ name: "part 9.txt", bytes: 16 }]);
-  await refused("At most 8 attachments may be sent at once.");
+  await refused("At most 8 attachments may be sent at once. Send the rest in another message.");
   await expect(attached.getByRole("button", "Remove part 9.txt")).toBeHidden();
   for (const name of parts) await attached.getByRole("button", `Remove ${name}`).tap();
   await expect(attached.getByRole("button", "Remove part 8.txt")).toBeHidden();
 
   await hui.attach(files, [{ name: "huge.bin", bytes: 12 * MB + 1 }]);
-  await refused("huge.bin is larger than 12 MB.");
+  await refused("huge.bin is larger than 12 MB. Larger files can go in the Files pane, which takes up to 2 GB each.");
   await hui.attach(files, [{ name: "first half.bin", bytes: 9 * MB }, { name: "second half.bin", bytes: 9 * MB }]);
-  await refused("Attachments must be 16 MB or less in total.");
+  await refused("Attachments must be 16 MB or less in total. Larger files can go in the Files pane, which takes up to 2 GB each.");
   await hui.attach(files, [{ name: "back\\slash.txt", bytes: 16 }]);
   await refused(UNSAFE_NAME);
   await hui.attach(files, [{ name: "bell\u0007.txt", bytes: 16 }]);

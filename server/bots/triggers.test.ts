@@ -45,7 +45,7 @@ function cleanupOf(t: TestContext): { services: BotTriggerService[]; dirs: strin
   return cleanup;
 }
 
-async function fixture(t: TestContext, options: { perHour?: number; file?: string } = {}) {
+async function fixture(t: TestContext, options: { perHour?: number; file?: string; hookWorker?: (bot: BotRecord) => { id: string; name: string; base?: string; error?: string } | undefined } = {}) {
   const cleanup = cleanupOf(t);
   const dir = options.file ? undefined : await mkdtemp(join(tmpdir(), "hui-check-triggers-"));
   if (dir) cleanup.dirs.push(dir);
@@ -82,6 +82,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
     },
     resyncMs: 3_600_000,
     ...(options.perHour !== undefined ? { perHour: options.perHour } : {}),
+    ...(options.hookWorker ? { hookWorker: options.hookWorker } : {}),
   });
   cleanup.services.push(service);
   /** Moves the clock and runs what came due, flushes included. */
@@ -157,6 +158,38 @@ test("a bot has at most twenty triggers", async (t) => {
   for (let index = 0; index < BOT_TRIGGER_LIMITS.perBot; index += 1) await f.service.create("ada", { name: `L${index}` });
   await assert.rejects(f.service.create("ada", { name: "one more" }), /already has 20 triggers/u);
   await f.service.create("bob", { name: "L0" });
+});
+
+test("a created or rotated trigger's URL says where a bot on a worker takes it, and a bot here keeps the URL it always had", async (t) => {
+  let where: { id: string; name: string; base?: string; error?: string } | undefined;
+  const f = await fixture(t, { hookWorker: () => where });
+  await f.service.start();
+  // A bot HUI has no worker for: today's payload, with no worker key at all.
+  const local = await f.service.create("bob", reviews());
+  assert.deepEqual(Object.keys(local.hook).sort(), ["path", "token"]);
+  // A worker that serves its own endpoint: the machine's loopback URL, the trigger's same path.
+  where = { id: "w1", name: "devbox", base: "http://127.0.0.1:4180" };
+  const remote = await f.service.create("ada", reviews());
+  assert.match(remote.hook.token, /^[A-Za-z0-9_-]{43}$/u);
+  assert.deepEqual(remote.hook, {
+    token: remote.hook.token, path: `/__hui/hooks/${remote.hook.token}`,
+    worker: { id: "w1", name: "devbox", url: `http://127.0.0.1:4180/__hui/hooks/${remote.hook.token}` },
+  });
+  // Rotating replaces the token, never the machine.
+  const rotated = await f.service.rotate("ada", remote.trigger.id);
+  assert.notEqual(rotated.hook.token, remote.hook.token);
+  assert.equal(rotated.hook.path, `/__hui/hooks/${rotated.hook.token}`);
+  assert.deepEqual(rotated.hook.worker, { id: "w1", name: "devbox", url: `http://127.0.0.1:4180/__hui/hooks/${rotated.hook.token}` });
+  // A worker HUI cannot give a URL for says why, and carries no URL.
+  where = { id: "w1", name: "devbox", error: "HUI is not connected to devbox: connect it to take its listener URL." };
+  const waiting = await f.service.create("ada", { name: "Offline" });
+  assert.deepEqual(waiting.hook.worker, { id: "w1", name: "devbox", error: "HUI is not connected to devbox: connect it to take its listener URL." });
+  assert.equal("url" in waiting.hook.worker!, false);
+  assert.deepEqual((await f.service.rotate("ada", waiting.trigger.id)).hook.worker, waiting.hook.worker);
+  // No dependency at all (a gateway that knows no workers) is the same payload as a local bot's.
+  const plain = await fixture(t);
+  const served = await plain.service.create("ada", reviews());
+  assert.deepEqual(Object.keys(served.hook).sort(), ["path", "token"]);
 });
 
 test("events inside the cooldown wait and arrive as one delivery that lists them, reading a pull request they share once", async (t) => {
