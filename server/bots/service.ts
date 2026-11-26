@@ -69,6 +69,8 @@ const HOUR_MS = 3_600_000;
 /** Bot-to-bot messages a chain may cross before HUI stops it. */
 export const MAX_BOT_HOPS = 3;
 const READY_TIMEOUT_MS = 60_000;
+/** How long a permanent delete waits for the bot's turn to stop before removing the chat anyway. */
+const STOP_GRACE_MS = 5_000;
 /** How often the bot list looks at SOUL.md again by itself, for a hand edit; HUI's own writes and a settled turn count at once. */
 const SOUL_RECHECK_MS = 10_000;
 /** A bot's or session's attribution header, carrying the hop through agent replies as well as bot-to-bot tags. */
@@ -245,6 +247,8 @@ export type BotServiceDeps = {
   now?: () => number;
   messagesPerHour?: number;
   readyTimeoutMs?: number;
+  /** A permanent delete's graceful stop; absent, `STOP_GRACE_MS`. */
+  stopGraceMs?: number;
   /** Totals sessions' spend; absent, Durable sessions report their store unavailable. */
   usage?: (records: readonly SessionRecord[]) => Promise<UsageTotals>;
   report?: (event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }) => void;
@@ -280,6 +284,7 @@ export class BotService {
   readonly #now: () => number;
   readonly #messagesPerHour: number;
   readonly #readyTimeoutMs: number;
+  readonly #stopGraceMs: number;
   /** `message_bot` send times per bot over the last hour; memory only. */
   #sent = new Map<string, number[]>();
   /** Newest message per bot, from its live transcript or one store read while no session holds it. */
@@ -299,6 +304,7 @@ export class BotService {
     this.#now = deps.now ?? Date.now;
     this.#messagesPerHour = deps.messagesPerHour ?? MESSAGES_PER_HOUR;
     this.#readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
+    this.#stopGraceMs = deps.stopGraceMs ?? STOP_GRACE_MS;
     // A worker's runs go on while HUI is away from it: its chats' newest messages are read again once it is back, and
     // its bots' tool and skill lists checked against their documents there.
     deps.workers?.onConnected((id) => {
@@ -795,14 +801,28 @@ export class BotService {
   }
 
   /** Withdraws the messages still waiting in HUI's queue for the bot (they would start a new turn once the current one
-   * stops), then stops a running turn. */
-  async #quiet(bot: BotRecord, action: string): Promise<void> {
+   * stops), then stops a running turn. With `graceMs`, a turn that will not settle is detached after that grace instead
+   * of holding the caller: a permanent delete removes its chat and disposes the runtime anyway. */
+  async #quiet(bot: BotRecord, action: string, graceMs?: number): Promise<void> {
     for (const item of this.#sessions.snapshot(bot.sessionId).queue.items ?? []) {
       try { this.#sessions.removeFollowUp(bot.sessionId, item.id); } catch { /* sent meanwhile */ }
     }
     const status = this.#sessions.status(bot.sessionId);
     if (status === "running" || status === "waiting") {
-      await this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", action, `@${bot.handle}'s turn could not be stopped`, error));
+      const stopping = this.#sessions.abort(bot.sessionId).catch((error: unknown) => this.#report("warning", action, `@${bot.handle}'s turn could not be stopped`, error));
+      if (graceMs === undefined) {
+        await stopping;
+        return;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const graceOver = new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(true), graceMs); });
+      try {
+        if (await Promise.race([stopping.then(() => false), graceOver])) {
+          this.#report("warning", "bot_delete_stop_timeout", `@${bot.handle}'s turn did not stop within ${graceMs} ms`, "The chat is removed and its runtime disposed, detaching the turn.");
+        }
+      } finally {
+        clearTimeout(timer);
+      }
     }
   }
 
@@ -833,12 +853,14 @@ export class BotService {
 
   /**
    * Deletes a bot for good, active or archived: withdraws messages still queued
-   * for it and stops a running turn; its conversation stops being a bot's chat
-   * and its memory is turned off and deleted (`BotConversations.forget`; the raw
-   * conversation stays in the Durable store, which cannot delete one, and HUI
-   * never opens it again); then every Automation task aimed at its chat, the
-   * chat's session record (its runtime stops), its home folder with everything
-   * in it (SOUL.md and every file HUI or the bot put there), and the bot. A
+   * for it and stops a running turn (waiting a bounded grace, then detaching a
+   * turn whose tool ignores Stop, which the chat's removal disposes); its
+   * conversation stops being a bot's chat and its memory is turned off and
+   * deleted (`BotConversations.forget`; the raw conversation stays in the
+   * Durable store, which cannot delete one, and HUI never opens it again); then
+   * every Automation task aimed at its chat, the chat's session record (its
+   * runtime stops), its home folder with everything in it (SOUL.md and every
+   * file HUI or the bot put there), and the bot. A
    * working directory the operator chose is never touched: when it lies inside
    * the home folder, only SOUL.md goes. Each step can run again, so deleting
    * again finishes what an interrupted attempt left.
@@ -852,7 +874,9 @@ export class BotService {
   async delete(target: string): Promise<{ queued: boolean }> {
     const bot = await this.resolve(target);
     if (!bot.worker) await this.#factsOf(bot).retire(bot.id);
-    await this.#quiet(bot, "bot_delete_stop_failed");
+    // The chat's removal disposes its runtime, so a turn whose tool ignores Stop must not hold the delete open: the
+    // stop is graceful for a bounded grace and the removal then detaches whatever is left.
+    await this.#quiet(bot, "bot_delete_stop_failed", this.#stopGraceMs);
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
     let queued = false;
     if (bot.worker) {
