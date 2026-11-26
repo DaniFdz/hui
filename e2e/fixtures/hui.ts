@@ -302,7 +302,8 @@ export type Hui = {
   answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
   /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
   holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
-  /** Drops an installed offline worker and its caches before the next load. */
+  /** Drops an installed offline worker and its caches, and returns only once the browser reads neither, before the
+   * next load: what an earlier test left must not answer the navigation the test is about to make. */
   clearOffline(): Promise<void>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
@@ -627,6 +628,40 @@ const trackSockets = () => {
     socket.addEventListener("close", () => sockets.delete(socket));
     return socket;
   }, Native) as unknown as typeof WebSocket;
+};
+
+/**
+ * Drops what an earlier test's offline worker left in this browser: the registrations that exist when it runs, and the
+ * caches beside them. Both lists are read before the first await, so a document that registers its own worker while the
+ * removal is in flight keeps it: the fixture never unregisters the page it is watching, and a later document's
+ * `prepareOffline()` (src/api/offline.ts) is not raced by the script that cleaned up after the last one. It is the page
+ * body `hui.clearOffline()` runs in the open page and installs as an init script for every later document.
+ */
+const clearOfflineFiles = async () => {
+  try {
+    const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+    const names = "caches" in globalThis ? await caches.keys() : [];
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    for (const key of names) await caches.delete(key);
+  } catch { /* the page may not have these APIs */ }
+  return null;
+};
+
+/**
+ * What a navigation made now could still be answered from, as the page reads it: every registration with its worker
+ * states and every cache name, or `null` when the browser holds none. `navigator.serviceWorker.controller` is not part of
+ * it on purpose: unregistering a registration never revokes the controller of the document that already had one (the
+ * spec keeps it until that document goes), so it answers for this page, never for the next one.
+ */
+const offlineLeftovers = async () => {
+  const worker = (value: ServiceWorker | null | undefined) => value ? `${value.scriptURL} ${value.state}` : "none";
+  const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+  const names = "caches" in globalThis ? await caches.keys() : [];
+  const held = [
+    ...registrations.map((registration) => `registration ${registration.scope} (installing ${worker(registration.installing)}, waiting ${worker(registration.waiting)}, active ${worker(registration.active)})`),
+    ...names.map((name) => `cache ${name}`),
+  ];
+  return held.length === 0 ? null : held.join("; ");
 };
 
 /**
@@ -1223,18 +1258,17 @@ function huiTest(offline: boolean) {
         await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
       },
       clearOffline: async () => {
-        // A worker installed by an earlier test can answer this navigation (and its app chunk) before an init
-        // script runs, so drop it in the page that is already open as well; the script covers later pages.
-        const clear = async () => {
-          try {
-            const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-            await Promise.all(registrations.map((registration) => registration.unregister()));
-            if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-          } catch { /* the page may not have these APIs */ }
-          return null;
-        };
-        await browser().evaluate(clear);
-        await browser().addInitScript(clear);
+        // A worker installed by an earlier test can answer this navigation (and its app chunk) from its own cache before
+        // an init script runs, so drop it in the page that is already open as well; the script covers later pages.
+        await browser().evaluate(clearOfflineFiles);
+        // `unregister()` resolving is the page's word, not the browser's: the registration a reload is matched against
+        // is what has to be gone before the test navigates, so wait for the state a navigation reads and say what the
+        // browser still holds when it never gets there.
+        await expect.poll(() => browser().evaluate(offlineLeftovers), {
+          timeout: 30_000,
+          message: "hui.clearOffline(): the browser still holds an offline worker or cache that the next load can be answered from",
+        }).toBe(null);
+        await browser().addInitScript(clearOfflineFiles);
       },
       holdAppChunks: async () => {
         // The production build may preload the app chunk and import it again; hold every copy, not the entry
@@ -1405,18 +1439,8 @@ function huiTest(offline: boolean) {
             },
             // CDP routes and attempt-scoped page scripts work in the app's persistent context just as in Chromium.
             // Only context replacement, native downloads and genuinely unavailable desktop gestures need overrides.
-            clearOffline: async () => {
-              // The web's own reason holds here too: a worker an earlier test left can answer this navigation (and its app
-              // chunk) before an init script runs, so it is dropped in the page that is open as well.
-              const clear = async () => {
-                const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-                await Promise.all(registrations.map((registration) => registration.unregister()));
-                if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-                return null;
-              };
-              await browser().evaluate(clear);
-              await browser().addInitScript(clear);
-            },
+            // `clearOffline` stays the web's: its wait is on what the browser reads, never on the engine that owns the
+            // context, so a WebView that keeps one context for every attempt needs no step of its own.
             wideScreen: desktopOnly("wideScreen"),
             peek: desktopOnly("peek"),
             tabs: async () => {
