@@ -629,6 +629,15 @@ const trackSockets = () => {
   }, Native) as unknown as typeof WebSocket;
 };
 
+/**
+ * How long a phone's shell may take to draw before a drawer step gives up on it. `hui.open` resolves at the page's own
+ * load event, and the app draws its shell after its boot reads: `resolveAppearance` (src/main.ts) awaits the theme list
+ * and the settings before the app renders, and each gateway read there spends up to a whole response deadline
+ * (`RESPONSE_TIMEOUT_MS` in src/api/request.ts, 20 s) when the gateway stalls before it degrades to the defaults. This
+ * covers one such read plus the boot's own start, so a slow gateway is a slow drawer rather than a closed one.
+ */
+const SHELL_ARRIVAL_TIMEOUT_MS = 30_000;
+
 /** Ordinary tests isolate routed requests from WebKit's worker; offline tests explicitly exercise the real worker. */
 function huiTest(offline: boolean) {
   return base.extend<{ hui: Hui }>({
@@ -873,16 +882,29 @@ function huiTest(offline: boolean) {
         if (!phone) return;
         // A closing backdrop stays visible during its fade, and an initial route may not have drawn its trigger yet.
         // Read the drawer's actual state, then let tap wait for the real Open navigation control when it is closed.
-        const opened = () => browser().evaluate(() => document.querySelector(".sidebar")?.getAttribute("data-open") === "true");
-        if (!(await opened())) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
-        await expect.poll(opened).toBe(true);
+        const drawer = () => browser().evaluate(() => {
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar === null) return "booting";
+          return sidebar.getAttribute("data-open") === "true" ? "open" : "closed";
+        });
+        // The sidebar and its trigger arrive with the shell, so a missing one is that boot, never a closed drawer: wait
+        // for the shell on its own budget, so the tap spends its action budget on a trigger that is already drawn.
+        if ((await drawer()) === "booting") await expect.poll(drawer, { timeout: SHELL_ARRIVAL_TIMEOUT_MS, message: "the phone shell draws the navigation drawer and its Open navigation trigger" }).not.toBe("booting");
+        if ((await drawer()) === "closed") await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
+        await expect.poll(drawer).toBe("open");
       },
       settingsPages: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
         if (!phone) return;
-        const opened = () => browser().evaluate(() => document.querySelector(".settings-sidebar")?.getAttribute("data-open") === "true");
-        if (!(await opened())) await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
-        await expect.poll(opened).toBe(true);
+        // The same boot as the session drawer's: the settings shell and its trigger arrive with the app's first paint.
+        const drawer = () => browser().evaluate(() => {
+          const sidebar = document.querySelector(".settings-sidebar");
+          if (sidebar === null) return "booting";
+          return sidebar.getAttribute("data-open") === "true" ? "open" : "closed";
+        });
+        if ((await drawer()) === "booting") await expect.poll(drawer, { timeout: SHELL_ARRIVAL_TIMEOUT_MS, message: "the phone shell draws the settings drawer and its Open settings navigation trigger" }).not.toBe("booting");
+        if ((await drawer()) === "closed") await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
+        await expect.poll(drawer).toBe("open");
       },
       sessionMenu: async (title) => {
         await webSteps.sessionList();
