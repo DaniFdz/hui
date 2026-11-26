@@ -266,7 +266,7 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /<form class="agent-chat__input agent-chat__input--chat/);
   assert.match(source, /agent-chat__input--chat agent-chat__input--mobile-toolbar/);
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
-  assert.match(source, /const showStop = props\.streaming && !props\.draft\.trim\(\) && !props\.attachments\.some/);
+  assert.match(source, /const showStop = props\.streaming && !promptHasContent\(props\.draft, props\.attachments\);/);
   assert.match(source, /showStop \? html`<button[^>]*chat-send-btn--stop/);
   assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /chat-controls__inline-select-trigger chat-controls__effort-trigger/);
   assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /class="chat-controls__effort-gauge-needle" d="M12 12V6"/);
@@ -1317,6 +1317,22 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
     assert.doesNotMatch(idle, new RegExp(`aria-label="${removed}"`, "u"), `${removed} is gone from the chat`);
   }
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
+});
+
+test("a file alone is a prompt: the send button opens for it and the stop button stays out of its way", async () => {
+  const file = { name: "notes.txt", kind: "file", mimeType: "text/plain", dataBase64: "" };
+  const idleFile = await renderWorkerSession("idle", { draft: "", attachments: [file] });
+  assert.equal(sendButton(idleFile), "false", "a file alone may be sent");
+  // A file waiting to be sent is content worth sending, so a busy session offers Send rather than Stop.
+  const streamingFile = await renderWorkerSession("running", { streaming: true, draft: "", attachments: [file] });
+  assert.doesNotMatch(streamingFile, /chat-send-btn--stop/u);
+  assert.equal(sendButton(streamingFile), "false");
+  // Nothing typed and nothing attached: the idle composer stays disabled and the busy one offers Stop.
+  const idleEmpty = await renderWorkerSession("idle", { draft: "", attachments: [] });
+  assert.equal(sendButton(idleEmpty), "true");
+  const streamingEmpty = await renderWorkerSession("running", { streaming: true, draft: "", attachments: [] });
+  assert.match(streamingEmpty, /chat-send-btn--stop/u);
+  assert.equal(sendButton(streamingEmpty), undefined, "the stop button replaces the busy session's Send");
 });
 
 test("a conversation still downloading shows its skeleton, and one that failed to load offers a retry instead of an empty chat", async () => {

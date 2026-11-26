@@ -1691,6 +1691,23 @@ const server = createServer(async (request, response) => {
     text(response, `Earlier context: ${wanted.split(" ").slice(1).map((word) => `${word} ${rest.includes(word) ? "yes" : "no"}`).join(", ")}`);
     return finish(response);
   }
+  // A prompt that is only a file attachment (CHAT-098): HUI's message carries the file's absolute path, so the reply
+  // names it. Only a file whose name the journey marks `file-only-` takes this branch; every other request falls
+  // through to the replies below unchanged.
+  const promptText = (Array.isArray(body.messages?.at(-1)?.content) ? body.messages.at(-1).content : [])
+    .filter((block) => block?.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
+  const manifest = /<!-- hui-attachments:v1:([A-Za-z0-9_-]+) -->/u.exec(promptText)?.[1];
+  let manifestFiles = [];
+  if (manifest !== undefined) {
+    try { manifestFiles = JSON.parse(Buffer.from(manifest, "base64url").toString("utf8")); } catch { manifestFiles = []; }
+  }
+  const fileOnly = Array.isArray(manifestFiles)
+    ? manifestFiles.find((entry) => entry?.kind === "file" && typeof entry.name === "string" && entry.name.startsWith("file-only-"))
+    : undefined;
+  if (fileOnly) {
+    await text(response, `File received: ${fileOnly.path}`);
+    return finish(response);
+  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   // E2E_SLOW_TTFT keeps the answer going 600 ms after its first token, so the token reaches HUI in its own partial.
