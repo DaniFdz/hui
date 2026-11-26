@@ -57,6 +57,21 @@ test("an option previews its Markdown, or else its HTML mockup, never the two", 
   assert.deepEqual(optionPreview({ ...option, preview: "**Sidebar**", previewHtml: "<p>Sidebar</p>" }), { kind: "html", value: "<p>Sidebar</p>" });
 });
 
+test("a press never resizes the card under the finger that presses it", () => {
+  // The pick shows its own preview: the swap waits for the click, so the row cannot move before the press is released.
+  assert.match(source, /@click=\$\{\(\) => \{ this\.#pick\(option\.label\); this\.#preview\(index\); \}\}/u);
+  assert.doesNotMatch(source, /showPreview/u);
+  // A pointer previews where the device has a hover; a phone has none, and its tap begins with a hover of its own.
+  assert.match(source, /@mouseenter=\$\{\(\) => \{ if \(this\.#hasHover\(\)\) this\.#preview\(index\); \}\}/u);
+  assert.match(source, /#hasHover\(\): boolean \{\s*return this\.#hover\?\.matches \?\? true;/u);
+  assert.match(source, /typeof matchMedia === "function" \? matchMedia\("\(hover: hover\)"\) : undefined/u);
+  // Focus previews for the keyboard's ring, never for the focus a press gives the row it presses.
+  assert.match(source, /@focus=\$\{\(event: FocusEvent\) => \{ if \(\(event\.currentTarget as HTMLElement\)\.matches\(":focus-visible"\)\) this\.#preview\(index\); \}\}/u);
+  // An option without a preview, or the one already shown, leaves the pane alone.
+  const preview = source.slice(source.indexOf("#preview(index: number): void"), source.indexOf("#hasHover(): boolean"));
+  assert.match(preview, /if \(!optionPreview\(option\) \|\| this\.previewed\[this\.step\] === index\) return;/u);
+});
+
 test("an HTML preview is a compact widget-sandbox frame, never raw page HTML", () => {
   assert.match(source, /hui-widget-card compact \.widgetTitle=/u);
   assert.match(source, /\.code=\$\{preview\.value\}/u);

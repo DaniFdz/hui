@@ -4,11 +4,13 @@
  * questionnaire (a segmented progress bar, "Step 1 of 4", Back and Next in a
  * sticky footer). A question takes options (radios, or checkboxes for a
  * multi-select question) with a free-text row and, when options carry one, a
- * Markdown preview or a sandboxed HTML mockup beside them; a slider over a
- * numeric range; or a long text. It keeps the operator's picks while they move
- * between questions and sends them all at once. The card folds to one row,
- * keeping every pick and the progress, so the operator can read the
- * conversation it covers and open it again where they left it.
+ * Markdown preview or a sandboxed HTML mockup beside them, showing the picked
+ * option, the keyboard's focus, or the option a pointer hovers where the device
+ * has a hover; a slider over a numeric range; or a long text. It keeps the
+ * operator's picks while they move between questions and sends them all at once.
+ * The card folds to one row, keeping every pick and the progress, so the
+ * operator can read the conversation it covers and open it again where they
+ * left it.
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
@@ -95,6 +97,11 @@ export class QuestionnaireCard extends HuiElement {
   declare private previewed: number[];
   /** Folded to one row so the conversation behind the card can be read. */
   declare private collapsed: boolean;
+  /**
+   * The device's hover capability, read from its first pointer: a phone has none, and its tap begins with a hover of
+   * its own that must not preview before the pick.
+   */
+  #hover = typeof matchMedia === "function" ? matchMedia("(hover: hover)") : undefined;
   #promptId = "";
 
   constructor() {
@@ -137,6 +144,23 @@ export class QuestionnaireCard extends HuiElement {
     this.#update(this.step, (draft) => question.multiSelect
       ? { ...draft, selected: draft.selected.includes(label) ? draft.selected.filter((each) => each !== label) : [...draft.selected, label] }
       : { ...draft, selected: [label], customChosen: false });
+  }
+
+  /**
+   * Shows one option's preview. The preview follows the option the operator picked, the one the keyboard's focus moved
+   * to, or the one a pointer hovers where the device has a hover — never the focus a press gives a row: the card would
+   * grow to hold the other preview, the transcript would keep its live edge, and the row under the finger would move
+   * before the press is released, which loses the very pick the press was for.
+   */
+  #preview(index: number): void {
+    const option = this.questions[this.step]?.options[index];
+    if (!optionPreview(option) || this.previewed[this.step] === index) return;
+    this.previewed = this.previewed.map((each, step) => step === this.step ? index : each);
+  }
+
+  /** Whether this device has a hover at all: without one, a tap's own hover must not swap the preview. */
+  #hasHover(): boolean {
+    return this.#hover?.matches ?? true;
   }
 
   #go(step: number): void {
@@ -265,10 +289,6 @@ export class QuestionnaireCard extends HuiElement {
     const preview = question.input === "options" ? optionPreview(previewOption) : undefined;
     const focusIndex = Math.max(0, question.options.findIndex((option) => draft.selected.includes(option.label)));
     const customOn = draft.customChosen && draft.custom.trim() !== "";
-    const showPreview = (index: number) => {
-      if (!optionPreview(question.options[index]) || this.previewed[this.step] === index) return;
-      this.previewed = this.previewed.map((each, step) => step === this.step ? index : each);
-    };
     return html`<form class="session-question-card chat-question-panel questionnaire-card" data-testid="question-card" aria-labelledby=${titleId}
       @submit=${(event: SubmitEvent) => { event.preventDefault(); this.#advance(); }}
       @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
@@ -296,8 +316,9 @@ export class QuestionnaireCard extends HuiElement {
             return html`<button type="button" data-row data-option=${option.label} data-testid="question-option"
               class="chat-question-panel__option ${selected ? "chat-question-panel__option--selected" : ""}"
               role=${multi ? "checkbox" : "radio"} aria-checked=${String(selected)} tabindex=${index === focusIndex ? "0" : "-1"}
-              @click=${() => this.#pick(option.label)}
-              @focus=${() => showPreview(index)} @mouseenter=${() => showPreview(index)}>
+              @click=${() => { this.#pick(option.label); this.#preview(index); }}
+              @focus=${(event: FocusEvent) => { if ((event.currentTarget as HTMLElement).matches(":focus-visible")) this.#preview(index); }}
+              @mouseenter=${() => { if (this.#hasHover()) this.#preview(index); }}>
               <span class="chat-question-panel__option-marker" aria-hidden="true">${selected ? "✓" : ""}</span>
               <span class="chat-question-panel__option-copy"><strong>${option.label}</strong>${option.description ? html`<small>${option.description}</small>` : nothing}</span>
               <kbd>${index + 1}</kbd>
