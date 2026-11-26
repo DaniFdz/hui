@@ -6,6 +6,9 @@ import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { backToChat, openWork, reopenWork } from "./work-views.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
 /** A + menu entry, found by the shortcut only that kind shows. */
@@ -153,7 +156,7 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
   await expect.poll(() => replay(hui, session.id, id)).toContain("Shared variable: hello-from-operator");
   expect(await replay(hui, session.id, id)).toContain("PI_SHARED_TERMINAL");
-  await expect(screen.getByText("Used 3 tools")).toBeVisible();
+  await expect(screen.getByText(trail)).toBeVisible();
 
   const stranger = await hui.createSession({ title: "Another conversation", cwd: repository.path });
   await hui.prompt(stranger, "E2E_SHARED_TERMINAL");

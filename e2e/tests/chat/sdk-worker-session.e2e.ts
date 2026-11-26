@@ -5,6 +5,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const call = (name: string, input: Record<string, unknown>) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
 test("a session on PI's worker streams thinking, tools and replies, answers an extension's question, offers Continue without Fork, sits Cold after a restart until it is opened, and rewinds PI's branch", { tags: ["CHAT-065"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -25,8 +28,8 @@ test("a session on PI's worker streams thinking, tools and replies, answers an e
   await send.tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Reasoning"));
-  await transcript.getByText("Reasoning").tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail));
+  await transcript.getByText(trail).tap();
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 
   // A tool call runs there too, and its row names the read.
@@ -34,9 +37,10 @@ test("a session on PI's worker streams thinking, tools and replies, answers an e
   await send.tap();
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+  // The reasoning fold above is a trail of its own, so the call's trail is the newest one.
+  await hui.scrollTo(transcript, transcript.getByText(trail).last());
   const read = transcript.getByRole("button", /^Read fixture\.txt/u);
-  if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await read.isVisible())) await transcript.getByText(trail).last().tap();
   await expect(read).toBeVisible();
 
   // A HUI tool answers an extension's question on this runtime as it does on a Durable one.

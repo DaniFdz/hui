@@ -3,6 +3,8 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+
 const reply = (text: string) => `E2E_REPLY:${Buffer.from(text).toString("base64url")}`;
 
 test("a bot opens older lines of its memory and their dates, its chat shows the zoom and date calls before an answer that quotes them, and never compacts", { tags: ["BOT-035"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -27,7 +29,7 @@ test("a bot opens older lines of its memory and their dates, its chat shows the 
   // Asked about it, it opens the older lines and their dates before answering with them.
   await message.fill("E2E_ZOOM what did I say about the vault?");
   await send.tap();
-  const used = transcript.getByText("Used 4 tools");
+  const used = transcript.getByTestId("activity-trail").last();
   await expect(used).toBeVisible();
   await used.tap();
   await expect(transcript.getByRole("button", /Used zoom/u)).toHaveCount(3);

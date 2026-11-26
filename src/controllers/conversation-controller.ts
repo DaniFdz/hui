@@ -75,6 +75,10 @@ export class ConversationController implements ReactiveController {
   /** Why the selected session's open request failed; its view offers a retry. */
   openError = "";
   streaming = false;
+  /** When a turn this page watched begin started, for its activity trail's clock: absent while nothing runs, and for a
+   * session that was already running when it opened, so a settled, idle or merely reopened row never reads the wall
+   * clock. */
+  turnStartedAt: number | undefined;
   /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
   dismissedRunErrors: ReadonlySet<string> = new Set();
   stopping = false;
@@ -119,6 +123,25 @@ export class ConversationController implements ReactiveController {
     host.addController(this);
   }
 
+  /** The one place the composer lock and its trail clock move together: the lock follows every frame that declares it,
+   * and the clock is dropped the moment the turn settles. Nothing starts a clock here: a status frame or an open of a
+   * session that was already running says a turn is live, never when it began, so its trail measures what it can instead
+   * of counting from this page's load. Only `started` — a turn this page watched begin — stamps one. */
+  #setStreaming(next: boolean, started = false): void {
+    this.streaming = next;
+    if (!next) {
+      this.turnStartedAt = undefined;
+      return;
+    }
+    if (started && this.turnStartedAt === undefined) this.turnStartedAt = Date.now();
+  }
+
+  /** The composer's way in: it reports the lock a submission settles on, and whether that submission starts a turn.
+   * A send that starts one stamps the trail's clock once; a refused send drops it again through the same call. */
+  setStreaming(next: boolean, options: { started?: boolean } = {}): void {
+    this.#setStreaming(next, options.started === true);
+  }
+
   hostConnected(): void {
     this.#disconnected = false;
   }
@@ -129,6 +152,7 @@ export class ConversationController implements ReactiveController {
     this.#cancelRead();
     this.#streamStop?.();
     this.#streamStop = undefined;
+    this.turnStartedAt = undefined;
     this.#clearSubagentExpiry();
     window.clearTimeout(this.#copyTimer);
     this.#copyTimer = undefined;
@@ -148,6 +172,9 @@ export class ConversationController implements ReactiveController {
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = false;
+    // No conversation is on screen: its lock and the clock that belongs to it go with it, so nothing off screen keeps
+    // redrawing for a turn it no longer owns.
+    this.#setStreaming(false);
     this.#host.requestUpdate();
   }
 
@@ -165,7 +192,7 @@ export class ConversationController implements ReactiveController {
     this.#clearSubagentExpiry();
     this.opening = empty.opening;
     this.openError = "";
-    this.streaming = empty.streaming;
+    this.#setStreaming(empty.streaming);
     this.connectionNote = empty.connectionNote;
     this.savedCopy = undefined;
     this.resetModels();
@@ -188,7 +215,7 @@ export class ConversationController implements ReactiveController {
     this.#streamStop = undefined;
     this.opening = true;
     this.openError = "";
-    this.streaming = false;
+    this.#setStreaming(false);
     this.transcript = [];
     this.subagents = [];
     this.connectionNote = "";
@@ -221,7 +248,7 @@ export class ConversationController implements ReactiveController {
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot, true);
       this.thinking = opened.snapshot.thinking ?? opened.session.thinking ?? "medium";
-      this.streaming = streamingForStatus(opened.session.status);
+      this.#setStreaming(streamingForStatus(opened.session.status));
       this.connection = "live";
       this.#startStream(id, opened.revision);
       this.requestModelsWhenReady(id, opened.session.status);
@@ -286,7 +313,7 @@ export class ConversationController implements ReactiveController {
     this.connection = "saved";
     this.connectionNote = "Reconnecting; your draft stays on this device.";
     this.opening = false;
-    this.streaming = false;
+    this.#setStreaming(false);
     this.question = undefined;
     this.#host.requestUpdate();
   }
@@ -377,7 +404,7 @@ export class ConversationController implements ReactiveController {
         if (state === "live") this.savedCopy = undefined;
         this.connectionNote = state === "live" ? "" : detail || (this.savedCopy ? "Reconnecting; your draft stays on this device." : "Reconnecting…");
         if (state === "stopped" || state === "outdated") {
-          this.streaming = false;
+          this.#setStreaming(false);
           if (state === "stopped" && this.savedCopy) {
             this.savedCopy = undefined;
             this.transcript = [];
@@ -464,7 +491,8 @@ export class ConversationController implements ReactiveController {
         this.transcript = reduceTranscript(this.transcript, event);
         break;
       case "turn_start":
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        // The one frame that reports a turn beginning on this page: it stamps the trail's clock.
+        this.#setStreaming(streamingAfterEvent(this.streaming, event.type), true);
         if (this.compaction?.status !== "running") this.compaction = undefined;
         break;
       case "compaction_start":
@@ -483,12 +511,12 @@ export class ConversationController implements ReactiveController {
       case "turn_end":
         // pi emits turn_end before agent_end. The following status frame is
         // authoritative; unlocking here would accept a prompt PI still rejects.
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        this.#setStreaming(streamingAfterEvent(this.streaming, event.type));
         break;
       case "settled":
         // `settled` explains why the next status may become idle, but the
         // status SSE remains the single authority that unlocks the composer.
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        this.#setStreaming(streamingAfterEvent(this.streaming, event.type));
         break;
     }
     if (event.type === "text" || event.type === "thinking" || event.type === "tool_update") this.#requestFrameUpdate();
@@ -506,7 +534,7 @@ export class ConversationController implements ReactiveController {
     this.selected = { ...this.selected, status, interrupted };
     // The stream is the source of truth for a resumed or reconnected session,
     // so the composer lock follows the status rather than only turn events.
-    this.streaming = streamingForStatus(status);
+    this.#setStreaming(streamingForStatus(status));
     if (status !== "running" && status !== "waiting") this.stopping = false;
     this.#host.requestUpdate();
     this.requestModelsWhenReady(id, status);

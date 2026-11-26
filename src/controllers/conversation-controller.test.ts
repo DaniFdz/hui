@@ -383,3 +383,84 @@ test("streamed text, thinking and tool output redraw the conversation once per a
   stream.onEvent({ type: "tool_start", id: "t2", name: "bash" });
   assert.equal(updates(), before + 2, "a new tool row redraws at once");
 });
+
+test("the activity trail's clock starts with the live turn and is dropped the moment it settles", async () => {
+  // A settled turn announces itself to the page; the controller keeps no clock of its own past that.
+  vi.stubGlobal("window", { ...globalThis, dispatchEvent: () => true, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("idle");
+  await settle();
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined, "an idle conversation holds no start");
+  const stream = fake.streams[0]!.handlers;
+  stream.onEvent({ type: "turn_start" });
+  assert.equal(controller.streaming, true);
+  assert.equal(typeof controller.turnStartedAt, "number", "a live turn stamps its start");
+  // A settled event explains the next status but unlocks nothing on its own: the clock stops with the status frame.
+  stream.onEvent({ type: "settled" });
+  assert.equal(typeof controller.turnStartedAt, "number");
+  stream.onStatus("idle");
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined, "a settled turn keeps no clock");
+});
+
+test("opening a session that is already running stamps no clock, and a turn seen to begin stamps one", async () => {
+  vi.stubGlobal("window", { ...globalThis, dispatchEvent: () => true, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("running");
+  await settle();
+  assert.equal(controller.streaming, true, "the composer is locked by the running session");
+  assert.equal(controller.turnStartedAt, undefined,
+    "a turn that began minutes before this page loaded has no start this page could count from");
+  // A status frame that keeps it running says nothing new either.
+  fake.streams[0]?.handlers.onStatus("running");
+  assert.equal(controller.turnStartedAt, undefined);
+  // The next turn is one this page watches begin: its own frame stamps the clock.
+  fake.streams[0]?.handlers.onStatus("idle");
+  fake.streams[0]?.handlers.onEvent({ type: "turn_start" });
+  assert.equal(typeof controller.turnStartedAt, "number");
+  const stamped = controller.turnStartedAt;
+  // A second `turn_start` never restarts a running clock.
+  fake.streams[0]?.handlers.onEvent({ type: "turn_start" });
+  assert.equal(controller.turnStartedAt, stamped);
+  // `settled` explains the status that follows, and that status drops the clock.
+  fake.streams[0]?.handlers.onEvent({ type: "settled" });
+  fake.streams[0]?.handlers.onStatus("idle");
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined);
+});
+
+test("a component that leaves the screen drops the lock and the clock it was counting", async () => {
+  vi.stubGlobal("window", { ...globalThis, dispatchEvent: () => true, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("idle");
+  await settle();
+  fake.streams[0]?.handlers.onEvent({ type: "turn_start" });
+  assert.equal(controller.streaming, true);
+  assert.equal(typeof controller.turnStartedAt, "number");
+  controller.suspend();
+  assert.equal(controller.streaming, false, "nothing off screen keeps a live turn's redraw alive");
+  assert.equal(controller.turnStartedAt, undefined);
+});
+
+test("the composer's port stamps a turn it starts and drops the clock when a send is refused", () => {
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  assert.equal(controller.turnStartedAt, undefined);
+  controller.setStreaming(true, { started: true });
+  assert.equal(controller.streaming, true);
+  assert.equal(typeof controller.turnStartedAt, "number", "a send that starts a turn stamps it");
+  const stamped = controller.turnStartedAt;
+  // A status frame or a duplicate acknowledgement never restamps it.
+  controller.setStreaming(true);
+  assert.equal(controller.turnStartedAt, stamped);
+  controller.setStreaming(false);
+  assert.equal(controller.streaming, false);
+  assert.equal(controller.turnStartedAt, undefined, "a refused send leaves no clock behind");
+  // A frame that only keeps the lock says nothing about a start.
+  controller.setStreaming(true);
+  assert.equal(controller.streaming, true);
+  assert.equal(controller.turnStartedAt, undefined);
+});

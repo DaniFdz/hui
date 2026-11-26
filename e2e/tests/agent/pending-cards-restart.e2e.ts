@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const ASK = `E2E_CALL:${Buffer.from(JSON.stringify({
   name: "ask_user_question",
   input: {
@@ -45,7 +48,7 @@ test("a gateway restart ends the waiting question, secret and suggestion cards a
 
   await hui.open(`/sessions/${question.id}`);
   await expect(idle).toBeVisible();
-  await transcript.getByText("Used 1 tool").tap();
+  await transcript.getByText(trail).tap();
   const asked = transcript.getByRole("button", /^Used ask user question/u);
   await asked.tap();
   await expect(asked.getByLabel("Failed")).toBeVisible();
@@ -54,7 +57,7 @@ test("a gateway restart ends the waiting question, secret and suggestion cards a
 
   await hui.open(`/sessions/${secret.id}`);
   await expect(idle).toBeVisible();
-  await transcript.getByText("Used 1 tool").tap();
+  await transcript.getByText(trail).tap();
   const request = transcript.getByRole("button", /^Used secret request/u);
   await request.tap();
   await expect(interrupted("No secret to use: ", "secret_request")).toBeVisible();

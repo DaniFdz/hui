@@ -630,6 +630,8 @@ export class HuiApp extends HuiElement {
     void this.composer.persistDraft();
     super.disconnectedCallback();
     window.clearInterval(this.sessionProgressPoll);
+    window.clearInterval(this.liveClockPoll);
+    this.liveClockPoll = undefined;
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
     if (this.composerEditor) this.composerEditor.destroy();
@@ -656,6 +658,25 @@ export class HuiApp extends HuiElement {
   }
 
   private sessionProgressPoll?: number;
+  /** Redraws a live turn's activity clock once a second; it exists only while the open conversation streams, so an idle
+   * conversation keeps the one slow poll it always had. */
+  private liveClockPoll?: number;
+
+  /** Starts the activity clock's once-a-second redraw with a turn on screen and stops it the moment the turn settles or
+   * the operator leaves the chat: Bots, Kanban, Sessions and Settings draw no clock, so they start none. */
+  private syncLiveClock(): void {
+    if (this.view === "home" && this.conversation.streaming) {
+      if (this.liveClockPoll !== undefined) return;
+      this.liveClockPoll = window.setInterval(() => {
+        if (!document.hidden) this.requestUpdate();
+      }, 1000);
+      return;
+    }
+    if (this.liveClockPoll === undefined) return;
+    window.clearInterval(this.liveClockPoll);
+    this.liveClockPoll = undefined;
+  }
+
   override firstUpdated() {
     if (!this.embeddedPane) this.control.pollPower();
     this.sessionProgressPoll = window.setInterval(() => {
@@ -804,6 +825,7 @@ export class HuiApp extends HuiElement {
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
     this.flushPendingLaunch();
+    this.syncLiveClock();
     if (this.embeddedPane) {
       const connection = `${this.paneSessionId}\0${this.paneCanAccessFiles()}`;
       if (connection !== this.renderedFilesConnection) {
@@ -3107,6 +3129,7 @@ export class HuiApp extends HuiElement {
       opening: this.conversation.opening,
       openError: this.conversation.openError,
       streaming: this.conversation.streaming,
+      ...(this.conversation.turnStartedAt !== undefined ? { turnStartedAt: this.conversation.turnStartedAt } : {}),
       stopping: this.conversation.stopping,
       continuing: this.continuing,
       chatPreferences: {

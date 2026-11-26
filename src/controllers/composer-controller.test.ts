@@ -8,7 +8,7 @@ import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.t
 import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
 import type { ComposerControl, ComposerEditor } from "../lib/composer/rich/editor.ts";
 import { ComposerController } from "./composer-controller.ts";
-import type { ConversationController } from "./conversation-controller.ts";
+import { ConversationController } from "./conversation-controller.ts";
 
 /**
  * A stand-in for the mounted rich editor over one plain string: the controller only ever reads and writes its control,
@@ -113,19 +113,22 @@ beforeEach(() => {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; editor?: ComposerEditor; connection?: SessionConnection; launching?: boolean } = {}) {
+function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; editor?: ComposerEditor; connection?: SessionConnection; launching?: boolean; conversation?: ConversationController } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
   let updates = 0;
   const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => { updates += 1; }, updateComplete: Promise.resolve(true), renderRoot: { querySelector: () => null } as unknown as HTMLElement };
-  const conversation = {
+  const stand = {
     get selected() { return selected.current; },
     opening: false,
     connection: options.connection ?? "live",
     stopping: false,
     streaming: options.streaming ?? false,
     transcript: [],
-  } as unknown as ConversationController;
+    // The lock half of the controller's port; `conversation-controller.test.ts` proves what the clock does with it.
+    setStreaming(next: boolean) { stand.streaming = next; },
+  };
+  const conversation = options.conversation ?? stand as unknown as ConversationController;
   const controller = new ComposerController(host, {
     conversation,
     showNote: (message, level) => notes.push(`${level}:${message}`),
@@ -452,6 +455,29 @@ test("sending the queued steers now sends once and reports a refusal", async () 
   await settle();
   assert.equal(controller.sending, false);
   assert.equal(notes.at(-1), "error:nothing is steered");
+});
+
+test("a send from the composer stamps the trail's clock, and a refused one clears it", async () => {
+  // The real controller, so the clock the send stamps is the one the trail reads, not a stand-in's copy of the rule.
+  const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => {}, updateComplete: Promise.resolve(true), renderRoot: { querySelector: () => null } as unknown as HTMLElement };
+  const conversationController = new ConversationController(host, {
+    showError: () => {}, refreshSessions: async () => {}, paneCreating: () => false, paneCreationFailed: () => false,
+    resetSession: () => {}, connectionLost: () => {}, adoptSnapshot: () => {}, adoptEvent: () => {},
+    statusChanged: () => {}, flushLaunchPrompt: () => {},
+  });
+  conversationController.selected = { id: "s1", status: "idle" } as SessionView;
+  const selected = { current: conversationController.selected };
+  const { controller } = composer(selected, { conversation: conversationController });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.props().onDraftInput("ship it");
+  controller.send("ship it");
+  assert.equal(conversationController.streaming, true, "the composer lock follows the started turn");
+  assert.equal(typeof conversationController.turnStartedAt, "number", "the held turn's trail can count from here");
+  fake.prompts[0]?.reject(new Error("refused"));
+  await settle();
+  assert.equal(conversationController.streaming, false);
+  assert.equal(conversationController.turnStartedAt, undefined, "a send that never started a turn leaves no clock behind");
 });
 
 test("a sent prompt claims the draft at once and a refused one comes back with the error", async () => {

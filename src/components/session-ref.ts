@@ -8,7 +8,9 @@
  * chip where it stands — the anchor stays the same element, so focus and an open tooltip survive a status flip — and one
  * that changes neither leaves it alone entirely. A chip can never sit inside a link: the parser skips a link's own label.
  *
- * A plain custom element, not Lit: it lives inside Markdown HTML, draws two spans of its own and holds no template.
+ * A plain custom element, not Lit: it lives inside Markdown HTML and inside a call's chip line (`views/chat/tool-call-group.ts`
+ * draws it with `data-query` and no child of its own, so Lit owns no part of it), draws two nodes of its own and holds no
+ * template.
  */
 import {
   lookupSessionReference,
@@ -107,8 +109,11 @@ export class HuiSessionRef extends Base {
   }
 
   #showFallback(query: string) {
-    if (this.#bare) return;
-    this.replaceChildren(this.ownerDocument.createTextNode(this.#fallback || sessionRefFallbackText(query)));
+    // A chip drawn from `data-query` alone started empty, so it has no typed text to put back: without the words it
+    // would draw nothing at all. An element the parser filled already says this, and a repeated publish leaves it be.
+    const text = this.#fallback || sessionRefFallbackText(query);
+    if (this.#bare && this.textContent === text) return;
+    this.replaceChildren(this.ownerDocument.createTextNode(text));
     this.#bare = true;
   }
 

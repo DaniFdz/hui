@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 test("Escape in the Work pane returns focus to the chat composer and leaves the turn running", { tags: ["WORK-015"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const pane = screen.getByLabel("Work pane");
@@ -13,7 +16,7 @@ test("Escape in the Work pane returns focus to the chat composer and leaves the 
   await message.fill("E2E_COMMAND_RUNNING");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
-  await expect(transcript.getByText("Using 1 tool")).toBeVisible();
+  await expect(transcript.getByText(trail)).toBeVisible();
 
   await screen.getByRole("button", "Show Work pane").tap();
   await pane.getByRole("button", { name: /^New terminal/u }).tap();
@@ -24,7 +27,7 @@ test("Escape in the Work pane returns focus to the chat composer and leaves the 
   await expect(pane.getByRole("status").getByText("Shared · Connected", { exact: true })).toBeVisible();
   await terminal.press("Escape");
   await expect(message).toBeFocused();
-  await expect(transcript.getByText("Using 1 tool")).toBeVisible();
+  await expect(transcript.getByText(trail)).toBeVisible();
 
   await hui.provider.release();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();

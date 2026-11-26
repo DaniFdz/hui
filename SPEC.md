@@ -560,6 +560,32 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   is on screen; **Scroll to latest** goes back to the latest 50. A folded
   activity draws its items when it is opened. This keeps a long session or a
   bot's chat quick to open on a phone.
+- The activity between two messages is one disclosure, never two. Its collapsed
+  header times the stretch — **Working for 3m 04s …** while the turn runs, from
+  its earliest measured timestamp or, until one of its items reports one, from the
+  turn's own start, and **Worked for 1m 12s …** once it settles, from the earliest
+  measured start to the latest measured completion; a stretch that reported
+  neither end keeps the count wording (**Used 5 tools …**) rather than inventing a
+  clock, and reasoning alone reads that same clock once it measured both ends,
+  **Reasoning** / **Thinking…** only when nothing measured a span for it. A turn's
+  start is only known when this page watched it begin — the composer's send or the
+  turn's own start frame — so a chat opened on a turn that had already been running
+  keeps its measured wording instead of counting from the page's load, and only the
+  turn's latest stretch still unsettled is live: an earlier stretch stays a settled
+  receipt while a later one runs. The header then
+  counts what the calls did, in one fixed order and singular or plural with zero
+  kinds left out: edits, writes, reads, searches, runs, fetches, browser steps and
+  other calls. A failed call, or an error the stretch holds, marks the collapsed
+  header with a danger mark and **failed** (or **N failed**), so a failure is never
+  hidden in a fold. The file, pull-request, issue and session references the calls'
+  own arguments and output prove are chips on that collapsed summary — at most
+  three, deduplicated — so what the stretch touched is read without opening it.
+  Opened, it lists the reasoning and each run of consecutive calls in transcript
+  order in its one scroll region: a run keeps the base app's own tool card, with
+  its own **Using N tools**/**Used N tools** header and one row per call, and a
+  settled call's row carries its own measured duration beside its result size. The
+  card opens with the trail and its own header still folds it, a click on a chip
+  never folds the trail, and a row opens that call's own body.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not

@@ -2,6 +2,9 @@
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const LABEL = "Fixture API key";
 const REASON = "The fixture proves an agent can use a secret without seeing it.";
 
@@ -43,7 +46,7 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
     const request = transcript.getByRole("button", /^Used secret request/u);
-    if ((await request.count()) === 0) await transcript.getByText("Used 2 tools").tap();
+    if ((await request.count()) === 0) await transcript.getByText(trail).tap();
     await request.tap();
     await expect(transcript.getByText(new RegExp(`"label": "${LABEL}",\\s+"reason": "${REASON}"`, "u"))).toBeVisible();
     await expect(transcript.getByText(new RegExp(`^The operator provided "${LABEL}"\\. It is in /tmp/hui-secret-\\d+-\\w+/secret until \\S+\\. Use it without printing it and delete the file when done\\.$`, "u"))).toBeVisible();
