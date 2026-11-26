@@ -492,6 +492,9 @@ test("Durable runs a real tool turn and reopens the conversation from its store"
   assert.deepEqual(shape, ["user", "tool", "assistant"]);
   const read = live.find((entry) => entry.kind === "tool");
   assert(read?.kind === "tool" && read.name === "read" && read.failed === false, JSON.stringify(read));
+  // The runtime measures its own events: the tool card carries the call's duration, not just its result.
+  assert.equal(typeof read.metrics?.durationMs, "number", JSON.stringify(read));
+  assert.equal(typeof read.metrics?.completedAt, "number", JSON.stringify(read));
   const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line) as { system?: unknown });
   const system = JSON.stringify(requests[0]!.system);
   assert.match(system, /You are the coding assistant in HUI/u, "HUI's default preamble");

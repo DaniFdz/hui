@@ -1,30 +1,30 @@
 /**
- * One card for the tools a turn used: a mark stack and a live "Using N tools" header that settles to "Used N tools",
- * and one row per call with the call in plain words, its result size and its status. Opening a row draws that tool's
- * own card body (read, command or codemode), so a call's detail keeps living where it already did. Presentation only:
- * the transcript still owns the order and the data, and a call without a known phrasing falls back to its name.
+ * One card for a run of consecutive tool calls inside an activity trail, drawn exactly as the base app draws it: a mark
+ * stack and a live "Using N tools" header that settles to "Used N tools", over one row per call with the call in plain
+ * words, its result size and measured duration, and its status. Opening a row draws that tool's own card body (read,
+ * command or codemode), so a call's detail keeps living where it already did. The chips the calls prove (their file,
+ * pull requests, issues and sessions) belong to the trail's summary through `renderToolChips`, so a closed fold still
+ * says what it touched. Presentation only: the transcript owns the order and the data, the trail owns the outer fold,
+ * and a call without a known phrasing falls back to its name.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { brandMarks, icons } from "../../lib/icons.ts";
-import type { TranscriptItem } from "../../api/sessions.ts";
+import { activityDuration, toolReferenceLabel, toolReferences, type ToolReference } from "../../lib/activity-trail.ts";
+import {
+  COMMAND_TOOLS, EDIT_TOOLS, FETCH_TOOLS, READ_TOOLS, SEARCH_TOOLS, WEB_SEARCH_TOOLS, WRITE_TOOLS,
+  type ToolItem,
+} from "../../lib/tool-kinds.ts";
 import { readToolPresentation, commandToolPresentation, codemodeToolPresentation, toolFilePath } from "../../lib/tool-cards.ts";
 import { renderReadToolBody, renderToolFileReference } from "./read-tool-card.ts";
 import { renderCommandToolBody } from "./command-tool-card.ts";
 import { renderCodemodeToolBody } from "./codemode-tool-card.ts";
+import "../../components/session-ref.ts";
 
-export type ToolItem = Extract<TranscriptItem, { kind: "tool" }>;
+export type { ToolItem };
 
 /** Where the gateway serves a user's icon files (server/tool-icons.ts). The browser only builds the URL; it never
  * reads a path, and an unset or unknown file falls back to the next mark. */
 const TOOL_ICON_BASE = "/__hui/tool-icons/";
-
-const READ_TOOLS = new Set(["read", "read_file", "readfile", "notebookread", "notebook_read"]);
-const EDIT_TOOLS = new Set(["edit", "edit_file", "apply_patch", "multiedit", "multi_edit"]);
-const WRITE_TOOLS = new Set(["write", "write_file", "create_file", "file_write"]);
-const SEARCH_TOOLS = new Set(["grep", "glob", "find", "search", "code_search", "ripgrep", "rg", "search_chat"]);
-const COMMAND_TOOLS = new Set(["bash", "shell", "exec", "run_command", "run_terminal_cmd", "command", "terminal"]);
-const FETCH_TOOLS = new Set(["web_fetch", "webfetch", "fetch"]);
-const WEB_SEARCH_TOOLS = new Set(["web_search", "websearch"]);
 
 function toolArgs(item: ToolItem): Record<string, unknown> {
   return item.args && typeof item.args === "object" && !Array.isArray(item.args) ? item.args as Record<string, unknown> : {};
@@ -122,6 +122,8 @@ export function toolCallMeta(item: ToolItem): string | undefined {
 
 type ToolKind = "read" | "command" | "codemode" | "edit" | "search" | "web" | "other";
 
+/** The card's own kind, which is about the mark a row shows rather than what a trail counts (`lib/tool-kinds.ts`: a
+ * browse of a page is its own globe there, and a codemode script is one other call). */
 function toolKind(item: ToolItem): ToolKind {
   const name = item.name.trim().toLowerCase();
   if (READ_TOOLS.has(name)) return "read";
@@ -244,6 +246,19 @@ function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult; color?:
 
 type Status = "running" | "succeeded" | "failed";
 
+/** What each call proved, remembered per item object: a live turn redraws once a second, and scanning every row's
+ * arguments and output again on each of those redraws is what a long trail cannot afford. A new item object (a call that
+ * changed) has no entry and is read then. */
+const REFERENCES = new WeakMap<ToolItem, ToolReference[]>();
+
+function provenReferences(item: ToolItem): ToolReference[] {
+  const remembered = REFERENCES.get(item);
+  if (remembered) return remembered;
+  const references = toolReferences(item);
+  REFERENCES.set(item, references);
+  return references;
+}
+
 function statusOf(item: ToolItem): Status {
   if (item.failed || item.status === "failed") return "failed";
   return (item.status ?? "running") === "running" ? "running" : "succeeded";
@@ -253,6 +268,131 @@ function statusGlyph(status: Status) {
   if (status === "running") return html`<span class="tool-call-row__spin" aria-hidden="true"></span>`;
   if (status === "failed") return html`<span class="tool-call-row__status tool-call-row__status--failed" role="img" aria-label="Failed">${icons.alertTriangle}</span>`;
   return html`<span class="tool-call-row__status tool-call-row__status--done" role="img" aria-label="Done">${icons.check}</span>`;
+}
+
+export type ToolCallGroupOptions = {
+  /** Whether the run's own disclosure is open. The trail that holds it opens it with itself. */
+  expanded: boolean;
+  onToggle: (open: boolean) => void;
+  /** Marks a row as the one row id, so its open state survives a re-render. */
+  expansionId: (item: ToolItem) => string;
+  expandedIds: ReadonlySet<string>;
+  onRowToggle: (expansionId: string, open: boolean) => void;
+  onCopy: (text: string, key: string) => void;
+  /** `chat.toolMarks`: the user's own emoji per CLI or tool name, over the built-in set. */
+  marks?: Readonly<Record<string, string>>;
+  /** `chat.toolIcons`: the user's own image per CLI or tool name; it wins over an emoji or SVG mark. */
+  icons?: Readonly<Record<string, string>>;
+};
+
+/** The one mark of a reference chip: the file the call named, the pull request or issue it printed, or the session. */
+function renderReferenceChip(reference: ToolReference): TemplateResult {
+  if (reference.kind === "file") return html`<span class="tool-call-chip tool-call-chip--file">${renderToolFileReference(reference.path)}</span>`;
+  if (reference.kind === "session") {
+    // No child expression: the element writes the text it shows (`components/session-ref.ts`), and a Lit child part a
+    // chip's own `replaceChildren` would eject leaves Lit holding a marker with no parent, which throws on the next
+    // render of the transcript.
+    return html`<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=${reference.query}></hui-session-ref>`;
+  }
+  return html`<a class="tool-call-chip ${reference.kind === "pull" ? "tool-call-chip--pr" : "tool-call-chip--issue"}" href=${reference.href}
+    target="_blank" rel="noopener">${toolReferenceLabel(reference)}</a>`;
+}
+
+/** A chip's identity across the calls of one stretch: two calls that named the same file, link or session draw one. */
+function chipKey(reference: ToolReference): string {
+  if (reference.kind === "file") return `file:${reference.path}`;
+  if (reference.kind === "session") return `session:${reference.query}`;
+  return `link:${reference.href}`;
+}
+
+/** The chips a stretch's calls proved, in transcript order, deduplicated and capped: the trail's summary carries them,
+ * so what a fold touched is read while it is closed. A call's own data is read once and reused by every redraw. */
+export function renderToolChips(items: readonly ToolItem[], limit = 3): TemplateResult[] {
+  const chips: TemplateResult[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    for (const reference of provenReferences(item)) {
+      const key = chipKey(reference);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      chips.push(renderReferenceChip(reference));
+      if (chips.length >= limit) return chips;
+    }
+  }
+  return chips;
+}
+
+/** The distinct marks of the calls a trail holds, at most four and then `+N`: the CLI for a command, the kind for
+ * every other tool. It stays in the collapsed header, so a custom icon file shows without opening anything. */
+export function renderToolMarks(items: readonly ToolItem[], options: Pick<ToolCallGroupOptions, "marks" | "icons">): TemplateResult {
+  const custom = options.marks ?? {};
+  const iconsByName = options.icons ?? {};
+  const distinct = new Map<string, { glyph: TemplateResult; color?: string; emoji?: string; icon?: string }>();
+  for (const item of items) {
+    const icon = toolIcon(item);
+    const own = toolIconName(item, iconsByName);
+    if (!distinct.has(icon.key)) distinct.set(icon.key, {
+      glyph: icon.glyph,
+      ...(icon.color ? { color: icon.color } : {}),
+      ...(own ? { icon: own } : toolEmoji(item, custom) ? { emoji: toolEmoji(item, custom)! } : {}),
+    });
+  }
+  const kinds = [...distinct];
+  return html`<span class="tool-call-group__marks" aria-hidden="true">${kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
+    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.icon
+      ? html`<img class="tool-call-group__icon" data-testid="tool-mark-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(mark.icon)}`} alt="" />`
+      : mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`)}${kinds.length > 4 ? html`<span class="tool-call-group__mark tool-call-group__mark--more">+${kinds.length - 4}</span>` : nothing}</span>`;
+}
+
+/** One row for one call, in the order the run holds it. Only the row's own toggle opens its body, so the button keeps
+ * its one label and the body waits for the reader who asked for it. */
+function renderToolCallRow(item: ToolItem, options: ToolCallGroupOptions): TemplateResult {
+  const custom = options.marks ?? {};
+  const iconsByName = options.icons ?? {};
+  const status = statusOf(item);
+  const label = toolCallLabel(item);
+  // A settled call reports its own measurement beside whatever its output proved; a running one has not measured itself.
+  const measured = status === "running" ? undefined : activityDuration(item.metrics?.durationMs);
+  const meta = [toolCallMeta(item), measured].filter(Boolean).join(" · ") || undefined;
+  const expansionId = options.expansionId(item);
+  const open = options.expandedIds.has(expansionId);
+  const title = status === "running" ? label.running : label.done;
+  const icon = toolIcon(item);
+  const emoji = toolEmoji(item, custom);
+  const iconName = toolIconName(item, iconsByName);
+  return html`<div class="tool-call-row" data-status=${status}>
+    <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
+      @click=${() => options.onRowToggle(expansionId, !open)}>
+      <span class="tool-call-row__icon${iconName ? " tool-call-row__icon--image" : emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}"
+        style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${iconName
+          ? html`<img class="tool-call-row__icon-img" data-testid="tool-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(iconName)}`} alt="" />`
+          : emoji ?? icon.glyph}</span>
+      <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
+      ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
+      ${statusGlyph(status)}
+      <span class="tool-call-row__chevron" aria-hidden="true">${icons.chevronDown}</span>
+    </button>
+    ${open ? renderToolBody(item, options.onCopy) : nothing}
+  </div>`;
+}
+
+/** The tool calls of one run as one card of their own, the card the base app drew for a turn's calls. Its header names
+ * the run and its marks; its rows wait for its own open, which the trail gives it when the trail opens. */
+export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCallGroupOptions): TemplateResult {
+  const running = items.some((item) => statusOf(item) === "running");
+  const tools = items.length;
+  return html`<div class="tool-call-group">
+    <details class="tool-call-group__disclosure" .open=${options.expanded}
+      @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
+      <summary class="tool-call-group__head">
+        ${renderToolMarks(items, options)}
+        <span class=${running ? "tool-call-group__label tool-call-group__label--live" : "tool-call-group__label"}>${running ? "Using" : "Used"} ${tools} ${tools === 1 ? "tool" : "tools"}</span>
+        ${running ? html`<span class="tool-call-group__spin" aria-hidden="true"></span>` : nothing}
+        <span class="tool-call-group__chevron" aria-hidden="true">${icons.chevronDown}</span>
+      </summary>
+      ${options.expanded ? html`<div class="tool-call-group__rows">${items.map((item) => renderToolCallRow(item, options))}</div>` : nothing}
+    </details>
+  </div>`;
 }
 
 /** The tool's own body when it has one; otherwise the arguments and output as the generic card shows them. */
@@ -270,79 +410,3 @@ export function renderToolBody(item: ToolItem, onCopy: (text: string, key: strin
   </div></div>`;
 }
 
-export type ToolCallGroupOptions = {
-  /** Marks the card as the one row id, so its open state survives a re-render. */
-  id: string;
-  expanded: boolean;
-  onToggle: (open: boolean) => void;
-  /** Why the group is open: one of its calls is open, or it is still working. */
-  expansionId: (item: ToolItem) => string;
-  expandedIds: ReadonlySet<string>;
-  onRowToggle: (expansionId: string, open: boolean) => void;
-  onCopy: (text: string, key: string) => void;
-  /** `chat.toolMarks`: the user's own emoji per CLI or tool name, over the built-in set. */
-  marks?: Readonly<Record<string, string>>;
-  /** `chat.toolIcons`: the user's own image per CLI or tool name; it wins over an emoji or SVG mark. */
-  icons?: Readonly<Record<string, string>>;
-};
-
-/** The tool calls of one activity row as one card. */
-export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCallGroupOptions): TemplateResult {
-  const running = items.some((item) => statusOf(item) === "running");
-  const tools = items.length;
-  const custom = options.marks ?? {};
-  const iconsByName = options.icons ?? {};
-  const distinct = new Map<string, { glyph: TemplateResult; color?: string; emoji?: string; icon?: string }>();
-  for (const item of items) {
-    const icon = toolIcon(item);
-    const own = toolIconName(item, iconsByName);
-    if (!distinct.has(icon.key)) distinct.set(icon.key, {
-      glyph: icon.glyph,
-      ...(icon.color ? { color: icon.color } : {}),
-      ...(own ? { icon: own } : toolEmoji(item, custom) ? { emoji: toolEmoji(item, custom)! } : {}),
-    });
-  }
-  const kinds = [...distinct];
-  const marks = kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
-    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.icon
-      ? html`<img class="tool-call-group__icon" data-testid="tool-mark-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(mark.icon)}`} alt="" />`
-      : mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`);
-  return html`<div class="tool-call-group">
-    <details class="tool-call-group__disclosure" .open=${options.expanded}
-      @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
-      <summary class="tool-call-group__head">
-        <span class="tool-call-group__marks" aria-hidden="true">${marks}${kinds.length > 4 ? html`<span class="tool-call-group__mark tool-call-group__mark--more">+${kinds.length - 4}</span>` : nothing}</span>
-        <span class=${running ? "tool-call-group__label tool-call-group__label--live" : "tool-call-group__label"}>${running ? "Using" : "Used"} ${tools} ${tools === 1 ? "tool" : "tools"}</span>
-        ${running ? html`<span class="tool-call-group__spin" aria-hidden="true"></span>` : nothing}
-        <span class="tool-call-group__chevron" aria-hidden="true">${icons.chevronDown}</span>
-      </summary>
-      ${options.expanded ? html`<div class="tool-call-group__rows">
-        ${items.map((item) => {
-          const status = statusOf(item);
-          const label = toolCallLabel(item);
-          const meta = toolCallMeta(item);
-          const expansionId = options.expansionId(item);
-          const open = options.expandedIds.has(expansionId);
-          const title = status === "running" ? label.running : label.done;
-          const icon = toolIcon(item);
-          const emoji = toolEmoji(item, custom);
-          const iconName = toolIconName(item, iconsByName);
-          return html`<div class="tool-call-row" data-status=${status}>
-            <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
-              @click=${() => options.onRowToggle(expansionId, !open)}>
-              <span class="tool-call-row__icon${iconName ? " tool-call-row__icon--image" : emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}"
-                style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${iconName
-                  ? html`<img class="tool-call-row__icon-img" data-testid="tool-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(iconName)}`} alt="" />`
-                  : emoji ?? icon.glyph}</span>
-              <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
-              ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
-              ${statusGlyph(status)}
-              <span class="tool-call-row__chevron" aria-hidden="true">${icons.chevronDown}</span>
-            </button>
-            ${open ? renderToolBody(item, options.onCopy) : nothing}
-          </div>`;
-        })}
-      </div>` : nothing}
-    </details>
-  </div>`;
-}

@@ -3,6 +3,9 @@ import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { hideBotPanel, panelOverview, showBotPanel } from "./bot-panel.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 type Task = { id: string; name: string; sessionId: string; until?: string; runsLeft?: number; createdBy?: { kind: string; handle?: string } };
 
 const makeBot = async (hui: Hui) =>
@@ -27,7 +30,7 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^routines answered: /u)).toBeVisible();
   const addCall = transcript.getByRole("button", /^Used routines/u);
-  if (!(await addCall.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await addCall.isVisible())) await transcript.getByText(trail).tap();
   await expect(addCall).toBeVisible();
   await expect.poll(async () => (await tasks()).map((task) => task.name)).toEqual(["Watch #82"]);
   const routine = (await tasks())[0]!;

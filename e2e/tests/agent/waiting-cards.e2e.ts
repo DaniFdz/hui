@@ -2,6 +2,9 @@
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const QUESTIONS = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "ask_user_question", input: { questions: [
   { header: "Scope", question: "What should the first release cover?", options: [{ label: "Reading", description: "List and show only." }, { label: "Writing", description: "Create and edit too." }] },
   { header: "Deploy", question: "Where should it run first?", options: [{ label: "Staging", description: "Behind the VPN." }, { label: "Production", description: "Public." }] },
@@ -31,7 +34,7 @@ test("Stop closes a waiting question or secret card and leaves the session idle"
     await expect(card).toBeHidden();
     await hui.reload();
     await expect(idle).toBeVisible();
-    await transcript.getByText("Used 1 tool").tap();
+    await transcript.getByText(trail).tap();
     const call = transcript.getByRole("button", new RegExp(`^Used ${tool.replaceAll("_", " ")}`, "u"));
     await call.tap();
     await expect(call.getByLabel("Failed")).toBeVisible();

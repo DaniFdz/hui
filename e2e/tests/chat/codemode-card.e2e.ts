@@ -2,6 +2,9 @@
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const codemode = (verb: "CALL" | "HOLD", code: string) =>
   `E2E_${verb}:${Buffer.from(JSON.stringify({ name: "codemode", input: { code } })).toString("base64url")}`;
 
@@ -28,9 +31,9 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   ].join("\n")));
   await send.tap();
   await hui.provider.held();
-  await reveal(transcript.getByText("Using 1 tool"));
+  await reveal(transcript.getByText(trail));
   const script = transcript.getByRole("button", /^Running a codemode script 4 calls/u);
-  if (!(await script.isVisible())) await transcript.getByText("Using 1 tool").tap();
+  if (!(await script.isVisible())) await transcript.getByText(trail).tap();
   await reveal(script);
   await script.tap();
   await reveal(transcript.getByText("Running · 4 calls, 1 failed so far"));
@@ -64,9 +67,9 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   await send.tap();
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
-  await reveal(transcript.getByText("Used 1 tool"));
+  await reveal(transcript.getByText(trail));
   const broken = transcript.getByRole("button", /^Ran a codemode script/u);
-  if (!(await broken.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await broken.isVisible())) await transcript.getByText(trail).tap();
   await reveal(broken);
   await broken.tap();
   await expect(transcript.getByText(/^Failed/u)).toBeVisible();
@@ -80,9 +83,9 @@ test("a codemode output PI cut links its full output", { tags: ["CHAT-027"] }, a
   await screen.getByLabel("Message").fill(codemode("CALL", '// @options: {"max_output_tokens": 50}\nreturn "x".repeat(500);'));
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+  await hui.scrollTo(transcript, transcript.getByText(trail));
   const script = transcript.getByRole("button", /^Ran a codemode script/u);
-  if (!(await script.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await script.isVisible())) await transcript.getByText(trail).tap();
   await hui.scrollTo(transcript, script);
   await script.tap();
   await hui.scrollTo(transcript, transcript.getByText("Full output:"));

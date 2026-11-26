@@ -10,6 +10,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 test("hui.holdTool holds a tool call of a chosen name so its row and the working indicator can be read in flight", { tags: ["BOARD-017"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
@@ -26,7 +29,8 @@ test("hui.holdTool holds a tool call of a chosen name so its row and the working
   for (const call of held) {
     const running = await hui.holdTool(session, call.name, call.input);
     await expect(screen.getByLabel(`Agent activity: ${call.indicator}`)).toBeVisible();
-    const group = transcript.getByText("Using 1 tool");
+    // Each held call is a stretch of its own, so the newest trail is the one this call's row is in.
+    const group = transcript.getByText(trail).last();
     await hui.scrollTo(transcript, group);
     const row = transcript.getByRole("button", new RegExp(`^${call.row}`, "u"));
     if (!(await row.isVisible())) await group.tap();

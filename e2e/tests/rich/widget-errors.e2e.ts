@@ -4,6 +4,8 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+
 /** One `show_widget` call, or several in one answer, as the fixture's provider sends them. */
 const call = (calls: { name: string; input: unknown } | { name: string; input: unknown }[]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
@@ -83,7 +85,7 @@ test("A show_widget call whose script does not parse, sends a full document, a f
 
   // Each refusal is the model's to fix, and its message names the script, position and offending line where it can.
   // Every refused call keeps a fold of its own; opening one reveals the failed row and its error.
-  const folds = transcript.getByText("Used 1 tool");
+  const folds = transcript.getByTestId("activity-trail");
   await expect(folds).toHaveCount(4);
   for (let index = 0; index < 4; index += 1) await folds.nth(index).tap();
   const rows = transcript.getByRole("button", { name: /^Used show widget/u });

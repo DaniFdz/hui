@@ -1802,8 +1802,144 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
-/* One card for a turn's tool calls (src/views/chat/tool-call-group.ts): a mark stack and a live "Using N tools"
- * header over one row per call. Rows are 40px so a long run stays scannable; only the row's own body opens. */
+/* One trail for a turn's activity (src/lib/activity-trail.ts, src/views/home.ts): one disclosure whose summary carries
+the turn's clock, what its calls did, a failed mark and the chips its calls proved, and whose opened body lists the
+reasoning and each run of calls — in the base app's own tool card — in transcript order. The summary's label ellipsises
+and the chips take a line of their own when room runs out; the body scrolls the stretch, and an opened call keeps its
+own card cap below. */
+.chat-activity-trail {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-activity-trail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 0;
+}
+
+.chat-activity-trail__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text) 88%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A failed call is named in the collapsed header, never only inside the fold: the mark carries the danger colour and
+the count stays whole, so the label's ellipsis never eats it. */
+.chat-activity-trail__failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--danger);
+  font-size: calc(var(--control-ui-text-xs) + 1px);
+  white-space: nowrap;
+}
+
+.chat-activity-trail__failed-mark {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-activity-trail__failed-mark svg {
+  width: 13px;
+  height: 13px;
+}
+
+.chat-activity-trail__head .tool-call-group__marks {
+  flex: none;
+  padding-left: 0;
+}
+
+/* The chips a stretch's calls proved: its file, its pull requests and issues, and the sessions it named. They hang on the
+summary, on a line of their own when the header runs out of room, so a folded trail says what it touched while the label
+keeps the room it has on a phone. */
+.chat-activity-trail__chips {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+/* An opened call inside a trail keeps the cap it always had: the trail scrolls the stretch, and a call taller than its
+   own card still scrolls inside the card it owns (`views/chat/tool-call-group.ts`). */
+.chat-activity-group__body .tool-call-row .chat-tool-msg-body {
+  max-height: min(520px, 60vh);
+  overflow-y: auto;
+}
+
+.tool-call-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-strong) 55%, transparent);
+  color: var(--muted);
+  font-size: calc(var(--control-ui-text-xs) + 1px);
+  line-height: 1.6;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+a.tool-call-chip {
+  color: var(--link);
+}
+
+a.tool-call-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--link-hover, var(--link));
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+a.tool-call-chip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tool-call-chip--file hui-file-ref {
+  color: inherit;
+}
+
+/* A session chip already draws its own pill; the trail keeps that pill and only stops it outgrowing the row. */
+.tool-call-chip--session {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.tool-call-chip--session a.session-ref {
+  max-width: min(22rem, 100%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-activity-trail__label--live {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--text) 62%, transparent) 0%, var(--text-strong) 40%, color-mix(in srgb, var(--text) 62%, transparent) 70%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: tool-call-shimmer 1.6s ease-in-out infinite;
+  }
+}
+
+/* One card for a run of consecutive calls inside a trail (src/views/chat/tool-call-group.ts): the base app's own
+disclosure, a mark stack and a live "Using N tools" header that settles to "Used N tools", over one row per call. Rows
+are 42px so a long run stays scannable; only the row's own body opens. The trail opens the card with itself; the card's
+own toggle still closes it. */
 .tool-call-group {
   width: 100%;
   min-width: 0;
@@ -2001,7 +2137,6 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   padding: 10px 14px;
   font-size: calc(var(--control-ui-text-sm) + 2px);
 }
-
 .tool-call-group__rows { padding: 5px 0 8px; }
 
 .tool-call-row__toggle {

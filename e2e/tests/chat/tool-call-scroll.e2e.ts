@@ -2,6 +2,9 @@
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 const call = (name: string, input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
@@ -24,9 +27,9 @@ test("a tool call taller than its cap scrolls inside its card, at a desktop's an
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
 
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+  await hui.scrollTo(transcript, transcript.getByText(trail));
   const row = transcript.getByRole("button", /^Ran /u);
-  if (!(await row.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  if (!(await row.isVisible())) await transcript.getByText(trail).tap();
   await hui.scrollTo(transcript, row);
   await row.tap();
 

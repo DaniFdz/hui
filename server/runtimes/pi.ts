@@ -413,6 +413,15 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
     });
     const metricsPart = normalizedParts.findLast(part => (part.type === "text" && part.text) || (part.type === "thinking" && part.thinking))
       ?? normalizedParts.findLast(part => part.type === "toolCall");
+    // The message's own start and finish, which every reasoning and call it carries shares: a trail spans from the
+    // reasoning it opened with to the call that finished it, so a part without them cannot be measured at all. The
+    // duration, tokens and cost stay with `metricsPart`, the one part the message's own measurement is about.
+    const partTimestamp = sanitizeMetrics({ timestamp: raw["timestamp"] }).timestamp;
+    const partCompletedAt = metrics.completedAt;
+    const sharedMetrics = {
+      ...(partTimestamp !== undefined ? { timestamp: partTimestamp } : {}),
+      ...(partCompletedAt !== undefined ? { completedAt: partCompletedAt } : {}),
+    };
     const entryId = typeof raw["entryId"] === "string" ? { entryId: raw["entryId"] } : {};
     let firstMessagePart = true;
     for (const part of normalizedParts) {
@@ -427,14 +436,21 @@ export function transcriptFrom(messages: readonly unknown[], timings = new Runti
         });
         firstMessagePart = false;
       } else if (part.type === "thinking" && typeof part.thinking === "string" && part.thinking) {
-        entries.push({ kind: "thinking", text: part.thinking, ...(part === metricsPart && Object.keys(metrics).length ? { metrics } : {}) });
+        entries.push({ kind: "thinking", text: part.thinking,
+          ...(part === metricsPart && Object.keys(metrics).length ? { metrics } : Object.keys(sharedMetrics).length ? { metrics: sharedMetrics } : {}) });
       } else if (
         part.type === "toolCall" &&
         typeof part.id === "string" &&
         typeof part.name === "string"
       ) {
         const { durationMs: _modelDuration, completedAt: _modelCompleted, ...callUsage } = metrics;
-        const toolMetrics = { ...(part === metricsPart ? callUsage : {}), ...timings.get("tool", part.id, raw["timestamp"]) };
+        // The call's own measurement when one was observed, and the message's start under every call the message
+        // declared: a call that reported no end still proves when its turn began. Its completion stays its own, never
+        // the message's.
+        const toolMetrics = {
+          ...(part === metricsPart ? callUsage : partTimestamp !== undefined ? { timestamp: partTimestamp } : {}),
+          ...timings.get("tool", part.id, raw["timestamp"]),
+        };
         tools.set(part.id, entries.length);
         entries.push({
           kind: "tool",

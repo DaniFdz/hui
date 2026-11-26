@@ -2,6 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 test("mid-turn messages and folded activity fit a 390 px screen and stay readable once opened", { tags: ["CHAT-079"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
@@ -23,7 +26,7 @@ test("mid-turn messages and folded activity fit a 390 px screen and stay readabl
   expect(await hui.overflowX()).toBe(0);
   inside((await midTurn.boundingBox())!);
 
-  const group = transcript.getByText("Used 1 tool");
+  const group = transcript.getByText(trail);
   await hui.scrollTo(transcript, group);
   inside((await group.boundingBox())!);
   await group.tap();

@@ -698,12 +698,14 @@ export class ComposerController {
     this.setDraft("");
     this.attachments = [];
     void this.persistDraft(sessionDraftKey(session.id), "", []);
-    this.#conversation.streaming = streamingAfterSubmission(
+    // Through the controller, never the field: a prompt that starts a turn stamps the activity trail's clock there,
+    // so the first tool row counts the turn instead of only counting its calls.
+    this.#conversation.setStreaming(streamingAfterSubmission(
       this.#conversation.streaming,
       mode,
       "started",
       session.status,
-    );
+    ), { started: true });
     const sentAttachments = attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) }));
     if (mode === "prompt") {
       this.#conversation.transcript = appendPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
@@ -718,12 +720,12 @@ export class ComposerController {
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
         if (duplicate) this.#conversation.transcript = dropDuplicateSend(this.#conversation.transcript, pendingId, earlierRow);
         else if (mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript, pendingId, true);
-        this.#conversation.streaming = streamingAfterSubmission(
+        this.#conversation.setStreaming(streamingAfterSubmission(
           this.#conversation.streaming,
           mode,
           duplicate ? "duplicate" : "accepted",
           this.#conversation.selected?.status ?? session.status,
-        );
+        ));
         this.#host.requestUpdate();
       })
       .catch(async (error: unknown) => {
@@ -735,12 +737,12 @@ export class ComposerController {
         // A failed send is a refused one, so it goes back the same way: into this session's composer while it is shown,
         // and into that session's own draft key once the operator moved on.
         if (!await this.#restoreSentDraft(session.id, text, attachments)) return;
-        this.#conversation.streaming = streamingAfterSubmission(
+        this.#conversation.setStreaming(streamingAfterSubmission(
           this.#conversation.streaming,
           mode,
           "rejected",
           this.#conversation.selected?.status ?? session.status,
-        );
+        ));
         this.#host.requestUpdate();
         this.#deps.showNote(error instanceof Error ? error.message : "Could not send that prompt.", "error");
       })

@@ -5,6 +5,9 @@ import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { expectChatTitle } from "../sess/chat-header.ts";
 
+/** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
+const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
+
 type Suggestion = { title: string; problem: string; fix?: string };
 
 /** The card without a fix, then the card that knows one: each is one turn of its own, so the newest card is the second. */
@@ -69,7 +72,7 @@ test("each suggest_task call adds a card in the conversation's gutter, newest fi
   await expect(card(WITH_FIX.title)).toBeVisible();
 
   // The call itself stays in the turn's activity disclosure.
-  const used = transcript.getByText("Used 1 tool");
+  const used = transcript.getByText(trail);
   await expect(used).toHaveCount(2);
   await used.first().tap();
   await expect(transcript.getByRole("button", /^Used suggest task/u)).toHaveCount(2);

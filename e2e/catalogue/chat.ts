@@ -290,7 +290,7 @@ const cases: UseCase[] = [
     id: "CHAT-023",
     title: "Expand a turn's folded activity",
     behaviour:
-      'Thinking and tool calls between messages fold into one disclosure per stretch, labelled from what it holds ("Ran 1 command", "Ran 3 commands, edited 1 file", Reasoning, or the running tool\'s name while live). Expanding it shows the reasoning text and each tool card in order, and the choice holds while the chat is open.',
+      'The thinking, tool calls and errors between two messages fold into one disclosure, never two. Its collapsed summary times the stretch: "Working for 12s · 1 read" while the turn runs and "Worked for 1m 12s · 1 read, 2 runs" once it settles, a stretch that measured neither end keeping the count wording ("Used 1 tool · 1 read"), reasoning alone reading the clock once it measured both ends ("Worked for 12s") and Reasoning or Thinking… when it measured nothing, and a failed call marking it "failed" while still collapsed. Expanding it shows the reasoning and each run of consecutive calls in transcript order in one scrolled body: a run keeps the base app\'s own tool card, its "Using N tools"/"Used N tools" header over one row per call with that call\'s result size and measured duration, and a row opens that call\'s own card. The file, pull-request, issue and session chips its calls prove stay on the collapsed summary, so what the stretch touched is read while it is folded. The tool card opens with the trail and its own header still folds it, the click on a chip never folds the trail, and the choice holds while the chat is open.',
     spec: [
       "SPEC.md#behaviour",
       "SPEC.md#every-assistant-message-stays-in-sight-2026-10-19",
@@ -310,7 +310,7 @@ const cases: UseCase[] = [
     id: "CHAT-024",
     title: "Keep every assistant message in sight",
     behaviour:
-      'A message the agent writes in the middle of its turn, before more tool calls, keeps its own row with working links once the turn ends, live and after a reload; only the activity between messages folds ("Ran 1 command").',
+      'A message the agent writes in the middle of its turn, before more tool calls, keeps its own row with working links once the turn ends, live and after a reload; only the activity between messages folds ("Worked for 4s · 1 run").',
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
@@ -406,7 +406,7 @@ const cases: UseCase[] = [
     id: "CHAT-033",
     title: "See when a message was sent and what it cost",
     behaviour:
-      'Each message footer shows a relative time ("just now", then "1m ago") whose tooltip gives the exact completion or creation time. A finished model call shows output tokens and duration, with a disclosure for input, cache tokens and reported cost, once per call; tool cards show their own duration, and missing values stay absent. Live timings survive a reconnect but not a runtime restart.',
+      'Each message footer shows a relative time ("just now", then "1m ago") whose tooltip gives the exact completion or creation time. A finished model call shows output tokens and duration, with a disclosure for input, cache tokens and reported cost, once per call; tool cards show their own duration, measured per call by both Durable and PI\'s worker, and a call that reports no timing shows none. Live timings survive a reconnect but not a runtime restart.',
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
@@ -1176,6 +1176,17 @@ const cases: UseCase[] = [
     journeys: ["chat-composer"],
     web: "required",
     phone: "required",
+  },
+  {
+    id: "CHAT-099",
+    title: "Watch a turn's activity clock and open its chips",
+    behaviour:
+      'While a turn runs, its activity trail\'s header counts up on its own: a turn begun from the composer\'s Send button reads "Working for 1s · 1 run" and becomes "Working for 4s · 1 run" a second later, with no reload, while a session opened after its turn had already started counts nothing from the page\'s own load. Once the turn settles the header freezes as "Worked for 12s · 1 run", and an earlier stretch of the same turn stays settled while a later one runs. A call that failed marks the same collapsed header "failed" beside the clock, so the failure is read without opening anything. Folded, the trail shows the chips its calls proved and draws none of its calls. Opened, it lists the reasoning and each run of its calls in the base app\'s own tool card ("Used 3 tools", one row per call in transcript order), and a row opens that call\'s body with Copy output. A call that named a file, printed a GitHub pull request or issue link, or named a session carries those as chips on the trail\'s summary: the file opens in Files with its full path, the link reads "PR #580" or "Issue #12" and opens in a new tab, and the session chip opens that chat. A call that proved none of them draws no chips, and the chat keeps drawing later turns after a trail that holds one.',
+    spec: ["SPEC.md#behaviour"],
+    surfaces: ["row:activity", "item:thinking", "item:tool", "tool:read", "tool:edit", "tool:bash"],
+    journeys: ["chat-composer", "message-metadata"],
+    web: "required",
+    phone: "backlog",
   },
 ];
 
