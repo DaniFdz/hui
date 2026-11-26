@@ -3,7 +3,6 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 /** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
-const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
 
 const NAME_QUESTION = "Hi, I'm new here and I don't have a name yet. What would you like to call me?";
 const EXPECTATIONS_QUESTION = "Hi, I'm new here. What would you like me to look after for you?";

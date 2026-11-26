@@ -4,7 +4,6 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 /** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
-const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
 
 const reply = (text: string) => `E2E_REPLY:${Buffer.from(text).toString("base64url")}`;
 

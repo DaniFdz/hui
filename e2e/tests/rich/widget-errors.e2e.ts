@@ -5,7 +5,6 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 /** The activity trail a turn's stretch folds into: today's wording, or the count wording an older iOS build shows. */
-const trail = /^(?:Work(?:ing|ed) for .*|Us(?:ing|ed) \d+ tools?(?: · .*)?|Reasoning|Thinking…)$/u;
 
 /** One `show_widget` call, or several in one answer, as the fixture's provider sends them. */
 const call = (calls: { name: string; input: unknown } | { name: string; input: unknown }[]) =>
