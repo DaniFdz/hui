@@ -270,6 +270,10 @@ export class ComposerController {
   }
 
   #menuCommands(): ComposerCommand[] {
+    // No command until the catalog answers: HUI's own commands need no request, but a list drawn from a catalog that
+    // is still loading offers completions the runtime has not named yet, and Enter took `/btw` from it on a bare `/`
+    // the operator was still waiting on (CHAT-047). The menu draws this list, so the keys cannot disagree with it.
+    if (this.commandsLoading) return [];
     const query = this.slashQuery ?? { text: "", start: 0 };
     const runtime = this.#runtimeCommands();
     if (query.start > 0) return filterSlashCommands(runtime.filter((command) => command.source === "skill"), query.text.slice(1));
@@ -316,7 +320,13 @@ export class ComposerController {
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    if ((this.commandsLoading || this.localPathsLoading) && !count && (event.key === "Enter" || event.key === "Tab")) {
+    if (this.commandsLoading && (event.key === "Enter" || event.key === "Tab")) {
+      // Enter takes nothing from a menu that is still loading: no command it cannot list yet, no send of the bare
+      // `/`, and no line break. The local path menu answers a loading request the same way (`#localPathKeydown`).
+      event.preventDefault();
+      return;
+    }
+    if (this.localPathsLoading && !count && (event.key === "Enter" || event.key === "Tab")) {
       event.preventDefault();
       return;
     }
