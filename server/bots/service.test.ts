@@ -51,6 +51,8 @@ class FakeChat implements RuntimeSession {
   questions: RuntimeQuestion[] = [];
   aborts = 0;
   disposed = false;
+  /** When set, the next Stop reports itself but never settles until the test releases it. */
+  holdAbort: Promise<void> | undefined;
   thinking = "medium";
   model: RuntimeModel = { provider: "fixture", id: "one", name: "one" };
   #streaming = false;
@@ -112,6 +114,7 @@ class FakeChat implements RuntimeSession {
     this.aborts += 1;
     this.#streaming = false;
     this.emit({ type: "settled" });
+    await this.holdAbort;
   }
 
   currentModel(): RuntimeModel { return this.model; }
@@ -134,7 +137,7 @@ const MEMORY: BotMemoryStatus = {
   usage: { calls: 2, input: 1_200, output: 80, cacheRead: 300, cacheWrite: 0, cost: 0.0042 },
 };
 
-async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean } = {}) {
+async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean; stopGraceMs?: number } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-service-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const botsDir = join(dir, "bots");
@@ -415,6 +418,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     modelKeyUnavailable: async (provider) => { keys.asked.push(provider); return keys.unavailable; },
     report: (event) => { reports.push(event); },
     ...(options.messagesPerHour ? { messagesPerHour: options.messagesPerHour } : {}),
+    ...(options.stopGraceMs === undefined ? {} : { stopGraceMs: options.stopGraceMs }),
   });
   return {
     dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks, reports, keys,
@@ -691,6 +695,28 @@ test("deleting an active bot stops its turn, withdraws what waits, forgets its m
   assert.deepEqual((await h.service.list({ archived: "all" })).map((each) => each.handle), ["bob"]);
   await assert.rejects(h.service.delete(bot.id), BotNotFoundError);
   assert.equal(await h.soulFile(other.id), `${SOUL}\n`, "another bot's folder stays");
+});
+
+test("deleting a bot whose turn will not stop answers after a bounded grace and detaches its chat", { timeout: 15_000 }, async (t) => {
+  const h = await harness(t, { stopGraceMs: 1_000 });
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  await h.service.send(bot.id, { text: "long task" });
+  let release!: () => void;
+  chat.holdAbort = new Promise((resolve) => { release = resolve; });
+  t.onTestFinished(release);
+
+  // A tool that ignores Stop must not hold the permanent delete open: the chat is removed and its runtime disposed,
+  // which detaches the turn.
+  const deleting = h.service.delete("ada");
+  await waitFor(() => chat.aborts === 1 ? true : undefined, "the delete to ask its turn to stop");
+  await deleting;
+  assert.equal(chat.aborts, 1, "the delete asked its turn to stop");
+  assert.deepEqual(h.removed, [bot.sessionId], "its chat is removed anyway, detaching the turn");
+  assert.equal(h.record(bot.sessionId), undefined);
+  assert.deepEqual(await h.service.list(), [], "the bot goes with it");
+  assert.ok(h.reports.some((report) => report.action === "bot_delete_stop_timeout"), JSON.stringify(h.reports));
+  release();
 });
 
 test("deleting never touches a directory the operator chose, never follows a link out, and finishes an interrupted delete", async (t) => {

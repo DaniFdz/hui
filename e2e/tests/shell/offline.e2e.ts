@@ -35,6 +35,9 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await hui.sessionList();
   await expect(screen.getByLabel("Sessions").getByText("Saved offline", { exact: true })).toBeVisible();
   await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
+  // The open drawer is modal: it inerts the chat behind it, so the composer answers again only once the saved row opens
+  // its conversation. The row is activated from the keyboard to keep clear of the drawer's sliding backdrop.
+  await hui.activateSidebarRow("Saved offline");
   await expect(message).toHaveValue(DRAFT);
   await expect(send).toBeDisabled();
 });

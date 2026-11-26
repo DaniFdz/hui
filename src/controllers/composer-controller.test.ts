@@ -113,6 +113,18 @@ beforeEach(() => {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+/** A key as the rich editor hands it to the menus: the surface's own, with the preventions it recorded. */
+function pressKey(key: string) {
+  const prevented: string[] = [];
+  const event = {
+    key, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, isComposing: false, target: null,
+    defaultPrevented: false,
+    preventDefault: () => prevented.push("default"),
+    stopPropagation: () => prevented.push("propagation"),
+  } as unknown as KeyboardEvent;
+  return { event, prevented };
+}
+
 function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; editor?: ComposerEditor; connection?: SessionConnection; launching?: boolean; conversation?: ConversationController } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
@@ -380,6 +392,40 @@ test("retrying a failed command catalog restores a blurred query and focuses the
     assert.ok(controller.props().commandMenu.commands.some(({ name }) => name === "check-status"));
     assert.equal(controller.draft, "/");
     assert.equal(focus.mock.calls.length, 1, "the reply never steals focus back after the operator moves away");
+    assert.deepEqual(fake.prompts, []);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("enter takes nothing from the command menu while its catalog loads, and completes one once it arrives", async () => {
+  const { editor, state, onChange } = fakeEditor("/");
+  const { controller } = composer({ current: { id: "s1", status: "idle" } as SessionView }, { editor });
+  onChange(controller.props().onDraftInput);
+  // The menus ask whether the key's target is a Node; the node test env has none.
+  vi.stubGlobal("Node", class Node {});
+  try {
+    controller.setDraft("/");
+    controller.props().onCommandQuery({ text: "", start: 0 });
+    assert.equal(controller.props().commandMenu.open, true);
+    assert.equal(controller.props().commandMenu.loading, true);
+    assert.deepEqual(controller.props().commandMenu.commands, [], "the menu lists no command before the catalog answers");
+
+    const loading = pressKey("Enter");
+    controller.props().onCommandKeydown(loading.event);
+    assert.deepEqual(loading.prevented, ["default"], "Enter is answered here, so the editor never inserts a line break");
+    assert.equal(state.value, "/", "and no command HUI knows without the catalog completes the draft");
+    assert.equal(controller.draft, "/");
+    assert.deepEqual(fake.prompts, [], "nothing is sent");
+
+    fake.commandRequests[0]?.resolve([{ name: "check-status", description: "Check status", source: "extension" }]);
+    await settle();
+
+    const loaded = pressKey("Enter");
+    controller.props().onCommandKeydown(loaded.event);
+    assert.deepEqual(loaded.prevented, ["default"]);
+    assert.equal(state.value, "/btw ", "the same Enter completes the first command of the answered catalog");
+    assert.equal(controller.draft, "/btw ");
     assert.deepEqual(fake.prompts, []);
   } finally {
     vi.unstubAllGlobals();

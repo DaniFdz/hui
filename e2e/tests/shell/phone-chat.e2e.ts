@@ -21,15 +21,19 @@ test(
     const header = screen.getByTestId("chat-header");
     const picker = screen.getByRole("button", { name: /^Active panel:/u });
     await expect(picker).toBeVisible();
+    // The phone layout folds the shell's top bar into this pane header, and the shell's topbar row animates down to zero
+    // once it does: a header box read mid-flight is a box the assertions below would compare a screen that has since
+    // moved against. safeDisplay reads the phone's boxes once the page's transitions have finished, so they are its own.
+    const display = await hui.safeDisplay();
     const [head, chooser] = await Promise.all([
-      header.boundingBox(),
-      picker.boundingBox(),
+      display.box(header),
+      display.box(picker),
     ]);
-    expect(chooser!.y).toBeGreaterThanOrEqual(head!.y);
-    expect(chooser!.y + chooser!.height).toBeLessThanOrEqual(
-      head!.y + head!.height + 1,
+    expect(chooser.y).toBeGreaterThanOrEqual(head.y);
+    expect(chooser.y + chooser.height).toBeLessThanOrEqual(
+      head.y + head.height + 1,
     );
-    expect(head!.height).toBeLessThan(70);
+    expect(head.height).toBeLessThan(70);
 
     await picker.tap();
     const list = screen.getByTestId("picker-list");
@@ -52,6 +56,10 @@ test(
     await screen.getByRole("button", "Send message").tap();
     const trigger = screen.getByTestId("run-status-trigger");
     const popover = screen.getByLabel("Run status");
+    // The turn settles as the tap lands: between its end and the plan's arrival the conversation has no goal, plan or
+    // run, so the header draws no pill at all, and a surface removed under a tap comes back closed. Wait for the plan on
+    // the pill's own name, which is the state the tap needs: the plan is drawn and the turn that settled is over.
+    await expect(trigger).toHaveAccessibleName(/^Run status: Status, 1 of 2 steps done$/u);
     // A phone never opens the popover by itself, so it is closed here and the trigger is the only way in.
     await expect(popover).toBeHidden();
     await trigger.tap();

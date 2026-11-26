@@ -47,7 +47,12 @@ test("one question's card takes a pick or typed text and leaves a summary", { ta
   await expect(card).toHaveCount(1);
   // The card is the transcript's own last row, where it scrolls with the conversation.
   await expect(transcript.getByTestId("question-card")).toBeVisible();
-  expect((await card.boundingBox())!.y + (await card.boundingBox())!.height).toBeLessThanOrEqual((await screen.getByLabel("Message").boundingBox())!.y);
+  // Both boxes are read in one polled read: a single read can sample the layout before the transcript has laid the card out above the composer.
+  await expect.poll(async () => {
+    const row = await box(card);
+    const composer = await box(screen.getByLabel("Message"));
+    return composer.y - (row.y + row.height);
+  }, { message: "the question card is the transcript's last row, ending above the composer" }).toBeGreaterThanOrEqual(0);
   await expect(card.getByText("Database")).toBeVisible();
   await expect(card.getByText("1/1")).toBeVisible();
   await expect(card.getByText("Which database should the service use?")).toBeVisible();

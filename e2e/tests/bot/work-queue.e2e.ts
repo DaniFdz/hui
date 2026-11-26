@@ -25,19 +25,12 @@ test("a bot's panel queues the sessions it started and its roster row counts and
     .groups.flatMap((group) => group.sessions);
   const find = async (title: string) => (await listed()).find((session) => session.title === title);
   const chiefStatus = async () => (await listed()).find((session) => session.id === chief.sessionId)?.status;
-  // The chief answers one prompt at a time. A prompt posted between the idle read and the gateway's own turn start
-  // is refused, so the turn it landed on is waited out and the prompt asked again; three refusals fail the test.
+  // A bot's chat answers one brief at a time: a prompt posted while the turn the last brief started is still running is
+  // refused rather than queued, and the brief is only in HUI's hands once that turn has settled. The status the app's own
+  // row reads is that turn, so each brief is delivered by waiting for the chat to be idle again, never by asking twice.
   const promptChief = async (text: string) => {
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await expect.poll(chiefStatus, { timeout: 30_000 }).toBe("idle");
-      try {
-        await hui.prompt({ id: chief.sessionId }, text);
-        return;
-      } catch (error) {
-        const refused = error instanceof Error && error.message.includes("already working on a prompt");
-        if (attempt === 3 || !refused) throw error;
-      }
-    }
+    await hui.prompt({ id: chief.sessionId }, text);
+    await expect.poll(chiefStatus, { timeout: 30_000 }).toBe("idle");
   };
   const start = async (title: string, prompt: string) => {
     await promptChief(call("create_session", { prompt, title, cwd: hui.workspace, worker: "local", worktree: false }));

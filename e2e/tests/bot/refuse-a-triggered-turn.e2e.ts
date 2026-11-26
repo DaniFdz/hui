@@ -39,8 +39,18 @@ test("a turn a trigger started cannot rename the bot, rewrite its SOUL.md or add
     const row = transcript.getByRole("button", label);
     await row.tap();
     await expect(row.getByRole("img", { name: "Failed" })).toBeVisible();
-    // The call's own card shows the refusal: the chat gains a node besides the reply's quote of it.
+    // The tap opened the row: a lost tap leaves it folded, and the text read below would then wait out its timeout for a
+    // card the row never drew.
+    await expect.poll(async () => await row.getAttribute("aria-expanded")).toBe("true");
+    // The call's own card shows the refusal: the transcript gains a node whose whole text is the refusal, which the reply
+    // above only quotes inside a longer message.
     await expect.poll(async () => await transcript.getByText(refusal).count()).toBe(before + 1);
+    // The trail keeps its rows in a scroll region of its own (`.chat-activity-group__body`'s `max-height: min(420px,
+    // 58vh)` in the reference `tool-cards.css`), so a card left open pushes the next call's row below that region: the row
+    // is clipped there and a phone's tap lands on the message after the trail instead of the row. Reading the cards one at
+    // a time keeps every row this test taps inside the region, and the collapsed card is asserted rather than assumed.
+    await row.tap();
+    await expect.poll(async () => await transcript.getByText(refusal).count()).toBe(before);
   };
   await call(/Used set profile/u, "Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import. Ask the operator instead.");
   await call(/Used write soul/u, "Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import. Ask the operator instead.");

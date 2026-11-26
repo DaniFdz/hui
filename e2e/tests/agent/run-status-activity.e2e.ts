@@ -56,6 +56,9 @@ test("side work pings once per active set, not per streamed frame, and respects 
   await expect(panel.getByTestId("task-progress")).toHaveCount(0);
   const helperTime = "[data-testid='run-status'] .chat-run-status__helper-time";
   const firstTime = await hui.contentOf(helperTime);
+  // The header's ring mounts with the panel: its start time is null until the animation is ready, so wait for it as
+  // the trigger's own read already does before holding this start time against a later render.
+  await expect.poll(async () => (await hui.selectorAnimation(HEAD_PING))?.startTime).not.toBeNull();
   const streamedFirst = await hui.selectorAnimation(HEAD_PING);
   expect(streamedFirst?.animationName).toBe("chat-run-status-ping");
   await expect.poll(() => hui.contentOf(helperTime)).not.toBe(firstTime);

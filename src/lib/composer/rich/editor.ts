@@ -25,14 +25,21 @@
  * clear, a rewind, a restored draft).
  *
  * Keys, paste and typing are the integration's: `onBeforeKeyDown` runs first so the slash and mention menus answer a key
- * before Enter, Tab or a formatting chord. `enterPolicy` decides whether Enter is an edit (a list split, a list exit, a
- * newline in a fence, the block change a quote, a note or a heading takes) or the send `composerEnterMode` names, a
- * paragraph that is only a fence opens a code block and one that is only a note marker opens that note before either,
- * Shift+Enter always inserts one hard break, and Mod-Enter always sends. A quote, a note and a heading are never sent
- * from, on a phone either: their Enter is the block command below, never the line break prose gets there. Tab, Shift+Tab
- * and the formatting chords are `keys.ts`'. The app re-reads its completion queries from the caret, so a position it has
- * already read is not reported again: the keyup of an Enter that took a suggestion must not reopen the menu that choice
- * just closed.
+ * before Enter, Tab or a formatting chord. The menus answer it on the surface's own capture phase (`#listen`), ahead of
+ * ProseMirror's keydown handler, because that handler is not where a key on iOS ends up: it lets the browser split the
+ * line for the Enter it cannot cancel and asks the editor again 200 ms later, with a key event of its own making that was
+ * never dispatched and so has no target. A key offered at that later moment acts on a menu that has since answered — a
+ * press on a loading catalog took the command the catalog had only just listed — so the key is offered when it happens,
+ * and a key the menus take never reaches ProseMirror at all and becomes no line break. A key ProseMirror answers for the
+ * browser anyway is still the editor's to name (`keyBelongsToSurface`), which is how a phone's Enter on a visible
+ * suggestion takes the suggestion instead of becoming a break. `enterPolicy` decides whether Enter is an edit (a list
+ * split, a list exit, a newline in a fence, the block change a quote, a note or a heading takes) or the send
+ * `composerEnterMode` names, a paragraph that is only a fence opens a code block and one that is only a note marker
+ * opens that note before either, Shift+Enter always inserts one hard break, and Mod-Enter always sends. A quote, a note
+ * and a heading are never sent from, on a phone either: their Enter is the block command below, never the line break
+ * prose gets there. Tab, Shift+Tab and the formatting chords are `keys.ts`'. The app re-reads its completion queries from
+ * the caret, so a position it has already read is not reported again: the keyup of an Enter that took a suggestion must
+ * not reopen the menu that choice just closed.
  *
  * A secondary click over a selection — or the keyboard's ContextMenu key, Shift+F10 — opens the selection toolbar
  * (`toolbar.ts`) instead of the browser menu, on a fine pointer that reports no touch only: a phone, and a touch laptop
@@ -83,7 +90,8 @@ export type ComposerControl = {
   focus(): void;
   caretAtEnd(): void;
   editable(): boolean;
-  /** Whether a key or focus event came from this composer. */
+  /** Whether a key or focus event came from this composer. A key ProseMirror answers for the browser is the
+   * composer's too, whether or not the event it was handed says so (`keyBelongsToSurface`). */
   isTarget(target: Node | null): boolean;
 };
 
@@ -162,6 +170,55 @@ function coarsePointer(): boolean {
  * platform's menu, so a device that reports any touch keeps the menu it has. */
 export function stripPointer(pointer: { fine: boolean; coarse: boolean }): boolean {
   return pointer.fine && !pointer.coarse;
+}
+
+/**
+ * Whether a key event belongs to a composer's surface: one that happened on it, or one the editor is answering for it.
+ * ProseMirror answers the browser's own Enter (iOS) itself: it lets the browser insert the break and then calls the
+ * editor's key handler with a key event it made and never dispatched, so that event has no target at all. `answering` is
+ * the editor saying the key is this surface's (`SurfaceKeys`), which is the only thing that can, and without it the
+ * completion menus decline the key and a phone's Enter turns a visible suggestion into a line break.
+ */
+export function keyBelongsToSurface(target: Node | null, surface: Node, answering: boolean): boolean {
+  if (answering) return true;
+  return target !== null && (target === surface || surface.contains(target));
+}
+
+/**
+ * The keys one composer surface has offered its completion menus, and the flag the menus read while they answer one.
+ *
+ * A key reaches the menus before ProseMirror reads it, and only once. The surface's capture listener offers the key the
+ * browser dispatched (`ComposerEditorImpl#listen`), and `#keyDown` offers the event ProseMirror hands it — which for
+ * every key of the browser's own is the event that listener already offered, so `offer` skips what it has marked. The
+ * only key that reaches `#keyDown` unoffered is the one ProseMirror makes itself: on iOS it answers the browser's Enter
+ * 200 ms after it happened, with an event it never dispatched and that has no target at all.
+ *
+ * While the menus read a key `answering` is true, which is what makes such a key the surface's
+ * (`keyBelongsToSurface`) and how a phone's Enter on a visible suggestion takes the suggestion rather than becoming a
+ * line break. A key the menus take is theirs: `offer` stops it propagating, so ProseMirror never handles it, and the
+ * `preventDefault` the menus called keeps the browser from inserting the break it would have become.
+ */
+export class SurfaceKeys {
+  readonly #offered = new WeakSet<Event>();
+  #answering = false;
+
+  /** Whether the menus are answering a key on this surface's behalf right now (`keyBelongsToSurface`). */
+  get answering(): boolean {
+    return this.#answering;
+  }
+
+  /** Offers one key to `menus`, once, saying the key is this surface's while they answer it. */
+  offer(event: KeyboardEvent, menus: (event: KeyboardEvent) => void): void {
+    if (this.#offered.has(event)) return;
+    this.#offered.add(event);
+    this.#answering = true;
+    try {
+      menus(event);
+    } finally {
+      this.#answering = false;
+    }
+    if (event.defaultPrevented) event.stopPropagation();
+  }
 }
 
 /** Whether this device's secondary click opens the strip rather than the platform's menu (`stripPointer`). */
@@ -254,6 +311,9 @@ class ComposerEditorImpl implements ComposerEditor {
   #reported: string | null = null;
   /** The selection the open toolbar belongs to: a caret that moves away from it is not the strip's any more. */
   #toolbarSelection: EditorState["selection"] | undefined;
+  /** The keys the completion menus have been offered, and whether they are answering one of them right now, which is
+   * what makes a key ProseMirror made itself the surface's (`SurfaceKeys`). */
+  readonly #keys = new SurfaceKeys();
   /** Whether the transaction being dispatched is the toolbar's own, which re-anchors it instead of closing it. */
   #toolbarAction = false;
   /** The document listener that answers Escape for the open strip: it lives exactly as long as the strip is open. */
@@ -480,7 +540,7 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #isTarget(target: Node | null): boolean {
-    return target !== null && this.#view.dom.contains(target);
+    return keyBelongsToSurface(target, this.#view.dom, this.#keys.answering);
   }
 
   /**
@@ -627,7 +687,13 @@ class ComposerEditorImpl implements ComposerEditor {
   }
 
   #keyDown(view: EditorView, event: KeyboardEvent): boolean {
-    this.#options.onBeforeKeyDown(event);
+    // The menus answer a key before the editor reads it, and they answer each key once: the surface's capture listener
+    // offered every key the browser dispatched before ProseMirror's handler could run, and what reaches here unoffered
+    // is the key ProseMirror made itself — the browser's Enter on iOS, answered once the DOM changed and carrying no
+    // target of its own, which is why the editor says the key is this surface's while the menus read it.
+    this.#keys.offer(event, () => {
+      this.#options.onBeforeKeyDown(event);
+    });
     if (event.defaultPrevented) return true;
     if (view.composing || event.isComposing) return false;
     // Escape is the open strip's own (`#listenStripEscape`), answered before this handler, so every key here is the
@@ -712,6 +778,17 @@ class ComposerEditorImpl implements ComposerEditor {
 
   #listen(): void {
     const signal = this.#events.signal;
+    // Every key the browser dispatched reaches the menus here, on the way down and before ProseMirror's own keydown
+    // handler on the same element: its iOS path returns from that handler for the browser's Enter — it has to let the
+    // keyboard insert the line — and only asks the editor again 200 ms later, with an event it makes itself. A key
+    // answered at the later of the two acts on whatever the menu looks like by then, so the press on a loading catalog
+    // took a command the catalog had only just answered with. `offer` also keeps a key the menus take away from
+    // ProseMirror and from the browser, so a taken key is no line break and no replay. A locked composer takes no keys
+    // at all, which is what ProseMirror's own handler does with them (it only runs while the surface is editable).
+    this.#view.dom.addEventListener("keydown", (event) => {
+      if (this.#options.locked) return;
+      this.#keys.offer(event, () => this.#options.onBeforeKeyDown(event));
+    }, { capture: true, signal });
     for (const type of ["click", "select", "keyup"] as const) {
       // A caret this browser moved without a transaction (a click, an arrow key) still has to re-read the completions.
       this.#view.dom.addEventListener(type, () => {

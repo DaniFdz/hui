@@ -302,7 +302,8 @@ export type Hui = {
   answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
   /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
   holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
-  /** Drops an installed offline worker and its caches before the next load. */
+  /** Drops an installed offline worker and its caches before the next load — in the open page and, as an init script,
+   * in every later document — so what an earlier test left cannot answer the navigation the test is about to make. */
   clearOffline(): Promise<void>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
@@ -629,6 +630,33 @@ const trackSockets = () => {
   }, Native) as unknown as typeof WebSocket;
 };
 
+/**
+ * Drops what an earlier test's offline worker left in this browser: the registrations that exist when it runs, and the
+ * caches beside them. Both lists are read before the first await, so a document that registers its own worker while the
+ * removal is in flight keeps it: the fixture never unregisters the page it is watching, and a later document's
+ * `prepareOffline()` (src/api/offline.ts) is not raced by the script that cleaned up after the last one. It is the page
+ * body `hui.clearOffline()` runs in the open page and installs as an init script for every later document.
+ */
+const clearOfflineFiles = async () => {
+  try {
+    const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+    const names = "caches" in globalThis ? await caches.keys() : [];
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    for (const key of names) await caches.delete(key);
+  } catch { /* the page may not have these APIs */ }
+  return null;
+};
+
+/**
+ * How long a phone's shell may take to draw before a step that needs it gives up: a drawer's trigger, or a chord
+ * pressed into the app that listens for it. `hui.open` resolves at the page's own load event, and the app draws its
+ * shell after its boot reads: `resolveAppearance` (src/main.ts) awaits the theme list and the settings before the app
+ * renders, and each gateway read there spends up to a whole response deadline (`RESPONSE_TIMEOUT_MS` in
+ * src/api/request.ts, 20 s) when the gateway stalls before it degrades to the defaults. This covers one such read plus
+ * the boot's own start, so a slow gateway is a slow drawer or a late chord, never a closed drawer or a lost one.
+ */
+const SHELL_ARRIVAL_TIMEOUT_MS = 30_000;
+
 /** Ordinary tests isolate routed requests from WebKit's worker; offline tests explicitly exercise the real worker. */
 function huiTest(offline: boolean) {
   return base.extend<{ hui: Hui }>({
@@ -674,6 +702,21 @@ function huiTest(offline: boolean) {
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
+    // `hui.open` resolves at the page's own load event, and the app arrives after it: its chunk downloads, `hui-app`
+    // upgrades and installs the document's `keydown` listener (src/hui-app.ts `connectedCallback`), then its first render
+    // draws the shell. `.hui-workspace` is that render's own mark on every view, where a chat header or a composer
+    // belongs to one view; `embedded-pane` scopes the read to the page's app rather than a split pane's copy of it.
+    const shellDrawn = () => browser().evaluate(() => Boolean(document.querySelector("hui-app:not([embedded-pane]) .hui-workspace")));
+    /** Presses a chord the app listens for once its drawn shell proves it is listening: a press that arrives first is
+     * lost, and nothing re-sends it. */
+    const chord = async (keys: (apple: boolean) => string) => {
+      await expect.poll(shellDrawn, {
+        timeout: SHELL_ARRIVAL_TIMEOUT_MS,
+        message: "the shell draws the app before its chord is pressed: a page's load event comes before the app that listens for the chord",
+      }).toBe(true);
+      const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+      await browser().keyboard.press(keys(apple));
+    };
     // The shared receipt is safe to print, so the harness token stays in the private one it names.
     const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
     let automationFrozen = false;
@@ -821,18 +864,9 @@ function huiTest(offline: boolean) {
         }, box);
       },
       wideScreen: (width = 1440) => browser().setViewport({ width, height: 900 }),
-      paletteChord: async () => {
-        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
-      },
-      settingsChord: async () => {
-        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-        await browser().keyboard.press(apple ? "Meta+Shift+Comma" : "Control+Shift+Comma");
-      },
-      workChord: async (code) => {
-        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-        await browser().keyboard.press([apple ? "Meta" : "Control", "Alt", "Shift", code].join("+"));
-      },
+      paletteChord: () => chord((apple) => apple ? "Meta+K" : "Control+K"),
+      settingsChord: () => chord((apple) => apple ? "Meta+Shift+Comma" : "Control+Shift+Comma"),
+      workChord: (code) => chord((apple) => [apple ? "Meta" : "Control", "Alt", "Shift", code].join("+")),
       back: () => browser().back(),
       forward: () => browser().forward(),
       peek: (target) => target.hover(),
@@ -873,16 +907,29 @@ function huiTest(offline: boolean) {
         if (!phone) return;
         // A closing backdrop stays visible during its fade, and an initial route may not have drawn its trigger yet.
         // Read the drawer's actual state, then let tap wait for the real Open navigation control when it is closed.
-        const opened = () => browser().evaluate(() => document.querySelector(".sidebar")?.getAttribute("data-open") === "true");
-        if (!(await opened())) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
-        await expect.poll(opened).toBe(true);
+        const drawer = () => browser().evaluate(() => {
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar === null) return "booting";
+          return sidebar.getAttribute("data-open") === "true" ? "open" : "closed";
+        });
+        // The sidebar and its trigger arrive with the shell, so a missing one is that boot, never a closed drawer: wait
+        // for the shell on its own budget, so the tap spends its action budget on a trigger that is already drawn.
+        if ((await drawer()) === "booting") await expect.poll(drawer, { timeout: SHELL_ARRIVAL_TIMEOUT_MS, message: "the phone shell draws the navigation drawer and its Open navigation trigger" }).not.toBe("booting");
+        if ((await drawer()) === "closed") await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
+        await expect.poll(drawer).toBe("open");
       },
       settingsPages: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
         if (!phone) return;
-        const opened = () => browser().evaluate(() => document.querySelector(".settings-sidebar")?.getAttribute("data-open") === "true");
-        if (!(await opened())) await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
-        await expect.poll(opened).toBe(true);
+        // The same boot as the session drawer's: the settings shell and its trigger arrive with the app's first paint.
+        const drawer = () => browser().evaluate(() => {
+          const sidebar = document.querySelector(".settings-sidebar");
+          if (sidebar === null) return "booting";
+          return sidebar.getAttribute("data-open") === "true" ? "open" : "closed";
+        });
+        if ((await drawer()) === "booting") await expect.poll(drawer, { timeout: SHELL_ARRIVAL_TIMEOUT_MS, message: "the phone shell draws the settings drawer and its Open settings navigation trigger" }).not.toBe("booting");
+        if ((await drawer()) === "closed") await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
+        await expect.poll(drawer).toBe("open");
       },
       sessionMenu: async (title) => {
         await webSteps.sessionList();
@@ -1201,18 +1248,14 @@ function huiTest(offline: boolean) {
         await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
       },
       clearOffline: async () => {
-        // A worker installed by an earlier test can answer this navigation (and its app chunk) before an init
-        // script runs, so drop it in the page that is already open as well; the script covers later pages.
-        const clear = async () => {
-          try {
-            const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-            await Promise.all(registrations.map((registration) => registration.unregister()));
-            if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-          } catch { /* the page may not have these APIs */ }
-          return null;
-        };
-        await browser().evaluate(clear);
-        await browser().addInitScript(clear);
+        // A worker installed by an earlier test can answer this navigation (and its app chunk) from its own cache before
+        // an init script runs, so drop it in the page that is already open as well; the script covers later pages.
+        await browser().evaluate(clearOfflineFiles);
+        // No wait follows: an activated registration stays in `getRegistrations()` for the life of the document that
+        // reads it even after `unregister()` — the browser only stops matching it for new navigations — so polling the
+        // list for empty asserts what the browser never does. Unregistering what the script read and deleting its caches
+        // is what the next navigation needs.
+        await browser().addInitScript(clearOfflineFiles);
       },
       holdAppChunks: async () => {
         // The production build may preload the app chunk and import it again; hold every copy, not the entry
@@ -1383,18 +1426,8 @@ function huiTest(offline: boolean) {
             },
             // CDP routes and attempt-scoped page scripts work in the app's persistent context just as in Chromium.
             // Only context replacement, native downloads and genuinely unavailable desktop gestures need overrides.
-            clearOffline: async () => {
-              // The web's own reason holds here too: a worker an earlier test left can answer this navigation (and its app
-              // chunk) before an init script runs, so it is dropped in the page that is open as well.
-              const clear = async () => {
-                const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-                await Promise.all(registrations.map((registration) => registration.unregister()));
-                if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-                return null;
-              };
-              await browser().evaluate(clear);
-              await browser().addInitScript(clear);
-            },
+            // `clearOffline` stays the web's: its wait is on what the browser reads, never on the engine that owns the
+            // context, so a WebView that keeps one context for every attempt needs no step of its own.
             wideScreen: desktopOnly("wideScreen"),
             peek: desktopOnly("peek"),
             tabs: async () => {
