@@ -577,10 +577,15 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   kinds left out: edits, writes, reads, searches, runs, fetches, browser steps and
   other calls. A failed call, or an error the stretch holds, marks the collapsed
   header with a danger mark and **failed** (or **N failed**), so a failure is never
-  hidden in a fold. Opened, it lists the reasoning and every call in transcript
-  order in its one scroll region; a settled call's row carries its own measured
-  duration beside its result size, and the file, pull-request, issue and session
-  references its own arguments and output prove, and nothing else.
+  hidden in a fold. The file, pull-request, issue and session references the calls'
+  own arguments and output prove are chips on that collapsed summary — at most
+  three, deduplicated — so what the stretch touched is read without opening it.
+  Opened, it lists the reasoning and each run of consecutive calls in transcript
+  order in its one scroll region: a run keeps the base app's own tool card, with
+  its own **Using N tools**/**Used N tools** header and one row per call, and a
+  settled call's row carries its own measured duration beside its result size. The
+  card opens with the trail and its own header still folds it, a click on a chip
+  never folds the trail, and a row opens that call's own body.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not

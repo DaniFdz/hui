@@ -258,8 +258,12 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
 
   assert.match(source, /class="chat-thread chat-thread--direct"/);
   assert.match(source, /props\.mobileNavLayout \? html`<button/);
-  assert.match(source, /class="chat-tool-card__header"/);
-  assert.match(source, /class="chat-tool-card__block-content"/);
+  // The tool card's anatomy lives in the module that owns it (`views/chat/tool-call-group.ts`), which the trail's body
+  // draws; the chat view itself only places the trail.
+  const toolCard = readFileSync(new URL("./chat/tool-call-group.ts", import.meta.url), "utf8");
+  assert.match(toolCard, /class="chat-tool-card__header"/);
+  assert.match(toolCard, /class="chat-tool-card__block-content"/);
+  assert.match(source, /renderToolCallGroup\(tools, \{/);
   assert.doesNotMatch(styles, /\.chat-tool-msg-body pre\s*\{/);
   assert.match(source, /class="chat-group \$\{row\.role\} chat-group--with-footer \$\{row\.id === latestAssistantRowId/);
   assert.match(source, /<div class="agent-chat__composer-shell"/);
@@ -951,11 +955,16 @@ test("one activity disclosure holds a stretch, closed until the user asks to ins
   // One fold per stretch: the reasoning and the calls it shares a row with open together, under the row's own key.
   assert.doesNotMatch(source, /:reasoning/u);
   assert.match(source, /<details class="chat-activity-group chat-activity-trail" \.open=\$\{open\} data-testid="activity-trail-group"/);
-  assert.match(source, /props\.onActivityExpanded\(expansionId, \(event\.currentTarget as HTMLDetailsElement\)\.open\)/);
+  assert.match(source, /props\.onActivityExpanded\(expansionId, details\.open\)/);
+  // Opening the trail opens the tool cards it holds: the base app's box is what its body draws, never a second fold.
+  assert.match(source, /if \(details\.open\) for \(const key of groupKeys\) props\.onActivityExpanded\(activityGroupClosedKey\(key\), false\)/);
   assert.doesNotMatch(source, /\?open=\$\{props\.streaming/);
   assert.match(styles, /\.chat-activity-group:not\(\[open\]\) \.chat-activity-group__body\s*\{\s*display: none;/);
   // A closed trail is its summary alone; every item waits for the open.
-  assert.match(source, /\$\{open \? html`<div class="chat-activity-group__body">/);
+  assert.match(source, /\$\{open \? html`<div class="chat-activity-group__body">\$\{renderActivityTrailItems\(props, row\.items, expansionId\)\}<\/div>` : nothing\}/);
+  // The summary is the one place the chips are drawn, and only the trail's own body runs the tool card.
+  assert.match(source, /<span class="chat-activity-trail__chips" @click=\$\{\(event: Event\) => event\.stopPropagation\(\)\}>\$\{chips\}<\/span>/);
+  assert.match(source, /\$\{open \? html`<div class="chat-activity-group__body">[\s\S]*?renderActivityTrailItems/u);
 });
 
 test("an activity trail's header times the turn, counts what it did, and names a failed call while closed", async () => {
@@ -1050,7 +1059,7 @@ test("only the running turn's latest stretch is live: an earlier stretch stays s
   assert.doesNotMatch(settledOnly, /chat-activity-trail__label--live/u, "a stretch whose messages follow it settled");
 });
 
-test("an opened trail lists reasoning and calls in order, with each call's duration and proven chips", async () => {
+test("an opened trail lists reasoning and calls in order: the base app's box around each run, with each call's duration", async () => {
   const transcript = [
     { kind: "message", id: "u", role: "user", text: "go" },
     { kind: "thinking", id: "th", text: "Inspecting the fixture." },
@@ -1061,43 +1070,83 @@ test("an opened trail lists reasoning and calls in order, with each call's durat
   ];
   const html = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:th"]) });
   const body = html.slice(html.indexOf('class="chat-activity-group__body"'));
-  // The reasoning keeps its transcript place, before the calls it was written above.
+  // The reasoning keeps its transcript place, in the card it had, before the calls it was written above.
+  assert.match(body, /class="chat-activity-message"><p>Inspecting the fixture\.<\/p>/u);
   assert.ok(body.indexOf("Inspecting the fixture.") < body.indexOf("Read fixture.txt"));
+  // Each run of calls is the base app's own box: its disclosure and header, then one row per call in transcript order.
+  assert.match(body, /<div class="tool-call-group"> <details class="tool-call-group__disclosure" .open=true @toggle=/u);
+  // A run still working names itself in the present tense; once it settles the same header reads as the receipt.
+  assert.match(body, /<span class=tool-call-group__label tool-call-group__label--live>Using 3 tools<\/span>/u);
+  const settled = await renderWorkerSession("idle", {
+    transcript: transcript.map((item) => item.id === "t3" ? { ...item, status: "succeeded", output: "later\n" } : item),
+    expandedActivityIds: new Set(["s:th"]),
+  });
+  assert.match(settled, /<span class=tool-call-group__label>Used 3 tools<\/span>/u);
+  assert.match(settled, /<span class=tool-call-row__title>Ran echo later<\/span>/u);
+  const settledTitles = [...settled.matchAll(/class=tool-call-row__title>([^<]*)</gu)].map((match) => match[1]);
+  assert.deepEqual(settledTitles, ["Read fixture.txt", "Ran gh pr view 580", "Ran echo later"], "every call of the run is a row of it");
+  const titles = [...body.matchAll(/class=tool-call-row__title(?: tool-call-row__title--live)?>([^<]*)</gu)].map((match) => match[1]);
+  assert.deepEqual(titles, ["Read fixture.txt", "Ran gh pr view 580", "Running echo later"], "the rows keep the transcript's order");
   // A settled call's own measurement joins whatever its output proved; a running one shows none.
   assert.match(body, /<span class="tool-call-row__meta">3 lines · 12s<\/span>/u);
   assert.equal(body.split("tool-call-row__meta").length - 1, 2, "only the two settled calls carry a meta, the running one has none");
   assert.doesNotMatch(body, /· 0s/u, "a running call reports no duration");
-  // The chips follow the row's data: the file it read, the pull request it printed and the session it named.
-  assert.match(body, /<div class="tool-call-row__chips"><span class="tool-call-chip tool-call-chip--file"><hui-file-ref data-path=\/repo\/fixture\.txt>\/repo\/fixture\.txt<\/hui-file-ref><\/span>/u);
-  assert.match(body, /<a class="tool-call-chip tool-call-chip--pr" href=https:\/\/github\.com\/DaniFdz\/HUI\/pull\/580 target="_blank" rel="noopener">PR #580<\/a>/u);
+  // The chips hang on the summary, never inside a row: a folded trail says what its calls touched.
+  const summary = html.slice(html.indexOf('data-testid="activity-trail"'), html.indexOf('class="chat-activity-group__body"'));
+  assert.match(summary, /<span class="chat-activity-trail__chips" @click=>/u);
+  assert.match(summary, /<span class="tool-call-chip tool-call-chip--file"><hui-file-ref data-path=\/repo\/fixture\.txt>\/repo\/fixture\.txt<\/hui-file-ref><\/span>/u);
+  assert.match(summary, /<a class="tool-call-chip tool-call-chip--pr" href=https:\/\/github\.com\/DaniFdz\/HUI\/pull\/580 target="_blank" rel="noopener">PR #580<\/a>/u);
   // The session chip is drawn from its query alone: no child text, so a Lit template that holds this row owns no part
   // of the element the widget rewrites (an ejected marker throws on the transcript's next render).
-  assert.match(body, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001><\/hui-session-ref>/u);
-  assert.doesNotMatch(body, /hui-session-ref[^>]*>session:/u, "the chip writes its own words, never a Lit child expression");
-  // A row nobody proved a reference for draws no chips line at all.
-  assert.equal(body.split("tool-call-row__chips").length - 1, 2);
+  assert.match(summary, /<hui-session-ref class="tool-call-chip tool-call-chip--session" data-query=8f14e45f-ceea-467a-9b1d-000000000001><\/hui-session-ref>/u);
+  assert.doesNotMatch(summary, /hui-session-ref[^>]*>session:/u, "the chip writes its own words, never a Lit child expression");
+  assert.doesNotMatch(body, /tool-call-chip/u, "a row draws no chips of its own");
+  // One body scrolls the stretch: the box has no scroll region of its own, and every call waits for its own row.
+  assert.equal(html.split('class="chat-activity-group__body"').length - 1, 1, "one scroll body per stretch");
+  assert.doesNotMatch(body, /chat-tool-msg-body/u, "no call's body is drawn until its row opens");
 });
 
-test("an opened call still draws its own body, and a closed trail draws none", async () => {
+test("an opened call still draws its own body, and a closed trail draws neither a row nor the reasoning", async () => {
   const transcript = [
     { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "thinking", id: "th", text: "Inspecting the fixture." },
     { kind: "tool", id: "t1", name: "bash", status: "succeeded", args: { command: "echo hi" }, output: "hi" },
   ];
   const closed = await renderWorkerSession("idle", { transcript });
   assert.doesNotMatch(closed, /chat-activity-group__body/u);
-  const trailOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:t1"]) });
+  assert.doesNotMatch(closed, /tool-call-group__disclosure/u, "no tool card sits outside the fold");
+  assert.doesNotMatch(closed, /tool-call-row/u);
+  assert.doesNotMatch(closed, /chat-tool-msg-body/u);
+  assert.doesNotMatch(closed, /Inspecting the fixture\./u, "no reasoning sits outside the fold");
+  const trailOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:th"]) });
   assert.match(trailOpen, /<span class=tool-call-row__title>Ran echo hi<\/span>/u);
+  assert.match(trailOpen, /Inspecting the fixture\./u);
   assert.doesNotMatch(trailOpen, /class="chat-tool-msg-body"/u, "the call's own body waits for its row");
-  const rowOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:t1", "s:tool:1:t1"]) });
+  const rowOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set(["s:th", "s:tool:2:t1"]) });
   assert.match(rowOpen, /class="chat-tool-msg-body"/u);
+  assert.match(rowOpen, /chat-tool-term__out/u);
+});
+
+test("a chip click never toggles the trail it hangs on", async () => {
+  const { renderHome } = await import("./home.ts");
+  const view = renderHome(await workerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    { kind: "tool", id: "t1", name: "bash", status: "succeeded", args: { command: "gh pr view 580" }, output: "https://github.com/DaniFdz/HUI/pull/580" },
+  ] }) as unknown as import("./home.ts").HomeProps);
+  const click = clickHandler(view, 'class="chat-activity-trail__chips"');
+  assert.equal(typeof click, "function", "the chips bind their own click handler");
+  let stopped = false;
+  click!({ stopPropagation: () => { stopped = true; } } as unknown as MouseEvent);
+  assert.equal(stopped, true, "a chip's click, and the keypress that fires one, never reaches the summary");
 });
 
 test("thinking renders as plain intermediate text without a reasoning label", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const item = source.slice(source.indexOf("function renderActivityItem("), source.indexOf("/** What an open trail draws"));
 
-  assert.match(source, /item\.kind === "thinking"[\s\S]*?class="chat-activity-message"/);
+  assert.match(item, /class="chat-activity-message"/u);
+  assert.match(item, /item\.kind === "error"/u);
   assert.doesNotMatch(source, /_Reasoning:_/);
-  assert.doesNotMatch(source, /class="chat-thinking"/);
   assert.doesNotMatch(source, /class="chat-thinking"/);
 });
 
@@ -1228,7 +1277,17 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
 /** The handler bound to `@click` on the innermost rendered template whose own markup holds `marker`. */
 function clickHandler(value: unknown, marker: string): ((event: MouseEvent) => void) | undefined {
   if (Array.isArray(value)) return value.map((item) => clickHandler(item, marker)).find(Boolean);
-  if (!value || typeof value !== "object" || !("strings" in value) || !("values" in value)) return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  // A directive's arguments, such as the rows a transcript `repeat` renders: the markup it draws is searched too.
+  if ("_$litDirective$" in value && "values" in value) {
+    const values = (value as { values: unknown[] }).values;
+    const [items, , template] = values;
+    if (Array.isArray(items) && typeof template === "function") {
+      return clickHandler(items.map((item, index) => (template as (item: unknown, index: number) => unknown)(item, index)), marker);
+    }
+    return clickHandler(values, marker);
+  }
+  if (!("strings" in value) || !("values" in value)) return undefined;
   const { strings, values } = value as { strings: readonly string[]; values: unknown[] };
   const child = values.map((item) => clickHandler(item, marker)).find(Boolean);
   if (child) return child;

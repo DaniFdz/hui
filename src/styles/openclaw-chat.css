@@ -1803,9 +1803,10 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 }
 
 /* One trail for a turn's activity (src/lib/activity-trail.ts, src/views/home.ts): one disclosure whose summary carries
-the turn's clock, what its calls did and a failed mark, and whose opened body lists the reasoning and every call in
-order. The header is one line that ellipsises; the body scrolls the stretch, and an opened call keeps its own card cap
-below. */
+the turn's clock, what its calls did, a failed mark and the chips its calls proved, and whose opened body lists the
+reasoning and each run of calls — in the base app's own tool card — in transcript order. The summary's label ellipsises
+and the chips take a line of their own when room runs out; the body scrolls the stretch, and an opened call keeps its
+own card cap below. */
 .chat-activity-trail {
   width: 100%;
   min-width: 0;
@@ -1814,6 +1815,7 @@ below. */
 
 .chat-activity-trail__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1857,13 +1859,16 @@ the count stays whole, so the label's ellipsis never eats it. */
   padding-left: 0;
 }
 
-/* The chips a call's own data proves: its file, its pull requests and issues, and the sessions it named. They wrap inside
-the opened row only, so nothing grows the header. */
-.tool-call-row__chips {
+/* The chips a stretch's calls proved: its file, its pull requests and issues, and the sessions it named. They hang on the
+summary, on a line of their own when the header runs out of room, so a folded trail says what it touched while the label
+keeps the room it has on a phone. */
+.chat-activity-trail__chips {
   display: flex;
+  flex: 1 1 100%;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 0 12px 8px 41px;
+  min-width: 0;
+  padding-top: 2px;
 }
 
 /* An opened call inside a trail keeps the cap it always had: the trail scrolls the stretch, and a call taller than its
@@ -1920,10 +1925,6 @@ a.tool-call-chip:focus-visible {
   max-width: min(22rem, 100%);
 }
 
-@media (max-width: 460px) {
-  .tool-call-row__chips { padding: 0 10px 8px; }
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .chat-activity-trail__label--live {
     background: linear-gradient(90deg, color-mix(in srgb, var(--text) 62%, transparent) 0%, var(--text-strong) 40%, color-mix(in srgb, var(--text) 62%, transparent) 70%);
@@ -1935,13 +1936,40 @@ a.tool-call-chip:focus-visible {
   }
 }
 
-/* The rows of a turn's tool calls (src/views/chat/tool-call-group.ts), drawn inside the trail its marks head: one row
- * per call. Rows are 40px so a long run stays scannable; only the row's own body opens. */
+/* One card for a run of consecutive calls inside a trail (src/views/chat/tool-call-group.ts): the base app's own
+disclosure, a mark stack and a live "Using N tools" header that settles to "Used N tools", over one row per call. Rows
+are 42px so a long run stays scannable; only the row's own body opens. The trail opens the card with itself; the card's
+own toggle still closes it. */
 .tool-call-group {
   width: 100%;
   min-width: 0;
   max-width: 100%;
 }
+
+.tool-call-group__disclosure {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--panel-strong) 55%, transparent);
+  overflow: hidden;
+}
+
+.tool-call-group__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 12px 9px 13px;
+  list-style: none;
+  color: var(--muted);
+  font-size: calc(var(--control-ui-text-sm) + 1.5px);
+  cursor: pointer;
+  appearance: none;
+}
+
+.tool-call-group__head::-webkit-details-marker { display: none; }
+.tool-call-group__head:hover { background: color-mix(in srgb, var(--panel-hover) 55%, transparent); }
+.tool-call-group__disclosure:focus-within > .tool-call-group__head { outline: none; }
+.tool-call-group__head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .tool-call-group__marks { display: flex; align-items: center; padding-left: 4px; }
 
@@ -1960,7 +1988,12 @@ a.tool-call-chip:focus-visible {
 
 .tool-call-group__mark svg { width: 12px; height: 12px; }
 .tool-call-group__mark--more { color: var(--muted); font-family: var(--mono); font-size: 9px; }
+.tool-call-group__label { color: color-mix(in srgb, var(--text) 88%, transparent); }
+.tool-call-group__chevron { display: grid; place-items: center; margin-left: auto; width: 14px; height: 14px; color: var(--muted); transition: transform 180ms var(--ease-out, cubic-bezier(.32,.72,0,1)); }
+.tool-call-group__chevron svg { width: 14px; height: 14px; }
+.tool-call-group__disclosure[open] > .tool-call-group__head .tool-call-group__chevron { transform: rotate(180deg); }
 
+.tool-call-group__spin,
 .tool-call-row__spin {
   width: 11px;
   height: 11px;
@@ -2032,12 +2065,15 @@ a.tool-call-chip:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tool-call-group__spin,
   .tool-call-row__spin { animation: none; }
+  .tool-call-group__chevron,
   .tool-call-row__chevron svg { transition: none; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .tool-call-row__title--live {
+  .tool-call-row__title--live,
+  .tool-call-group__label--live {
     background: linear-gradient(90deg, color-mix(in srgb, var(--text) 62%, transparent) 0%, var(--text-strong) 40%, color-mix(in srgb, var(--text) 62%, transparent) 70%);
     background-size: 220% 100%;
     -webkit-background-clip: text;
@@ -2074,6 +2110,7 @@ a.tool-call-chip:focus-visible {
 
 /* A long command or an unwrapped output must scroll inside its well, never widen the card or the page. */
 .tool-call-group,
+.tool-call-group__disclosure,
 .tool-call-group__rows,
 .tool-call-row,
 .tool-call-row__toggle,
@@ -2088,7 +2125,18 @@ a.tool-call-chip:focus-visible {
 .tool-call-row .chat-tool-term__out { overflow-x: auto; }
 .tool-call-row .chat-tool-card__block-content { max-width: 100%; overflow-x: auto; }
 
-/* The rows read as one elevated panel: larger type and taller rows than a dense log row. */
+/* The card reads as one elevated panel: a clearer frame, larger type and taller rows than a dense log row. */
+.tool-call-group__disclosure {
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-strong) 62%, transparent);
+}
+
+.tool-call-group__head {
+  min-height: 46px;
+  padding: 10px 14px;
+  font-size: calc(var(--control-ui-text-sm) + 2px);
+}
 .tool-call-group__rows { padding: 5px 0 8px; }
 
 .tool-call-row__toggle {

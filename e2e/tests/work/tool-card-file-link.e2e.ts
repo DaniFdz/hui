@@ -25,18 +25,18 @@ test("the path header of a read, edit or write tool card is a link that opens th
   ]));
   await expect.poll(() => hui.textOf(transcript)).toContain("tool answered:");
 
-  await hui.scrollTo(transcript, transcript.getByText(trail));
-  if (await transcript.getByRole("button", /^Read keep\.txt/u).count() === 0) await transcript.getByText(trail).tap();
+  await hui.scrollTo(transcript, transcript.getByText(trail).first());
+  if (await transcript.getByRole("button", /^Read keep\.txt/u).count() === 0) await transcript.getByText(trail).first().tap();
   for (const row of [/^Read keep\.txt/u, /^Edited keep\.txt/u, /^Wrote written\.txt/u]) {
     const card = transcript.getByRole("button", row);
     await hui.scrollTo(transcript, card);
     await card.tap();
   }
 
-  // Each card's own header names its file as a link to that file in Files.
-  // Each card's own header names its file as a link to that file in Files, and so does the chip its row carries while
-  // the trail is open: two links per row, each naming the same file.
-  await expect(transcript.getByRole("link", "Open sub/keep.txt in Files")).toHaveCount(4);
+  // Each card's own header names its file as a link to that file in Files, and so does the chip the trail's summary
+  // carries for it: the fold says what it touched while it is closed, so `keep.txt` is drawn once there for the two
+  // calls that named it, and `written.txt` once for its one write.
+  await expect(transcript.getByRole("link", "Open sub/keep.txt in Files")).toHaveCount(3);
   await expect(transcript.getByRole("link", "Open sub/written.txt in Files")).toHaveCount(2);
 
   await transcript.getByRole("link", "Open sub/written.txt in Files").last().tap();
