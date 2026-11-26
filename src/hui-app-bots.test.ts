@@ -208,8 +208,9 @@ test("a different bot resets its panel, tools and triggers; opening Tools reads 
   const followTriggers = vi.spyOn(app["botTriggers"], "follow").mockImplementation(() => {});
   app["bots"].showPanelView("settings");
   app["bots"].expandPanel(true);
+  app["bots"].togglePanelWork();
   app["applyNavigation"]({ kind: "bot", id: BOT.id });
-  assert.deepEqual([app["bots"].panelView, app["bots"].panelExpanded], ["overview", false]);
+  assert.deepEqual([app["bots"].panelView, app["bots"].panelExpanded, app["bots"].panelWorkExpanded], ["overview", false, false], "another bot folds the Work queue back");
   assert.deepEqual(resetTools.mock.calls, [[BOT.id]]);
   assert.deepEqual(resetTriggers.mock.calls, [[BOT.id]]);
   assert.equal(app["botTriggersVisible"](), true);
@@ -326,3 +327,110 @@ test("automation receives all sessions and controller state, and navigation star
   assert.equal(vi.mocked(app["automation"].stopPolling).mock.calls.length, 2);
 });
 
+
+/* ── a bot's own work ─────────────────────────────────────────────────────── */
+
+const started = (id: string, status: SessionView["status"]): SessionView => ({
+  id, title: id, group: "g1", cwd: "/work", displayCwd: "/work", tool: "durable", status, stage: "investigation", stageOrigin: "default",
+  createdAt: "2026-11-20T09:00:00.000Z", updatedAt: "2026-11-20T09:00:00.000Z", createdBy: { id: BOT.id, handle: BOT.handle, name: BOT.name },
+} as SessionView);
+
+test("the Bots tab and the bot's panel read one work projection per registry, with the same counts", () => {
+  const app = setup();
+  app["bots"].selectTab("bots");
+  app["sessions"].groups = [{ label: "g1", sessions: [SESSION, started("s-wait", "waiting"), started("s-run", "running")] }];
+  const roster = app["shellBotsProps"]().roster;
+  const queue = roster.work?.get(BOT.id);
+  assert.deepEqual(queue?.counts, { "needs-you": 1, working: 1, recent: 0 });
+  assert.equal(queue?.inFlight, 2);
+  assert.equal(app["shellBotsProps"]().roster.work?.get(BOT.id), queue, "a second frame reuses the same projection");
+  const { props } = workspace(app);
+  assert.equal(props.work.queue, queue, "the panel draws the roster's projection, not its own pass");
+  // A new registry projection is walked once, for its own queues.
+  app["sessions"].groups = [{ label: "g1", sessions: [SESSION, started("s-wait", "waiting"), started("s-run", "running")] }];
+  const reread = app["shellBotsProps"]().roster.work?.get(BOT.id);
+  assert.notEqual(reread, queue);
+  assert.deepEqual(reread?.counts, queue?.counts);
+  // Off the Bots tab the shell walks nothing for the roster.
+  app["bots"].selectTab("sessions");
+  assert.equal(app["shellBotsProps"]().roster.work, undefined);
+  // The bot's own chat reads the same started index: one walk of a registry projection, never one per reader.
+  app["bots"].selectTab("bots");
+  let createdByReads = 0;
+  const counted = started("s-counted", "waiting");
+  Object.defineProperty(counted, "createdBy", { enumerable: true, get: () => { createdByReads += 1; return { id: BOT.id, handle: BOT.handle, name: BOT.name }; } });
+  app["sessions"].groups = [{ label: "g1", sessions: [SESSION, counted] }];
+  app["shellBotsProps"]();
+  const reads = createdByReads;
+  assert.equal(reads, 1, "the projection reads each started session once");
+  app["conversation"].selected = SESSION;
+  assert.deepEqual(app["childSessions"].map(({ id }) => id), ["s-counted"]);
+  assert.equal(createdByReads, reads, "the bot's chat reuses the queue's started index instead of walking the registry again");
+});
+
+test("the roster's expanded sessions follow the bots that stay", async () => {
+  const app = setup();
+  app["bots"].toggleSessions(BOT.id);
+  assert.deepEqual([...app["bots"].expandedSessions], [BOT.id]);
+  app["bots"].toggleSessions(BOT.id);
+  assert.equal(app["bots"].expandedSessions.size, 0, "a second press folds them away");
+  app["bots"].toggleSessions(BOT.id);
+  app["bots"].adopt([{ ...BOT, id: "other", name: "Grace", handle: "grace", sessionId: "s-grace" }]);
+  assert.deepEqual([...app["bots"].expandedSessions], [], "a bot that left the roster keeps no expanded row");
+  // Every list replacement prunes, not just a local adopt: the stream and a read are how another client's archive lands.
+  app["bots"].adopt([BOT]);
+  app["bots"].toggleSessions(BOT.id);
+  let handlers: Parameters<typeof botApi.subscribeBots>[0] | undefined;
+  vi.spyOn(botApi, "subscribeBots").mockImplementation((next) => { handlers = next; return () => {}; });
+  vi.mocked(app["bots"].sync).mockRestore();
+  app["bots"].sync();
+  handlers!.onUpdate({ revision: 1, ids: [BOT.id], upserts: [{ ...BOT, archived: true }] }, true);
+  assert.deepEqual(app["bots"].list.map(({ id, archived }) => [id, archived]), [[BOT.id, true]]);
+  assert.deepEqual([...app["bots"].expandedSessions], [], "a bot another client archived keeps no expanded row");
+  app["bots"].adopt([BOT]);
+  app["bots"].toggleSessions(BOT.id);
+  vi.spyOn(botApi, "loadBots").mockResolvedValue([{ ...BOT, id: "other", name: "Grace" }]);
+  await app["bots"].refresh();
+  assert.deepEqual(app["bots"].list.map(({ id }) => id), ["other"]);
+  assert.deepEqual([...app["bots"].expandedSessions], [], "a read that no longer has the bot drops its expanded row");
+});
+
+test("an open bot panel redraws for the roster's clock every 30 seconds, and a closed one on another tab adds none", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("document", { querySelector: () => null, hidden: false });
+  const app = setup();
+  const stub = (target: unknown, ...names: string[]) => { for (const name of names) (target as Record<string, unknown>)[name] = async () => {}; };
+  stub(app, "refreshSessions", "loadLaunchPreferences");
+  stub(app["control"], "pollPower");
+  stub(app["launcher"], "loadWorkers");
+  stub(app["composer"], "switchDraft", "refreshDraftIndicators");
+  app["bots"].selectTab("sessions");
+  app["bots"].panel = { open: false, width: 400 };
+  // The bot's chat, with its panel closed: nothing of the clock's own shows until the panel opens.
+  app["view"] = "bot";
+  app["activeBotId"] = BOT.id;
+  let redraws = 0;
+  app.requestUpdate = () => { redraws += 1; };
+  try {
+    app.firstUpdated();
+    // The bot's chat with its panel closed and the Bots tab away: the clock adds no redraw of its own.
+    vi.advanceTimersByTime(60_000);
+    assert.equal(redraws, 0);
+    // The panel opens: the Work rows age on the same 30 s cadence as the roster.
+    app["bots"].panel = { open: true, width: 400 };
+    vi.advanceTimersByTime(30_000);
+    assert.equal(redraws, 1);
+    vi.advanceTimersByTime(20_000);
+    assert.equal(redraws, 1, "and not before the next half-minute");
+    // Closed again, the Bots tab's own roster clock still runs, once every half-minute.
+    app["bots"].panel = { open: false, width: 400 };
+    app["bots"].tab = "bots";
+    redraws = 0;
+    vi.advanceTimersByTime(60_000);
+    assert.equal(redraws, 2);
+  } finally {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});

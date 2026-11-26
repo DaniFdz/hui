@@ -5,6 +5,7 @@
  * preferences, not gateway state.
  */
 import type { BotView } from "./bots.ts";
+import { sessionsInFlight } from "./work-queue.ts";
 
 /* ── sidebar tab strip ────────────────────────────────────────────────────── */
 
@@ -192,12 +193,15 @@ export function botActivityLabel(bot: Pick<BotView, "status" | "memory" | "unrea
   return ACTIVITY_LABELS[botActivity(bot, open)];
 }
 
-export function botAccessibleName(bot: BotView, open = false): string {
+/** What a row is announced as. `inFlight` is the sessions it started that need the operator or are still being
+ * worked on ("2 sessions in flight"); a bot with none reads as it always did. */
+export function botAccessibleName(bot: BotView, open = false, inFlight = 0): string {
   return [
     bot.name,
     ...(bot.title ? [bot.title] : []),
     ...(bot.worker ? [`on ${bot.worker.name}`] : []),
     botActivityLabel(bot, open),
+    ...(inFlight > 0 ? [sessionsInFlight(inFlight)] : []),
     ...(bot.unread ? ["unread"] : []),
     ...(bot.hidden ? ["hidden"] : []),
     ...(bot.memory?.failing ? ["memory summaries failing"] : []),

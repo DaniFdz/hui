@@ -42,6 +42,8 @@ import {
   type BotPanelView,
 } from "../lib/bots/roster.ts";
 import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bots/routines.ts";
+import { workLanes, workQueueHeadline, workQueueRows, type WorkQueue, type WorkRow } from "../lib/bots/work-queue.ts";
+import { sessionGlyph, sessionStatusLabel } from "../lib/session/labels.ts";
 import { botToolsOffLabel } from "../lib/bots/tools.ts";
 import { describeRoutineSchedule, formatTimestamp } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
@@ -98,6 +100,11 @@ export type BotRosterProps = {
   /** Pending Hide/Unhide, archive, restore or delete, so the row cannot be acted on twice. */
   pendingId: string;
   now: number;
+  /** What each bot started, by bot id, as the panel's lanes and the badge count it; absent where no row draws work. */
+  work?: ReadonlyMap<string, WorkQueue>;
+  /** The bots whose started sessions the operator opened under their row. */
+  expandedSessions?: ReadonlySet<string>;
+  onToggleSessions: (botId: string) => void;
   onSelect: (bot: BotView) => void;
   /** Creates a bot at once on this machine (the gateway calls it "New Bot") and opens its chat. */
   onNew: () => void;
@@ -134,11 +141,17 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
   const activity = botActivity(bot, active);
   const preview = activity === "summarizing" ? "Summarizing memory…" : activity === "waiting" ? "Waiting for your answer" : botPreview(bot);
   const unread = bot.unread && !active;
+  const queue = props.work?.get(bot.id);
+  // A hidden bot is out of sight and an archived one has no row to open: neither offers the work it started.
+  const offersWork = !bot.hidden && !bot.archived;
+  const inFlight = offersWork ? queue?.inFlight ?? 0 : 0;
+  const expandable = offersWork && Boolean(queue?.rows.length);
+  const expanded = expandable && (props.expandedSessions?.has(bot.id) ?? false);
   return html`<div
     class="session-row-wrap session-row-host sidebar-recent-session bot-row ${active ? "sidebar-recent-session--active" : ""} ${unread ? "sidebar-recent-session--unread" : ""} ${bot.hidden ? "bot-row--hidden" : ""} ${props.pendingId === bot.id ? "sidebar-recent-session--moving" : ""}"
-    data-bot-id=${bot.id} data-session-row-action-count="1">
+    data-bot-id=${bot.id} data-testid="bot-row" data-session-row-action-count="1">
     <a href=${navigationPath({ kind: "bot", id: bot.id })} class="session-row sidebar-recent-session__link bot-row__link" draggable="false"
-      aria-current=${active ? "true" : "false"} aria-label=${botAccessibleName(bot, active)}
+      aria-current=${active ? "true" : "false"} aria-label=${botAccessibleName(bot, active, inFlight)}
       @click=${(event: MouseEvent) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -149,8 +162,9 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
       <span class="bot-row__text">
         <span class="bot-row__top">
           <span class="bot-row__name sidebar-recent-session__name">${bot.name}</span>
+          ${inFlight ? html`<span class="bot-row__inflight" data-testid="bot-row-inflight" aria-hidden="true">${inFlight}</span>` : nothing}
           ${bot.memory?.failing ? html`<span class="bot-row__warning" title=${`Memory summaries are failing: ${bot.memory.failing.error}`}>${icons.alertTriangle}</span>` : nothing}
-          <time class="bot-row__time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
+          <time class="bot-row__time" data-testid="bot-row-time" datetime=${at ? new Date(at).toISOString() : nothing} title=${at ? new Date(at).toLocaleString() : nothing}>${compactRelativeTime(at, props.now)}</time>
         </span>
         <span class="bot-row__bottom">
           ${bot.worker ? html`<span class="bot-row__tag bot-row__machine" title=${`Runs on ${bot.worker.name}`}>${icons.globe}<span>${bot.worker.name}</span></span>` : nothing}
@@ -187,7 +201,34 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
         </wa-dropdown>
       </span>
     </span>
-  </div>`;
+    ${expandable ? html`<button type="button" class="bot-row-expander" aria-expanded=${String(expanded)}
+      aria-label=${`${expanded ? "Collapse" : "Expand"} sessions of ${bot.name}`} @click=${() => props.onToggleSessions(bot.id)}>
+      <span class="bot-row-expander__chevron" aria-hidden="true">${icons.chevronDown}</span></button>` : nothing}
+  </div>
+  ${expanded && queue ? botStartedSessions(bot, queue, props.now, drawer) : nothing}`;
+}
+
+/** What a bot started, outside its row so the row's hover and focus styles cannot reach it: its own chat first, then
+ * the sessions it started, each with the time it last moved. One session is listed once. A plain click closes the
+ * navigation drawer first, then the shell's delegated listener opens the link, as every in-app row does on a phone. */
+function botStartedSessions(bot: BotView, queue: WorkQueue, now: number, drawer: RosterDrawer) {
+  const at = botActivityAt(bot);
+  const seen = new Set<string>([bot.sessionId]);
+  return html`<ul class="bot-row-children" aria-label=${`Sessions ${bot.name} started`}>
+    <li><a class="bot-row-child bot-row-child--chat" href=${navigationPath({ kind: "bot", id: bot.id })} @click=${(event: MouseEvent) => drawer.navigate(event)}>
+      <span class="bot-row-child__icon" aria-hidden="true">${icons.messageSquare}</span>
+      <span class="bot-row-child__title">Chat with ${bot.name}</span>
+      <time class="bot-row-child__time" datetime=${at ? new Date(at).toISOString() : nothing}>${compactRelativeTime(at, now)}</time>
+    </a></li>
+    ${queue.rows.flatMap(({ session }) => {
+      if (seen.has(session.id)) return [];
+      seen.add(session.id);
+      return [html`<li><a class="bot-row-child" href=${navigationPath({ kind: "session", id: session.id })} @click=${(event: MouseEvent) => drawer.navigate(event)}>
+        <span class="bot-row-child__title">${session.title}</span>
+        <time class="bot-row-child__time" datetime=${session.updatedAt}>${compactRelativeTime(Date.parse(session.updatedAt), now)}</time>
+      </a></li>`];
+    })}
+  </ul>`;
 }
 
 /** An archived bot keeps its chat and memory but has no chat to open until
@@ -359,6 +400,10 @@ export type BotPanelProps = {
   /** Its width beside the chat, as the operator left it. */
   width: number;
   timezone: string;
+  /** What the bot started, in the overview's Work lanes, and whether its rows past the cap are open. */
+  work: { queue: WorkQueue; expanded: boolean; onToggle: () => void };
+  /** A Work row's session: opens its chat in the app. */
+  onOpenSession: (sessionId: string) => void;
   /** The profile's Call (the chat header's own button), while the bot can be called: an expanded panel hides the
    * chat's header. */
   call?: TemplateResult;
@@ -546,10 +591,11 @@ function renderRoutinesView(props: BotPanelProps) {
 
 /* ── the overview ── */
 
-/** A section of the overview: its heading, and a + that opens its page on the add form. */
-function overviewHead(props: BotPanelProps, section: string, title: string, add?: { label: string; view: BotPanelView }) {
+/** A section of the overview: its heading, what it counts, and a + that opens its page on the add form. */
+function overviewHead(props: BotPanelProps, section: string, title: string, add?: { label: string; view: BotPanelView }, note?: string) {
   return html`<div class="bot-overview__head">
     <h3 class="bot-panel__heading" id=${`${props.id}-overview-${section}`}>${title}</h3>
+    ${note ? html`<span class="bot-overview__counts">${note}</span>` : nothing}
     ${add ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-overview__add" data-panel-link=${`${section}-add`}
       aria-label=${add.label} title=${add.label} @click=${() => props.onView(add.view, `${section}-add`)}>${icons.plus}</button>` : nothing}
   </div>`;
@@ -577,6 +623,53 @@ function renderProfile(props: BotPanelProps) {
       <button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-profile__edit" data-panel-link="settings-profile"
         aria-label=${`Edit ${bot.name}`} title=${`Edit (${botSettingsShortcutLabel()})`} @click=${() => props.onView("settings", "settings-profile")}>${icons.edit}</button>
     </div>
+  </section>`;
+}
+
+/** A lane's dot takes the row's attention tone from the sidebar's own status owner (`sessionGlyph`), a live turn's
+ * busy mark while it works, and the quiet tone at rest. */
+function workDotTone(row: WorkRow): string {
+  return sessionGlyph(row.session).attention?.tone ?? (row.lane === "working" ? "busy" : "rest");
+}
+
+/** A session the bot started: its status, its title and the time it last moved. A plain click opens it in the app, as a
+ * session row's does; a key, Ctrl, ⌘, Shift or middle click keeps the link's own behaviour. */
+function renderWorkRow(props: BotPanelProps, row: WorkRow, now: number) {
+  const { session } = row;
+  return html`<li class="bot-overview__row bot-work__row" data-lane=${row.lane}>
+    <a class="bot-work__link" href=${navigationPath({ kind: "session", id: session.id })} data-work-tone=${workDotTone(row)}
+      @click=${(event: MouseEvent) => {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        props.onOpenSession(session.id);
+      }}>
+      <span class="bot-work__dot" aria-hidden="true"></span>
+      <span class="bot-work__title">${session.title}</span>
+      <span class="sr-only">${sessionStatusLabel(session)}</span>
+      <time class="bot-work__time" datetime=${session.updatedAt}>${compactRelativeTime(Date.parse(session.updatedAt), now)}</time>
+    </a>
+  </li>`;
+}
+
+/** What the bot started, first on the overview: what needs the operator, what is being worked on, then what finished,
+ * newest first, with the rest behind Show more. Nothing started says so in one line. */
+function renderWorkSummary(props: BotPanelProps, now: number) {
+  const { queue, expanded, onToggle } = props.work;
+  const { rows, more } = workQueueRows(queue, expanded);
+  const lanes = workLanes(rows);
+  return html`<section class="bot-overview__section" aria-labelledby=${`${props.id}-overview-work`}>
+    ${overviewHead(props, "work", "Work", undefined, workQueueHeadline(queue.counts))}
+    ${lanes.length
+      ? html`${lanes.map((group) => {
+          const labelId = `${props.id}-work-${group.lane}`;
+          return html`<div class="bot-work__lane">
+            <h4 class="bot-work__lane-label" id=${labelId}>${group.label}</h4>
+            <ul class="bot-overview__list" aria-labelledby=${labelId}>${group.rows.map((row) => renderWorkRow(props, row, now))}</ul>
+          </div>`;
+        })}
+        ${more ? html`<button type="button" class="btn btn--sm btn--ghost bot-work__more" aria-expanded=${String(expanded)}
+          @click=${onToggle}>${expanded ? "Show less" : `Show ${more} more`}<span class="bot-work__chevron" aria-hidden="true">${icons.chevronDown}</span></button>` : nothing}`
+      : html`<p class="bot-panel__hint">Nothing yet. Sessions ${props.bot.name} starts show here.</p>`}
   </section>`;
 }
 
@@ -712,6 +805,7 @@ function renderOverview(props: BotPanelProps) {
   return html`<div class="bot-overview">
     ${renderProfile(props)}
     <div class="bot-overview__does">
+      ${renderWorkSummary(props, now)}
       ${renderRoutinesSummary(props)}
       ${renderTriggersSummary(props, now)}
       ${renderActivity(props, now)}
