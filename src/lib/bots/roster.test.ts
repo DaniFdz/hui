@@ -125,6 +125,22 @@ test("a bot at rest is done while its finished turn is unread, then sleeps; the 
   assert.equal(botAccessibleName(bot("ada", { name: "Ada" }), true), "Ada, idle");
 });
 
+test("a row is announced with the sessions it has in flight, and unchanged at zero", () => {
+  const ada = bot("ada", { name: "Ada", status: "running" });
+  assert.equal(botAccessibleName(ada), "Ada, working");
+  assert.equal(botAccessibleName(ada, false, 0), "Ada, working", "a bot with no session in flight reads as before");
+  assert.equal(botAccessibleName(ada, false, 1), "Ada, working, 1 session in flight");
+  assert.equal(botAccessibleName(ada, false, 2), "Ada, working, 2 sessions in flight");
+  assert.equal(botAccessibleName(bot("ada", { name: "Ada", unread: true }), false, 3), "Ada, done, 3 sessions in flight, unread");
+});
+
+test("a bot's own time and a started session's time are the one compact relative time, from the roster's clock", () => {
+  const now = Date.parse("2026-11-20T09:10:00.000Z");
+  const chat = bot("ada", { lastMessage: { role: "assistant", text: "hi", at: "2026-11-20T09:08:00.000Z" } });
+  assert.equal(compactRelativeTime(botActivityAt(chat), now), "2m", "its chat's latest activity");
+  assert.equal(compactRelativeTime(Date.parse("2026-11-20T09:05:00.000Z"), now), "5m", "a session's own time");
+});
+
 test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "ArrowRight"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "ArrowRight"), "sessions");

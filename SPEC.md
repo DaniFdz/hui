@@ -3077,7 +3077,9 @@ everything the Bots tab can, through the same routes.
   made a task when a bot did and a temporary one's limits. The roster
   lists bots by latest activity: the bot's animated face (or its emoji), the
   name, the latest message or role, a short time, a status badge and a warning
-  while memory summaries keep failing. A green dot means the bot finished a turn
+  while memory summaries keep failing. A small count says how many sessions it
+  has in flight, and a trailing disclosure lists its own chat and the sessions
+  it started (decision below). A green dot means the bot finished a turn
   nobody has read (an unread bot also marks the Bots tab while Agents shows). A
   bot with nothing running and nothing unread sleeps, eyes closed, with a small
   *z*. A bot at work, on a turn or a memory summary, has no badge. A hand, a
@@ -3114,10 +3116,11 @@ everything the Bots tab can, through the same routes.
   kept open underneath; Escape or the same button brings the chat back (and
   never stops a turn behind the panel). The panel opens on the bot's
   **overview**, after OpenAI's Dots (decision below): its face, name, role and
-  what it is doing, with Call (while it can be called) and Edit; its routines
-  and triggers, a line each with an enable switch and a + that opens their page
-  on its add form; *Activity*, the latest runs of both, newest first; *Cost*,
-  a Total of what its chat, the subagents under it and its memory summaries
+  what it is doing, with Call (while it can be called) and Edit; *Work*, the
+  sessions it started, what needs the operator first (decision below); its
+  routines and triggers, a line each with an enable switch and a + that opens
+  their page on its add form; *Activity*, the latest runs of both, newest
+  first; *Cost*, a Total of what its chat, the subagents under it and its memory summaries
   cost, read again whenever its chat changes state,
   that opens the cost per model (a bot on a worker says its cost is kept there;
   a cost no model reported reads *Not reported*, never $0.00); and
@@ -4006,6 +4009,32 @@ Soul and Memory leaving the panel rather than shrinking to a row each.
   Bot](#bots-are-set-up-like-grok-bot-2026-10-06).
 - **Browser-only.** No route, record or stored format on the gateway changes,
   so no `hui doctor` check is needed.
+
+### A bot's panel shows the work it started (2026-11-25)
+
+The panel's overview said what a bot does on its own (routines, triggers, their runs, its cost) and never what the
+sessions its chat started are doing, so the operator read that off the Agents list. Under its profile, the overview now
+draws **Work** first among what the bot does on its own: the sessions the bot started with `create_session`, in three
+lanes read from their live status, never their stage: **Needs you** (a question waiting, an error, a disconnected
+machine, or a run that failed and left the session idle), **Working** (a turn starting, running or reconnecting) and
+**Recent** (everything else, a failed worktree creation included, since that is not a status). A session sits in one
+lane and is counted once; the section's header counts the lanes it has (*1 needs you · 1 working · 7 recent*) and a
+bot that started nothing says so in one calm line. Each row shows a status dot, the session's title and how long ago it
+last moved; its link is `/sessions/<id>`, and a plain click or Enter opens that chat in the app, while a new-tab or
+new-window click (and Ctrl, ⌘, Shift or a middle click) keeps the bare link. The queue draws its first eight rows and
+**Show N more** draws the rest in place, per bot and never remembered.
+
+### A bot's roster row counts and lists the work it started (2026-11-25)
+
+A Bots tab row now carries what its bot has in flight: a small count of the sessions in **Needs you** and **Working**
+(Recent never counts) in the row's top line, hidden at zero, and appended to the row's accessible name (*2 sessions in
+flight*). The name gives way and the time keeps its place, so the row never widens. A trailing disclosure after the ⋯
+menu opens the same work in place, under the row and outside its hover and focus styles: the bot's own chat first, with
+its latest activity, then the sessions it started with their times, each once. A bot that started nothing has no
+disclosure; hidden and archived bots have neither count nor disclosure. The panel and the roster read one projection of
+the session registry per registry update, built only while the Bots tab or a bot's chat shows, from the same
+`createdBy` view Run status's Sessions section reads; nothing is written or backfilled, no `/__hui/` route changes and
+no new timer is added: the relative times age with the roster's own thirty-second redraw.
 
 ### Listeners are the only triggers (2026-10-09)
 

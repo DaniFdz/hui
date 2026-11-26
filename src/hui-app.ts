@@ -67,6 +67,7 @@ import { renderUpdateNotice } from "./views/update-notice.ts";
 import type { PowerNoticeProps } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { childSessionsByParent, customGroupOrder, mergeChildAndStartedSessions, moveGroupLabel, readSidebarSessionOptions, startedSessionsByBot, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
+import { botWorkQueues, EMPTY_WORK_QUEUE, type WorkQueue } from "./lib/bots/work-queue.ts";
 import { composerEditorFor, type ComposerEditor } from "./lib/composer/rich/editor.ts";
 import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
@@ -665,8 +666,9 @@ export class HuiApp extends HuiElement {
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.control.refreshGatewayHealth();
       }
-      // Roster times ("2m") age while nothing else re-renders the sidebar.
-      if (!this.embeddedPane && !document.hidden && this.bots.tab === "bots" && ++this.botRosterTick % 10 === 0) {
+      // Roster times ("2m") age while nothing else re-renders the sidebar, and an open bot panel's Work rows age
+      // with them: one clock for both, so a closed panel and another tab add no redraw.
+      if (!this.embeddedPane && !document.hidden && (this.bots.tab === "bots" || this.botPanelVisible()) && ++this.botRosterTick % 10 === 0) {
         this.requestUpdate();
       }
     }, 3000);
@@ -2110,9 +2112,20 @@ export class HuiApp extends HuiElement {
   /** Every pane reading the same registry shares one child projection, including the empty-array identity. */
   private static readonly childSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
   /** Same sharing, for what a bot's chat started through `create_session`; built lazily, only while a bot's own chat
-   * is open, so an ordinary conversation never pays for it. */
+   * or the Bots tab reads it, so an ordinary conversation never pays for it. */
   private static readonly startedSessionIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, readonly SessionView[]>>();
   private static readonly noChildSessions: readonly SessionView[] = [];
+  /** The sessions each bot started, from one walk per registry projection: a bot's merged Sessions list and the Bots
+   * tab's Work queues read the same index instead of each building one. */
+  private static startedSessionIndex(groups: readonly SessionGroup[]): ReadonlyMap<string, readonly SessionView[]> {
+    let index = HuiApp.startedSessionIndexes.get(groups);
+    if (!index) {
+      index = startedSessionsByBot(groups);
+      HuiApp.startedSessionIndexes.set(groups, index);
+    }
+    return index;
+  }
+
   private get childSessions(): readonly SessionView[] {
     // Embedded panes overlay only their own status. Their children come from the canonical shared list.
     const groups = this.embeddedPane && this.paneGroups ? this.paneGroups : this.sessions.groups;
@@ -2124,12 +2137,24 @@ export class HuiApp extends HuiElement {
     const children = index.get(this.conversation.selected?.id ?? "") ?? HuiApp.noChildSessions;
     const bot = this.conversation.selected?.bot;
     if (!bot) return children;
-    let startedIndex = HuiApp.startedSessionIndexes.get(groups);
-    if (!startedIndex) {
-      startedIndex = startedSessionsByBot(groups);
-      HuiApp.startedSessionIndexes.set(groups, startedIndex);
+    return mergeChildAndStartedSessions(children, HuiApp.startedSessionIndex(groups).get(bot.id) ?? HuiApp.noChildSessions);
+  }
+
+  /** Every bot's work, in the panel's lanes and the roster's counts: one projection per registry, built lazily and
+   * only while the Bots tab or a bot's chat reads it, over the started index the bot's own chat shares. */
+  private static readonly botWorkIndexes = new WeakMap<readonly SessionGroup[], ReadonlyMap<string, WorkQueue>>();
+  private botWork(): ReadonlyMap<string, WorkQueue> {
+    const groups = this.sessions.groups;
+    let queues = HuiApp.botWorkIndexes.get(groups);
+    if (!queues) {
+      queues = botWorkQueues(HuiApp.startedSessionIndex(groups));
+      HuiApp.botWorkIndexes.set(groups, queues);
     }
-    return mergeChildAndStartedSessions(children, startedIndex.get(bot.id) ?? HuiApp.noChildSessions);
+    return queues;
+  }
+
+  private botWorkQueue(botId: string): WorkQueue {
+    return this.botWork().get(botId) ?? EMPTY_WORK_QUEUE;
   }
 
   /** Session lists never show bot chats; the Bots tab lists their bots. The
@@ -2174,6 +2199,9 @@ export class HuiApp extends HuiElement {
 
   private openBot = (botId: string) => this.navigate({ kind: "bot", id: botId });
 
+  /** A session in a bot's Work queue: opens its chat in the app, as its own row does. */
+  private openWorkSession = (sessionId: string) => this.navigate({ kind: "session", id: sessionId });
+
   private shellBotsProps(): ShellBotsProps {
     return {
       tab: this.bots.tab,
@@ -2198,6 +2226,10 @@ export class HuiApp extends HuiElement {
         menuFor: this.botMenuFor,
         pendingId: this.bots.pendingId,
         now: Date.now(),
+        // Only the Bots tab draws a row's work, so no other render walks the registry for it.
+        ...(this.bots.tab === "bots" ? { work: this.botWork() } : {}),
+        expandedSessions: this.bots.expandedSessions,
+        onToggleSessions: this.bots.toggleSessions,
         onSelect: this.selectBot,
         onNew: () => this.createNewBot(),
         creating: this.bots.creating,
@@ -2478,6 +2510,8 @@ export class HuiApp extends HuiElement {
         expanded,
         width: this.bots.panel.width,
         timezone: localTimezone(),
+        work: { queue: this.botWorkQueue(bot.id), expanded: this.bots.panelWorkExpanded, onToggle: this.bots.togglePanelWork },
+        onOpenSession: this.openWorkSession,
         ...(paneCall ? { call: renderCallButton({ botName: bot.name, inCall: paneCall.inCall, onCall: this.paneCallAction(bot) }) } : {}),
         onView: this.selectBotPanelView,
         onClose: this.closeBotPanel,
