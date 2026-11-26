@@ -1838,8 +1838,9 @@ any other file downloads under its original name.
 
 The composer accepts pasted browser images as native model input. PNG, JPEG,
 GIF and WebP can form an image-only prompt; every other pasted or selected file,
-including video, is an immutable file attachment that requires accompanying
-text so the agent can inspect its path with an available tool.
+including video, is an immutable file attachment that the runtime hands to the
+agent as an absolute path, so a file alone is a prompt and the agent inspects it
+with its own read tool.
 
 Agent output uses HUI's `present_media` tool instead of raw HTML, local-path
 Markdown or base64 model prose. The tool copies up to eight requested local

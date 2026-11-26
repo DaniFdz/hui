@@ -3921,9 +3921,10 @@ incoming frame reconnects only the event socket. The HTTP send keeps its own
 outcome and is never cancelled or replayed by that check. On a duplicate it
 drops its local copies of the message. The ids live in the gateway's memory: a
 resend that arrives after a gateway restart is sent again. Output arrives over the event stream. Prompts are rejected while a turn
-is pending or streaming, with a 409 and a message saying so. Images may form a
-prompt by themselves. Other files are stored under HUI's config directory and
-passed to PI as paths; they require prompt text.
+is pending or streaming, with a 409 and a message saying so. An accepted
+attachment of any kind may form a prompt by itself: an image goes to the model
+natively, a file is stored under HUI's config directory and passed to PI as a
+path. Only a prompt with neither text nor attachments is refused.
 
 PI extension commands delay their prompt RPC acknowledgement while waiting for
 interactive input. Receiving `extension_ui_request` is treated as acceptance so

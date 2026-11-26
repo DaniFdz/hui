@@ -26,7 +26,8 @@ test("attached images and files are sent and open again from the transcript", { 
   await composerAttachments.getByRole("button", "Remove shot.png").tap();
   await expect(composerAttachments.getByRole("button", `Remove ${notes.name}`)).toBeVisible();
   await expect(composerAttachments.getByRole("button", "Remove shot.png")).toBeHidden();
-  await expect(send).toBeDisabled();
+  // A file alone is a prompt now: the runtime hands the agent its path, so an attachment no longer needs words.
+  await expect(send).toBeEnabled();
 
   await message.fill("Summarize the notes");
   await send.tap();

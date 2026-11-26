@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expectTypeOf, test } from "vitest";
+import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 import { RuntimeInspection, SessionTools } from "../api/tools.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
@@ -87,6 +88,36 @@ async function answered(id: string, text: string): Promise<void> {
     const replied = prompt >= 0 && entries.slice(prompt + 1).some((entry) => entry.kind === "message" && entry.role === "assistant");
     return replied && liveSessions.status(id) === "idle";
   }, { state: () => ({ status: liveSessions.status(id), transcript: liveSessions.transcript(id) }) });
+}
+
+/** The same for a turn whose prompt is an attachment alone, which carries no text to find it by. */
+async function answeredAttachment(id: string, name: string): Promise<void> {
+  await waitFor(`the reply to the ${name} prompt`, () => {
+    const entries = liveSessions.transcript(id);
+    const prompt = entries.findLastIndex((entry) => entry.kind === "message" && entry.role === "user" && entry.attachments?.some((item) => item.name === name));
+    const replied = prompt >= 0 && entries.slice(prompt + 1).some((entry) => entry.kind === "message" && entry.role === "assistant");
+    return replied && liveSessions.status(id) === "idle";
+  }, { state: () => ({ status: liveSessions.status(id), transcript: liveSessions.transcript(id) }) });
+}
+
+/** The turn one logged model request asked the provider to answer: the text of its last message. */
+function requestedText(request: Record<string, unknown>): string {
+  const messages = request["messages"];
+  const last = Array.isArray(messages) ? messages.at(-1) as { content?: unknown } | undefined : undefined;
+  const content = last?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return (content as unknown[])
+    .map((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown })["text"] === "string"
+      ? (part as { text: string }).text
+      : "")
+    .join("");
+}
+
+/** Every turn the fixture provider was asked, in order; it logs one JSON line per model request. */
+async function requestedTurns(): Promise<string[]> {
+  return completeLines(await readFile(join(dir, "requests.jsonl"), "utf8"))
+    .map((line) => requestedText(JSON.parse(line) as Record<string, unknown>));
 }
 
 test("a resent request id is answered with the first send's outcome and never runs twice, whichever route it comes back through", { timeout: 60_000 }, async () => {
@@ -287,4 +318,52 @@ test("a new session without a chosen level starts on Settings' default reasoning
   assert.equal(chosen.status, 200, JSON.stringify(chosen.body));
   assert.equal((chosen.body["session"] as { thinking?: string }).thinking, "low");
   assert.equal((await put({})).status, 200, "later tests start from the defaults again");
+});
+
+test("a file alone is a prompt, and only a prompt with neither text nor attachments is refused", { timeout: 90_000 }, async () => {
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "File only" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
+
+  const file = { kind: "file", name: "filedrop.txt", dataBase64: Buffer.from("file-only fixture\n").toString("base64") };
+  const sent = await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "", attachments: [file] });
+  assert.deepEqual(sent, { status: 200, body: { ok: true } });
+  await answeredAttachment(id, "filedrop.txt");
+
+  const turn = liveSessions.transcript(id).find((entry) => entry.kind === "message" && entry.role === "user" && entry.attachments?.some((item) => item.name === "filedrop.txt"));
+  assert(turn?.kind === "message", "the transcript holds the file's turn");
+  assert.equal(turn.text, "", "the stored path is not shown as the prompt's text");
+  assert.deepEqual(turn.attachments?.map(({ name, kind }) => ({ name, kind })), [{ name: "filedrop.txt", kind: "file" }], "the original display name comes back");
+
+  // What the runtime was asked: the file's own absolute path and the manifest, never its bytes inlined into the text.
+  const delivered = (await requestedTurns()).find((message) => /^@.+filedrop\.txt$/mu.test(message));
+  assert.ok(delivered, "the provider was asked to answer the file");
+  const reference = /^@(.+filedrop\.txt)$/mu.exec(delivered)?.[1];
+  assert.ok(reference, `the message names the file by path: ${delivered}`);
+  assert.ok(isAbsolute(reference), `the path is absolute: ${reference}`);
+  const manifest = /<!-- hui-attachments:v1:([A-Za-z0-9_-]+) -->$/u.exec(delivered)?.[1];
+  assert.ok(manifest, `the message carries the attachment manifest: ${delivered}`);
+  assert.deepEqual(JSON.parse(Buffer.from(manifest, "base64url").toString("utf8")) as unknown, [{ kind: "file", name: "filedrop.txt", path: reference }]);
+
+  // Only a prompt with neither text nor attachments is refused, and it adds no turn.
+  const settled = liveSessions.transcript(id);
+  assert.equal(liveSessions.status(id), "idle", "the file-only turn is over");
+  const refused = await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "", attachments: [] });
+  assert.deepEqual(refused, { status: 400, body: { error: "A prompt is required." } });
+  assert.deepEqual(liveSessions.transcript(id), settled, "a refused prompt adds nothing to the transcript");
+
+  // Steer shares the intake gate: an idle session takes the file alone too, and starts a run with it.
+  const steered = await call("/__hui/sessions", "POST", { cwd: workspace, title: "File only, steered" });
+  assert.equal(steered.status, 200, JSON.stringify(steered.body));
+  const steerId = (steered.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${steerId}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(steerId);
+  await waitFor("the steered session's runtime", () => liveSessions.hasRuntime(steerId), { state: () => liveSessions.status(steerId) });
+  const steer = await call(`/__hui/sessions/${steerId}/steer`, "POST", { text: "", attachments: [file] });
+  assert.deepEqual(steer, { status: 200, body: { ok: true } });
+  await answeredAttachment(steerId, "filedrop.txt");
+  assert.equal(liveSessions.transcript(steerId).filter((entry) => entry.kind === "message" && entry.role === "user").length, 1, "the steered file is that session's one user turn");
 });
