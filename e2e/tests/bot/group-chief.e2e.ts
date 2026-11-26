@@ -12,8 +12,9 @@ test("a custom group's menu creates one Chief of Staff working in its own folder
   // A group is a project with a directory and no sessions of its own: a chief no longer needs a session to exist first.
   await hui.api("POST", "/__hui/session-groups", { name: group, cwd: hui.workspace });
   await hui.open("/");
-  const navigation = screen.getByRole("button", "Open navigation");
-  if (await navigation.count()) await navigation.tap();
+  // The group's header and its menu live in the sidebar, which a phone keeps in its drawer: the fixture opens the drawer
+  // and waits for it, where reading the shell once for an Open navigation button would skip a shell it had not drawn yet.
+  await hui.sessionList();
   await screen.getByRole("button", `Group options for ${group}`).tap();
   await screen.getByText("Create Chief of Staff", { exact: true, visible: true }).first().tap();
 
