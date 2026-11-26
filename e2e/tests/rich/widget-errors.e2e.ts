@@ -86,7 +86,7 @@ test("A show_widget call whose script does not parse, sends a full document, a f
 
   // Each refusal is the model's to fix, and its message names the script, position and offending line where it can.
   // Every refused call keeps a fold of its own; opening one reveals the failed row and its error.
-  const folds = transcript.getByText(trail);
+  const folds = transcript.getByTestId("activity-trail");
   await expect(folds).toHaveCount(4);
   for (let index = 0; index < 4; index += 1) await folds.nth(index).tap();
   const rows = transcript.getByRole("button", { name: /^Used show widget/u });

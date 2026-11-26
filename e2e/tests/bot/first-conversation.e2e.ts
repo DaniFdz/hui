@@ -27,7 +27,7 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^set_profile answered: Saved: you are Echo \(@echo\), Fixture tester/u)).toBeVisible();
   const firstCall = transcript.getByRole("button", /^Used set profile/u);
-  if (!(await firstCall.isVisible())) await transcript.getByText(trail).tap();
+  if (!(await firstCall.isVisible())) await transcript.getByTestId("activity-trail").last().tap();
   await expect(firstCall).toBeVisible();
 
   await expect(header.getByText("Echo", { exact: true })).toBeVisible();
@@ -42,7 +42,7 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await screen.getByLabel("Message").fill(renamed);
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^set_profile answered: Saved: you are Echo Two \(@echo-two\), Second role/u)).toBeVisible();
-  await expect(transcript.getByText(trail)).toHaveCount(2);
+  await expect(transcript.getByTestId("activity-trail")).toHaveCount(2);
   await expect(header.getByText("Echo Two", { exact: true })).toBeVisible();
   await expect(header.getByText("Second role · Idle")).toBeVisible();
   await expect(screen.getByLabel("Echo Two: bot panel")).toBeVisible();
@@ -66,7 +66,7 @@ test("A new bot asks what to look after, then writes its own SOUL.md and says so
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("I wrote my SOUL.md. To change it, just tell me.")).toBeVisible();
   const soulCall = transcript.getByRole("button", /^Used write soul/u);
-  if (!(await soulCall.isVisible())) await transcript.getByText(trail).tap();
+  if (!(await soulCall.isVisible())) await transcript.getByTestId("activity-trail").last().tap();
   await expect(soulCall).toBeVisible();
   await expect.poll(soul).toBe("# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.");
 
@@ -79,5 +79,5 @@ test("A new bot asks what to look after, then writes its own SOUL.md and says so
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("I rewrote my SOUL.md: from now on I answer in one line.")).toBeVisible();
   await expect.poll(soul).toBe("# Who I am\nE2E_SOUL_V2: I answer in one line.");
-  await expect(transcript.getByText(trail)).toHaveCount(2);
+  await expect(transcript.getByTestId("activity-trail")).toHaveCount(2);
 });

@@ -358,7 +358,7 @@ test("a call the card can't show opens no card and fails back to the agent with 
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
 
-  const groups = transcript.getByText(trail);
+  const groups = transcript.getByTestId("activity-trail");
   await expect(groups).toHaveCount(5);
 
   await hui.reload();

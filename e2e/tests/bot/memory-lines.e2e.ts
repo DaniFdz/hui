@@ -30,7 +30,7 @@ test("a bot opens older lines of its memory and their dates, its chat shows the 
   // Asked about it, it opens the older lines and their dates before answering with them.
   await message.fill("E2E_ZOOM what did I say about the vault?");
   await send.tap();
-  const used = transcript.getByText(trail);
+  const used = transcript.getByTestId("activity-trail").last();
   await expect(used).toBeVisible();
   await used.tap();
   await expect(transcript.getByRole("button", /Used zoom/u)).toHaveCount(3);
