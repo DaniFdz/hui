@@ -61,7 +61,7 @@ const fake = vi.hoisted(() => ({
   draftWrites: [] as { key: string; text: string }[],
   pathRequests: [] as { cwd: string; input: string }[],
   commandRequests: [] as { id: string; resolve: (commands: RuntimeCommand[]) => void; reject: (error: Error) => void }[],
-  prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
+  prompts: [] as { id: string; text: string; attachments: readonly Attachment[]; resolve: () => void; reject: (error: Error) => void }[],
   rewinds: [] as unknown[][],
   aborts: [] as string[],
   steerNows: [] as { id: string; resolve: () => void; reject: (error: Error) => void }[],
@@ -72,7 +72,7 @@ vi.mock("../api/sessions.ts", () => ({
   loadCommands: (id: string) => new Promise<RuntimeCommand[]>((resolve, reject) => fake.commandRequests.push({ id, resolve, reject })),
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
-  sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
+  sendPrompt: (id: string, text: string, attachments: readonly Attachment[] = []) => new Promise((resolve, reject) => fake.prompts.push({ id, text, attachments, resolve: () => resolve({ duplicate: false }), reject })),
   askSideQuestion: (id: string, question: string) => new Promise((resolve, reject) => fake.sideQuestions.push({ id, question, resolve, reject })),
   rewindSession: async (...args: unknown[]) => { fake.rewinds.push(args); },
   abortSession: async (id: string) => { fake.aborts.push(id); },
@@ -496,6 +496,46 @@ test("a sent prompt claims the draft at once and a refused one comes back with t
   assert.equal(controller.sending, false);
   assert.equal(controller.draft, "ship it");
   assert.deepEqual(fake.drafts.get(sessionDraftKey("s1")), { text: "ship it", attachments: [] });
+  assert.deepEqual(notes.at(-1), "error:refused");
+});
+
+/** A text file the picker stores: the payload carries its bytes and the runtime names its absolute path. */
+const notesFile: Attachment = { name: "notes.txt", kind: "file", mimeType: "text/plain", dataBase64: "" };
+
+test("a prompt holding only a file reaches the API and empty text with no attachment does not", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.attachments = [notesFile];
+  controller.send("", [notesFile]);
+  assert.deepEqual(fake.prompts.map(({ id, text, attachments }) => [id, text, attachments]), [["s1", "", [notesFile]]]);
+  fake.prompts[0]?.resolve();
+  await settle();
+  assert.equal(controller.sending, false, "the acknowledgement frees the composer");
+  assert.equal(controller.draft, "", "the sent prompt leaves no draft behind");
+  assert.deepEqual(controller.attachments, [], "the file leaves the composer with the prompt");
+
+  controller.props().onDraftInput("half typed");
+  controller.send("");
+  await settle();
+  assert.equal(fake.prompts.length, 1, "empty text with nothing attached posts nothing");
+  assert.equal(controller.draft, "half typed", "the newer draft is left alone");
+  assert.deepEqual(notes, ["info:"], "the refused send shows no note");
+});
+
+test("a failed file-only send puts the file back in the composer", async () => {
+  const { controller, notes } = composer({ current: { id: "s1", status: "idle" } as SessionView });
+  controller.switchDraft(sessionDraftKey("s1"));
+  await settle();
+  controller.attachments = [notesFile];
+  controller.send("", [notesFile]);
+  assert.deepEqual(fake.prompts.map(({ text, attachments }) => [text, attachments]), [["", [notesFile]]]);
+
+  fake.prompts[0]?.reject(new Error("refused"));
+  await settle();
+  assert.equal(controller.sending, false);
+  assert.deepEqual(controller.attachments, [notesFile], "the file comes back to the composer");
+  assert.deepEqual(fake.drafts.get(sessionDraftKey("s1")), { text: "", attachments: [notesFile] }, "the refused prompt waits on its own session's draft");
   assert.deepEqual(notes.at(-1), "error:refused");
 });
 

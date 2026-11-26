@@ -158,7 +158,7 @@ const cases: UseCase[] = [
     id: "CHAT-013",
     title: "Attach images and files to a message",
     behaviour:
-      "Add attachment offers Take photo, Photo and File. Images show as thumbnails and files by name, each with Remove <name>; an image alone can be sent, a file needs text. The sent turn shows the images as thumbnails that open in the media viewer and the files by their original names, each with Open <name>, which downloads it under that name. They survive a reload without exposing stored paths.",
+      "Add attachment offers Take photo, Photo and File. Images show as thumbnails and files by name, each with Remove <name>; an image alone can be sent, and with only a file attached Send message opens. The sent turn shows the images as thumbnails that open in the media viewer and the files by their original names, each with Open <name>, which downloads it under that name. They survive a reload without exposing stored paths.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#shapes"],
     surfaces: [
       "route:POST /__hui/sessions/:id/prompt",
@@ -1162,6 +1162,20 @@ const cases: UseCase[] = [
     journeys: ["chat-composer"],
     web: "required",
     phone: { excluded: "A secondary click is the web's: a phone's long press keeps the platform's own menu, which is where its Cut, Copy and Paste live, so the strip is never drawn there and this gesture cannot be made on a touch screen.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-composer-selections-formatting-2026-11-25" },
+  },
+  {
+    id: "CHAT-098",
+    title: "Send a file with no text as the whole prompt",
+    behaviour:
+      "With one file attached and the composer empty, Send message is enabled and posts the prompt. The sent row shows the file's card and no text bubble, and the agent's reply names the file's absolute path, so the agent can open it with its own read tool. An empty composer with nothing attached keeps Send message disabled.",
+    spec: [
+      "SPEC.md#live-chat-projection",
+      "docs/api.md#post-__huisessionsidprompt",
+    ],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-099",

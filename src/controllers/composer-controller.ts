@@ -18,7 +18,7 @@ import { attachmentPreview, attachmentRefusal, readAttachment, validateAttachmen
 import type { BotView } from "../lib/bots/bots.ts";
 import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft, type ComposerDraft } from "../lib/composer/drafts.ts";
 import { SendRequests } from "../lib/composer/send-requests.ts";
-import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
+import { EMPTY_QUEUE, promptHasContent, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
 import { clearSideChat, settleSideChat, startSideChat } from "../lib/session/side-chat-store.ts";
@@ -586,8 +586,7 @@ export class ComposerController {
     if (this.#deps.handleUpdateCommand(text, attachments)) return;
     const session = this.#conversation.selected;
     const trimmed = text.trim();
-    const hasImage = attachments.some((item) => item.kind === "image");
-    if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
+    if (!session || !promptHasContent(text, attachments) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
       return;
     }
     // The picker refuses before a file enters the composer, so only state restored elsewhere is refused here (a draft

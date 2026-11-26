@@ -41,7 +41,7 @@ import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
-import { composerPlaceholder, queueRows } from "../lib/composer/state.ts";
+import { composerPlaceholder, promptHasContent, queueRows } from "../lib/composer/state.ts";
 import { composerFocusAfterSend, type ComposerFocusOwner } from "../lib/chat/composer-focus.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
@@ -1615,10 +1615,9 @@ function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: Pro
   // The wire is the hidden field: an unedited draft sends its exact source, a rich or source edit sends what it wrote.
   const input = form.elements.namedItem("text");
   const text = input instanceof HTMLInputElement ? input.value.trim() : "";
-  // An image alone is a valid prompt; a file alone is not, because the agent
-  // still needs to be told what to do with it.
-  const hasImage = props.attachments.some((item) => item.kind === "image");
-  if (!text && !hasImage) return;
+  // An attachment alone is a valid prompt: the runtime hands the agent every attached file's absolute path, so it
+  // opens and inspects the file with its own read tool.
+  if (!promptHasContent(text, props.attachments)) return;
   // Where the send started, for the caret's way back once the post is over (see `syncComposerFocus`): a keyboard send
   // leaves the caret in the composer, and the locked composer the post sets takes it away. `sending` is the render
   // edge's, so a send only records the owner here.
@@ -1845,8 +1844,8 @@ function renderComposer(props: HomeProps) {
   // A saved copy offers no action it cannot honour; its own live request is retrying.
   const reconnecting = savedCopy || (!saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting")));
   const reconnect = !saved && props.session?.status === "disconnected";
-  const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
-  const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
+  const showStop = props.streaming && !promptHasContent(props.draft, props.attachments);
+  const canSend = !booting && !props.sending && !disconnected && promptHasContent(props.draft, props.attachments);
   return html`
     <div class="agent-chat__composer-shell" data-testid="chat-composer-shell"
       @dragenter=${onComposerDragEnter}
