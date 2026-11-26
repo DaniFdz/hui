@@ -42,6 +42,14 @@ test("a bot's overview names its memory-summary cost after a gateway restart", {
     }, { timeout: 60_000 }).toBe(true);
     const spent = (await memory()).status.usage;
 
+    // `hui.open` resolves at the page's own load event, before the app has downloaded and drawn (e2e/fixtures/hui.ts).
+    // The gateway goes away only once the bot's chat is on screen: a restart that cuts the app's module downloads leaves
+    // the page on the boot screen's connection failure, and the load this test makes afterwards never reaches the app
+    // again — the boot screen keeps its message and the panel's trigger never mounts. The chat is the page the test
+    // reads, so that is the state to wait on.
+    await hui.open(`/bots/${bot.id}`);
+    await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
     // The summary spend was made before this restart. The panel must keep it without claiming a startup limit.
     await hui.restartGateway();
     await expect.poll(async () => (await memory()).status.usage).toEqual(spent);
