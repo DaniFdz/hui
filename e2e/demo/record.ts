@@ -196,6 +196,63 @@ export class Director {
     await sleep(250);
   }
 
+  /** A secondary click on a target or a point, for a page whose own menu opens on it: HUI's composer formats the selection
+   * from the strip a right click opens. A phone's touch screen has no secondary click, so there is no fallback that would
+   * film one there: the scene fails instead of showing a menu no finger can ask for. */
+  async contextMenu(target: Target | { x: number; y: number }) {
+    if (this.touch) throw new Error("A touch screen has no secondary click, so contextMenu has nothing to open with.");
+    const { x, y } = await this.move(target);
+    await sleep(120);
+    await this.stage("stage.press(true)");
+    await this.#mouse("mousePressed", x, y, { button: "right", buttons: 2, clickCount: 1 });
+    await sleep(70);
+    await this.#mouse("mouseReleased", x, y, { button: "right", buttons: 0, clickCount: 1 });
+    // No ripple: the menu is what the click proved, and a click ring under it would be a second cursor mark.
+    await this.stage("stage.press(false)");
+    await sleep(250);
+  }
+
+  /** Puts local files into a file input the page hides behind its own control, as the picker would: the element is found
+   * by its selector in HUI's frame, resolved to a node and given the paths, which runs the page's own change handler. A
+   * composer that takes the files into its draft clears the input again, so the input keeping them is not the proof: an
+   * input that kept none and a page that drew no preview of them is what fails. */
+  async upload(selector: string, files: string[]) {
+    for (const file of files) {
+      if (!statSync(file, { throwIfNoEntry: false })?.isFile()) throw new Error(`${file} is not a file that can be uploaded.`);
+    }
+    // The input is in HUI's own document, inside the stage's app frame. The check runs in the stage's realm, so it reads
+    // the tag and type rather than `instanceof HTMLInputElement`: a frame's elements have their own constructors.
+    const evaluate = await this.send<{ result: { objectId?: string }; exceptionDetails?: { text: string } }>("Runtime.evaluate", {
+      expression: `(() => { const element = document.getElementById("app").contentDocument.querySelector(${JSON.stringify(selector)});`
+        + " return element?.tagName === \"INPUT\" && element.type === \"file\" ? element : null; })()",
+      objectGroup: "hui-demo-upload", returnByValue: false,
+    });
+    if (evaluate.exceptionDetails) throw new Error(`Upload: ${evaluate.exceptionDetails.text} in ${selector}`);
+    const found = evaluate.result.objectId;
+    if (!found) throw new Error(`No file input matches ${selector}.`);
+    // The object names its node, and the node resolves back to the object the files are set on. `DOM.getDocument` never
+    // walks HUI's frame, so asking the object for its node is what finds one there.
+    const described = await this.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { objectId: found });
+    const resolved = await this.send<{ object: { objectId?: string } }>("DOM.resolveNode", { backendNodeId: described.node.backendNodeId, objectGroup: "hui-demo-upload" });
+    const objectId = resolved.object.objectId;
+    if (!objectId) throw new Error(`No element to upload to at ${selector}.`);
+    try {
+      await this.send("DOM.setFileInputFiles", { files, objectId });
+    } catch (error) {
+      throw new Error(`${selector} did not accept the files: ${error instanceof Error ? error.message : "the browser refused"}`, { cause: error });
+    }
+    const kept = await this.send<{ result: { value?: string[] } }>("Runtime.callFunctionOn", {
+      objectId, returnByValue: true, functionDeclaration: "function () { return Array.from(this.files ?? [], (file) => file.name); }",
+    });
+    const names = kept.result.value ?? [];
+    if (names.length) return;
+    const drawn = await this.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
+      .querySelectorAll("ul.chat-attachments-preview img, ul.chat-attachments-preview .chat-attachment-file__name")]
+      .map((item) => (item.getAttribute("alt") ?? item.textContent ?? "").trim()))()`);
+    const missing = files.map((file) => basename(file)).filter((name) => !drawn.includes(name));
+    if (missing.length) throw new Error(`${selector} kept no file after the upload; the page drew no preview of ${missing.join(", ")}.`);
+  }
+
   /** Types like a person, one character at a time, into the field the cursor clicked. Focus is set too: after a click in
    * a widget's frame, Chrome keeps sending text there. A terminal clears its input as it goes, so it is not checked. */
   async type(text: string, options: { terminal?: boolean } = {}) {
@@ -388,10 +445,16 @@ async function launchHui() {
   };
 }
 
-async function startChrome(profile: string) {
+/** Headless Chrome advertises no pointing device at all — `pointer: none`, `hover: none`, as `Emulation.setEmulatedMedia`
+ * cannot override them — which is not the window a clip draws. A desktop stage has a mouse, and the composer opens its
+ * selection strip only from one, so the renderer gets the pointer its window would have. A phone stage keeps its own. */
+const DESKTOP_POINTER = "--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2";
+
+async function startChrome(profile: string, phone: boolean) {
   const resolved = await resolveBrowserExecutable("");
   if (!resolved.executable) throw new Error(resolved.error);
-  const args = browserLaunchArguments({ profileDir: profile, headless: true, width: STAGE.width, height: STAGE.height }).filter((arg) => arg !== "about:blank");
+  const args = [...browserLaunchArguments({ profileDir: profile, headless: true, width: STAGE.width, height: STAGE.height }).filter((arg) => arg !== "about:blank"),
+    ...(phone ? [] : [DESKTOP_POINTER])];
   const child = spawn(resolved.executable.path, args, { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
   const cdp = new CdpConnection(child.stdio[3] as Writable, child.stdio[4] as Readable);
   return { child, cdp };
@@ -464,7 +527,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
   let chrome: Awaited<ReturnType<typeof startChrome>> | undefined;
   try {
     hui = await launchHui();
-    chrome = await startChrome(join(work, "profile"));
+    chrome = await startChrome(join(work, "profile"), scene.device === "phone");
     const { cdp } = chrome;
     const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
