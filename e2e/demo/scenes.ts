@@ -82,9 +82,11 @@ let storefrontChief = { id: "", name: "", handle: "" };
 /** The Attachments clip's fixtures: a folder of its own under the system's temporary directory, made in `setup`. */
 let attachmentDir = "";
 let notesFile = "";
-let logoFile = "";
-/** A real 32×32 PNG, drawn once and kept as its bytes: the clip's picture, with no dependency and no file in the tree. */
-const LOGO_PNG = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAQUlEQVR4nGPUy81moCVgoanpoxYMVgsOt3WQbZxtVQVhC6gLRi0YtWDUglELRi0YtWDYWoBZr1LZAuqCUQsG3gIAFScFs5USpNkAAAAASUVORK5CYII=";
+let photoFile = "";
+/** The clip's picture, 448×252: a sunset drawn once with ffmpeg (a four-stop gradient sky, a sun disc and two hills) and
+ * kept as its bytes, so the clip needs no dependency and no picture in the tree. A dot of a picture reads as a broken
+ * image in a message bubble, so this one is wide enough for the message's own thumbnail to show what it is. */
+const SUNSET_PNG = "iVBORw0KGgoAAAANSUhEUgAAAcAAAAD8CAIAAABviONGAAAACXBIWXMAAAABAAAAAQBPJcTWAAALfElEQVR4nO3dd5BdVR3AcV5m7YWaAMIgo+M4I/+gggWwgWJBQUyy1PTe6RN6IIGEIi0hCekJpJCCZdRRRuzYpTg6o+MIiCCQhGLvo8tsePvYLMnu2XPvueXz+YO575Hs+/3zvjnn3rf3NQ5725g9AOi7tkbqCQBKSkABArU1FBQgiBUoQCABBQjUsYWXUIAQVqAAgQQUIJCr8ACBrEABAnUEVEIBQtjCAwSyhQcIJKAAgWzhAQK5iAQQyBYeIFDbAAUFCGIFChDIRSSAQC4iAQSyhQcIZAsPEMgKFCCQgAIE8p1IAIGsQAECCShAIFfhAQJZgQIE8ptIAIFs4QEC2cIDBBJQgEBuqAwQyEUkgEAuIgEEcg4UIJCAAgSyhQcI5CISQCBbeIBAtvAAgaxAAQIJKEAg34kEEMgKFCCQgAIEchUeIJAVKEAgv4kEEMgNlQEC2cIDBHIRCSCQFShAIBeRAALZwgMEsoUHCCSgAIFs4QECuYgEEMgWHiCQLTxAICtQgEACChDIdyIBBLICBQgkoACB3FAZIJAVKEAgF5EAAlmBAgQSUIBAfpUTIJAVKEAgt7MDCGQLDxDIFh4gkIACBLKFBwjkIhJAIFt4gEC28ACBrEABAgkoQKC2AfbwAEGsQAECuYgEEMgKFCCQgAIEsoUHCCSgAIE6tvD/Sz0DQCm1DbAChcycteH03v/hm05dl90kZKFjC28FCjHNWH9G2F9sre3Np62NNA4Zcg4U4pi+LrCbPWpW+JbTlbS4rEChX6atPTPTn9/s8vwz7sj0hQjgHCgEmnJHtunsprPUt54powViBQp9Nvn2YaleurPaC4fdnmoAWvlNJOiDSenS2aqj4Is0tACsQKG3Jq4ZnnqELp0pXzx8TepBaq1x2+AZqWeAEhi/ukD1bLVkhIYm01gyZHrqGaDQxq0akXqE3Vs6cnXqEeqosXTotNQzQHGNXTky9Qi9tWzUqtQj1E5jWbuAQs/GrBiZeoS+WT56VeoR6qWxvH1q6hmgiEavGJV6hBArRq9MPUKNNFaeIqDQ3cjlpaxnp1VjNDQnjVWnTkk9AxTLiGWjU4/QX6vHrkg9Qi00Vp8moNBl+NLS17PTmnEamjkfpIcuw5aMST1CNN7aOXAzEaimjn8M1k5YnnqKimusPXNS6hmgEE5fPDb1CPGtm7gs9QhV1lgnoLDHHqdVsZ6d1mtoZpwDhYrzHs9O487hE1PPAIm1LxyXeoRsbZy8NPUI1WQFCtXnbZ6RxqaRE1LPACkNWTA+9Qh52Dx1SeoRKsgKFGrBOz0LjbtG1eKfX+jRyfNrtAP73LTbUo9QNVagUBfe7NE1Pj+msh9/g1076ebafQj6CzMWpR6hUjpWoKlHAPLi/R5X2wCreqgN7/e4Gl8aX53bz0DvnXDD5NQjpPHlcxamHqE6XESCevGWj6jNKRGoFW/5iJwDhXrxlo+o8bVJJf7yLAhz/HW1/i7Fu89fkHqEimi75sE9mw9mHv5cwlGAfDgNGktb64N5D+zVeXDh25UUKsunQWNp6/HZuffvKOnF73g2x2GAPDgNGkvPAW266r69m8eXiClUggVoLLsJaKs5L8T00nc+k80wQB6cA42lDwFtmv2zfToPLjtCSaF8nAONJSSgTVf+dJ/m8awjn+73MEAenAONpV8BbTXrJ/t2HlzxLiWl0I6Zc1bqERKzAo0lWkCbLv/xvs3jK9+9PfrPh36699Ibj559duopUnIONJb4AW112Y/26zyY/Z5tmb4Q0HsCGku2AW269IcDm8dXiSkkNSD1AJWRU0BbXfxCTK9+79b8Xx2wAo0lQUCbLvrBoObx3KPEFHLiIlIsKQPa6sLv74jpvKOfSjsJVJ4VaCxFCWjTzHv3bx5fe4yYQnwDrEAjKVxAW13wva6YXve+JxNOAlViBRpLoQPa6vzvHtB5cL2SQj/cP/s6C9BYShPQpvNeKGmHz77/iYSTUF4PzLn28EsuSD1FGpafEZUvoK3O/c6BzeMbPiCmsHsuwUdU7oC2OufbXTG96YN/SDgJFJk7iURUnYC2Outbb2ge3/whMYUdfjH3GivQiKoZ0FYzvtkV01uOfTzhJBTKL+fNO2zmzNRT5M0J0LiqH9BW079xUPN4/nFiSu1YfsZVr4C2mnZPV0xvPe6xhJNAPn51zVy3EYmrvgFtNeWeg1sfLvywntbCr6+d+9YLLkw9RX4sP6MT0B5M/npXTxd95PcJJ4GInACNrnHsUXX/eoM+WXz8o6lHILK3nHdx6hHy8Jvrr0o9QgVZgfbNxLsPaX245KN6Sjm4gUgWrEBjWvqx36UegRBvOueS1CNk66Eb5qQeoZqsQGMa99U3tj5cpqcUwMM3zLH6zIiAZmjsi3u6/OOPJBqE3XjkxtmHnn1p6imy4tpRdmzhU1r5iUdSj0CXQ86qYEMfvWl26hGqzAo0pVFfObTbM6tOeDjFIFSW5WemrECLbvUnJTU/B0+/LPUIMT12y5WpR6g4AS2lNZ96KPUIlXXQtMtTjxDH4/OvSD1C9QloddxxoqrGceDU0jf0iQXqmQcBrb61J/429Qjlc8DUWalHCPfkglmpR6gLF5Gq74wvvrnH59edJKwV9NSts9w0JDdWoPRg/ae1dY9Bk2elHqHPti6clXqEehFQ+mz9yTU62TpoUmnOh25d5Lxn3gSU+NZ/plIfvRo0sQSfbdq62CeWEhBQ0lg/+JHUI/TBoAmF/iWlrbf5daM0BJRCWz+kKDdkGTS+oHds2rrEnZaSEVCqYMPQnG7MOnBcge6+vG2peyQnJqDUy4b2/n5Hy8CxF0WZpJ+2Lbs69QgIKOxkwym7/1bBgWOSfRvdtuVzU7003fggPXR36p0H7/bPbGjM6/jvwNEzsx+ny7YVz7+ob9csDitQiO+eu4fF/YHbV1wT9wcShRUoxHfc8bfv4v/2Pq/bV16748iqs5AEFPK2i7x2tnX7qut2PNbNYrOFhxK484ynUo9AD6xAoQROWbv/zk/eeebW/CehlYBCWZ1yx6Cdn9w4bFv+k9SWgEKltN8+cOcnNw7fnv8kdSCgUH3ta/br9szGEU8nmaRiBBTqqH31vt2e2TjymSSTlJqAAs9rX7VPt2c2jno2ySQlIqBAz9pX7t36cNPo51JNUlgCCvTK0BV7tT7cNOaPqSYpDgEFQgxdvmfrw01j/pRqkoQEFIhg6PLXtz7cNLYWPRVQIL6hy7p6umncnxNOkikBBbI1dOnrWh9uHv+XVJNEJ6BAroYseW3zePOEvyacpP8EFEhmyG2vaR5vnvi3hJOEEVCgEIYsfnXzePOkvyecpPcEFCicIYte1fpwy+R/pJpk1wQUKLrBC1/ZebBlyj/TTtKNgAKlMfjWVzSPt0z9V8JJOgkoUEqDF7y8ebxl2r+TzCCgQOkNnv+y5vGW6f/p/w888ryf9+aPCShQKYNv6craXTP+23lwxLkPZvFaAgqUwKOP3hfwt444N/ogLyKgQObC8ld8AgrsRlXz138CCnWhg9EJKJSVICYnoFA4ylgWAgp508fKEFCITyJrQkAhkEoioLArKskuCCjsoJX0lYBSR1pJFAJKxWkl2RFQqkMryZmAUlZySXICSjnIJQUkoBSRXFIKAkohKCZlJKAkIJdUg4CSB8WkkgSUTCgmdSCgxKGY1JCAEkgxQUDpLcWEbgSUl6SYsGsCShfFhD4R0LoTTQgmoLWjmBCLgFafYkJGBLSaRBNyIKAVoZiQPwEtMdGEtAS0TBQTCkVAC00xocgEtHBEE8pCQNNTTCgpAU1DNKECBDQnignVI6BZUUyoPAGNRjGhbgS0X0QT6kxA+0YxgSYB3Q3FBF6KgHanmEAv1T2gcgkEq11AFROIpfoBVUwgI1ULqFwCuSl3QOUSSKhMAZVLoFCKG1C5BAru//VSQH6MheOBAAAAAElFTkSuQmCC";
 const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
@@ -841,16 +843,16 @@ export const scenes: Scene[] = [
     path: "/sessions/demo-1",
     ready: "Apple Pay at checkout",
     // A note and a picture for the picker to hand over, made in this clip's own temporary folder: a fixture is never
-    // committed, and the picture is a real 32×32 PNG so the message's own thumbnail draws.
+    // committed, and the picture is a real 448×252 PNG so the message's own thumbnail draws a photo, not a dot.
     async setup() {
       attachmentDir = await mkdtemp(join(tmpdir(), "hui-demo-attachments-"));
       notesFile = join(attachmentDir, "acme-release-notes.txt");
-      logoFile = join(attachmentDir, "acme-logo.png");
+      photoFile = join(attachmentDir, "acme-sunset.png");
       await writeFile(notesFile, "Release 0.2.2\n- The composer keeps its blocks\n- A bot's queue shows what it started\n- The activity trail counts the turn\n");
-      await writeFile(logoFile, Buffer.from(LOGO_PNG, "base64"));
+      await writeFile(photoFile, Buffer.from(SUNSET_PNG, "base64"));
     },
     async run({ director: d }) {
-      const name = basename(notesFile), picture = basename(logoFile);
+      const name = basename(notesFile), picture = basename(photoFile);
       const preview = { css: "ul.chat-attachments-preview" };
       // The attach menu: the camera, the photo library and a file, over the composer they belong to.
       await d.click({ label: "Add attachment" });
@@ -895,7 +897,7 @@ export const scenes: Scene[] = [
       await d.waitFor({ placeholder: "Send a message…" }, 30_000);
       await d.click({ label: "Add attachment" });
       await d.waitFor({ css: ".agent-chat__attach-popup", contains: "Photo" }, 15_000);
-      await d.upload("input.agent-chat__photo-input", [logoFile]);
+      await d.upload("input.agent-chat__photo-input", [photoFile]);
       await d.waitFor({ css: `${preview.css} img` }, 15_000);
       const alt = await d.stage<string>(`document.getElementById("app").contentDocument.querySelector("ul.chat-attachments-preview img")?.getAttribute("alt") ?? ""`);
       if (alt !== picture) throw new Error(`The draft's preview names ${JSON.stringify(alt)}, not ${JSON.stringify(picture)}.`);
