@@ -275,6 +275,22 @@ async function textsOf(d: Director, selector: string): Promise<string[]> {
     .map((element) => (element.textContent ?? "").replace(/\\s+/g, " ").trim()))()`);
 }
 
+/** Waits until every image a selector matches has decoded and none of their figures is marked failed: a failed load keeps
+ * the `img` and its `alt` in the DOM and swaps in a fallback card, so an element naming the picture proves nothing. The
+ * bitmap must be `complete` with a width, which is what the drawn picture has and the fallback's broken one does not. */
+async function decodedImage(d: Director, selector: string, timeout = 15_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const images = await d.stage<{ failed: boolean; complete: boolean; width: number }[]>(`(() =>
+      [...document.getElementById("app").contentDocument.querySelectorAll(${JSON.stringify(selector)})].map((img) => ({
+        failed: Boolean(img.closest("[data-failed]")), complete: img.complete === true, width: img.naturalWidth })))()`);
+    if (images.some((image) => image.failed)) throw new Error(`${selector} failed to load: its figure is marked data-failed.`);
+    if (images.length && images.every((image) => image.complete && image.width > 0)) return;
+    if (Date.now() > deadline) throw new Error(`${selector} never drew a decoded image: ${JSON.stringify(images)}`);
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
 /** Waits until one element reads exactly `expected`: a queue's counts settle in the order its turns finish, never all at
  * once, so the picture is framed on the state the beat names. */
 async function readsAs(d: Director, selector: string, expected: string, timeout = 120_000) {
@@ -287,11 +303,12 @@ async function readsAs(d: Director, selector: string, expected: string, timeout 
 }
 
 /**
- * A bot's own work (#582), filmed after the Bots clip's handoff beat: nine sessions the bot starts in one scripted turn,
- * one of them asking the operator a question and one still running, so the queue's lanes are all three. The panel's Work
- * section draws the headline, the lanes and eight rows with the rest behind `Show N more`, and the roster row counts
- * what is in flight beside its name. The counts are read off the page, never assumed: the queue settles in the order the
- * sessions finish, and the scene waits for the state the caption names.
+ * A bot's own work (#582), filmed after the Bots clip's handoff beat: the nine sessions the bot starts in one scripted
+ * turn, plus the two sessions it started earlier in the clip, so the queue holds eleven rows. One of the nine asks the
+ * operator a question and one is still running, so the queue's lanes are all three. The panel's Work section draws the
+ * headline, the lanes and eight rows with the rest behind `Show 3 more`, and the roster row counts what is in flight
+ * beside its name. The counts are read off the page, never assumed: the queue settles in the order the sessions finish,
+ * and the scene waits for the state the caption names.
  */
 async function botWorkQueue(d: Director) {
   const panel = '[aria-label$="bot panel"]';
@@ -783,18 +800,26 @@ export const scenes: Scene[] = [
       await d.type("Tidy the orders export, check the tests and open the pull request");
       await d.press("Enter");
       // While the turn runs the summary is a clock: two readings seconds apart, a second further on in each reading.
-      await d.waitFor(summary, 60_000);
+      // The summary mounts while the turn is still thinking — when its label reads `Thinking…` — so the clock is what the
+      // wait looks for, never the element: the label is read only once it counts.
+      await d.waitFor({ css: label, contains: "Working for" }, 60_000);
       const live = await textOf(d, label);
       if (!/^Working for \d+s/u.test(live)) throw new Error(`The running turn's trail is not counting: ${JSON.stringify(live)}`);
       await d.zoom(trail, 1.35);
       await cameraRested(d);
       await d.pause(2_000);
       const later = await textOf(d, label);
+      // A settled `Worked for …` is not the clock moving: the second reading must still be the live count.
+      if (!/^Working for \d+s/u.test(later)) throw new Error(`The trail stopped counting while the turn runs: ${JSON.stringify(later)}`);
       if (later === live) throw new Error(`The live trail's clock never moved on from ${JSON.stringify(live)}.`);
       await d.caption("A clock while it runs");
       await d.pause(3_000);
-      // The turn settles: the same summary names what the calls did, count by count, and marks the one that failed.
-      await d.waitFor({ css: label, contains: "Worked for" }, 120_000);
+      // The turn settles: the same summary names what the calls did, count by count, and marks the one that failed. The
+      // count wording is the wait because both honest settled forms carry it — the measured clock (`Worked for 12s ·
+      // 1 read, 3 runs`) and the count-only one (`Used 4 tools · 1 read, 3 runs`) — where waiting for `Worked for` alone
+      // would fail on the form the warning below is for. `:not(…--live)` keeps the live count, which carries the same
+      // counts, from standing in for the settled label.
+      await d.waitFor({ css: `${label}:not(.chat-activity-trail__label--live)`, contains: "1 read, 3 runs" }, 120_000);
       const settled = await textOf(d, label);
       if (!settled.includes("1 read, 3 runs")) throw new Error(`The settled trail does not count the turn's calls: ${JSON.stringify(settled)}`);
       // The measured clock is what the feature promises. A scripted model whose tool items carry no timestamps would
@@ -901,6 +926,8 @@ export const scenes: Scene[] = [
       await d.waitFor({ css: `${preview.css} img` }, 15_000);
       const alt = await d.stage<string>(`document.getElementById("app").contentDocument.querySelector("ul.chat-attachments-preview img")?.getAttribute("alt") ?? ""`);
       if (alt !== picture) throw new Error(`The draft's preview names ${JSON.stringify(alt)}, not ${JSON.stringify(picture)}.`);
+      // The preview is a picture, not an empty frame: its bitmap decoded before the message is sent.
+      await decodedImage(d, `${preview.css} img`);
       await d.caption("A photo alone sends too");
       await d.pause(3_000);
       await d.click({ label: "Send message" });
@@ -908,6 +935,9 @@ export const scenes: Scene[] = [
       const images = await d.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
         .querySelectorAll("figure.hui-message-attachment-image img.chat-message-image")].map((img) => img.getAttribute("alt") ?? ""))()`);
       if (!images.includes(picture)) throw new Error(`The transcript's picture is named ${JSON.stringify(images)}, not ${JSON.stringify(picture)}.`);
+      // A failed load keeps the `img` and its `alt` and swaps in the fallback card under it, so the name alone is not the
+      // photo: the figure must not be marked failed and the bitmap must have decoded, before the beat captions it.
+      await decodedImage(d, "figure.hui-message-attachment-image img.chat-message-image");
       await d.zoom({ css: "figure.hui-message-attachment-image" }, 1.5);
       await cameraRested(d);
       await d.pause(3_000);

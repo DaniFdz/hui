@@ -120,7 +120,17 @@ test("a bot's chore list starts nine sessions, one of them asking a question and
   assert.deepEqual(answer.tools.map((tool) => tool.name), Array(9).fill("create_session"));
   const titles = answer.tools.map((tool) => tool.input.title);
   assert.equal(new Set(titles).size, 9, "one brief each, under its own title");
-  assert(titles.includes("Refund button copy") && titles.includes("Checkout telemetry audit"));
+  assert.deepEqual(titles.toSorted(), [
+    "Cart abandon metrics",
+    "Checkout telemetry audit",
+    "Docs: refund states",
+    "Order search filters",
+    "Pricing page spacing",
+    "Refund button copy",
+    "Refund email copy",
+    "Stale test fixtures",
+    "Storefront sitemap",
+  ]);
   const briefs = answer.tools.map((tool) => String(tool.input.prompt));
   assert(briefs.every((brief) => brief.length > 20), "every session carries a real brief");
   const answered = await reply(answer.tools.map((tool) => ({ type: "tool_result", tool_use_id: tool.id, content: JSON.stringify({ status: "accepted" }) })));
@@ -153,9 +163,12 @@ test("a trail turn reads, searches, runs and fails, and reports what really happ
   const third = await reply([{ type: "tool_result", tool_use_id: second.tools[0]!.id, content: "41ffac2 Partial refunds endpoint (#148)" }]);
   assert.equal(third.tools[0]?.name, "bash");
   assert.equal(third.tools[0]?.input.command, "node --test test/export-csv.test.js");
-  // The failed run is quoted, never reported as a pass: the answer names the missing module it really saw.
+  // The failed run is quoted, never reported as a pass: the answer names the missing module it really saw. The scripted
+  // log prints PR #482's URL and nothing about a commit, so the reply claims only the URL it was given.
   const failed = await reply([{ type: "tool_result", tool_use_id: third.tools[0]!.id, content: "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/acme-storefront/src/orders/export-csv.js'", is_error: true }]);
   assert.deepEqual(failed.tools, []);
   assert.match(failed.text, /fails to load/u);
+  assert.match(failed.text, /printed PR #482's URL/u);
   assert.doesNotMatch(failed.text, /passed/u);
+  assert.doesNotMatch(failed.text, /last commit/u, "the command printed a URL, never a commit");
 });

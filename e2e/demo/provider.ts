@@ -444,7 +444,7 @@ const scripts: Script[] = [
     title: "Checkout telemetry audit",
     turns: [
       { wait: 500, calls: [{ name: "bash", input: { command: "sleep 600 && echo 'checked the week of events'", timeout: 900 } }] },
-      { say: "The audit finished: no add-to-cart event is counted twice." },
+      { say: "The audit's command finished and printed `checked the week of events`: that is all this run checked." },
     ],
   },
   // Activity trail: one turn's real calls in the storefront, all four in one trail, the last of them failing. PI Durable
@@ -460,7 +460,7 @@ const scripts: Script[] = [
       { wait: 5_000, calls: [{ name: "bash", input: { command: "git log --oneline -3 && echo 'https://github.com/acme/storefront/pull/482'", timeout: 30 } }] },
       { wait: 5_000, calls: [{ name: "bash", input: { command: "node --test test/export-csv.test.js", timeout: 60 } }] },
       { wait: 700, say: (results) => /cannot find|cannot import|MODULE_NOT_FOUND/iu.test(results[0] ?? "")
-        ? "Three calls came back clean: `listOrders` is only used by the orders page, and the last commit is #482. The export's own test file fails to load: it imports `src/orders/export-csv.js`, which does not exist yet, so that failed run is the one the trail marks."
+        ? "Three calls came back clean: `listOrders` is only used by the orders page, and the command printed PR #482's URL. The export's own test file fails to load: it imports `src/orders/export-csv.js`, which does not exist yet, so that failed run is the one the trail marks."
         : "The export's test suite ran in this checkout; the trail counts the read and the three commands." },
     ],
   },
@@ -496,6 +496,7 @@ const scripts: Script[] = [
   // The chiefs clip's delegation and the three sessions it starts, kept beside the scene (chiefs-scene.ts).
   ...chiefsScripts,
 ];
+
 // Anthropic Messages streaming.
 const sse = (response: ServerResponse, value: Record<string, unknown>) => response.write(`event: ${value["type"]}\ndata: ${JSON.stringify(value)}\n\n`);
 async function stream(response: ServerResponse, index: number, kind: "text" | "thinking", value: string, pace: number) {

@@ -214,8 +214,9 @@ export class Director {
 
   /** Puts local files into a file input the page hides behind its own control, as the picker would: the element is found
    * by its selector in HUI's frame, resolved to a node and given the paths, which runs the page's own change handler. A
-   * composer that takes the files into its draft clears the input again, so the input keeping them is not the proof: an
-   * input that kept none and a page that drew no preview of them is what fails. */
+   * composer that takes the files into its draft clears the input again and draws each of them in its preview, so both
+   * are the proof: an input that kept them means the page never handled the pick, and a preview missing one means the
+   * draft did not take it. Neither alone proves the page handled the files: the files stay when the handler never runs. */
   async upload(selector: string, files: string[]) {
     for (const file of files) {
       if (!statSync(file, { throwIfNoEntry: false })?.isFile()) throw new Error(`${file} is not a file that can be uploaded.`);
@@ -241,16 +242,26 @@ export class Director {
     } catch (error) {
       throw new Error(`${selector} did not accept the files: ${error instanceof Error ? error.message : "the browser refused"}`, { cause: error });
     }
-    const kept = await this.send<{ result: { value?: string[] } }>("Runtime.callFunctionOn", {
-      objectId, returnByValue: true, functionDeclaration: "function () { return Array.from(this.files ?? [], (file) => file.name); }",
-    });
-    const names = kept.result.value ?? [];
-    if (names.length) return;
-    const drawn = await this.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
-      .querySelectorAll("ul.chat-attachments-preview img, ul.chat-attachments-preview .chat-attachment-file__name")]
-      .map((item) => (item.getAttribute("alt") ?? item.textContent ?? "").trim()))()`);
-    const missing = files.map((file) => basename(file)).filter((name) => !drawn.includes(name));
-    if (missing.length) throw new Error(`${selector} kept no file after the upload; the page drew no preview of ${missing.join(", ")}.`);
+    const wanted = files.map((file) => basename(file));
+    // The draft's preview is drawn by the render the pick schedules, so a single read can land on a slow frame of an
+    // upload that worked: both facts are polled to a deadline, in the 100 ms steps the recorder's other waits use.
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const kept = await this.send<{ result: { value?: string[] } }>("Runtime.callFunctionOn", {
+        objectId, returnByValue: true, functionDeclaration: "function () { return Array.from(this.files ?? [], (file) => file.name); }",
+      });
+      const names = kept.result.value ?? [];
+      const drawn = await this.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
+        .querySelectorAll("ul.chat-attachments-preview img, ul.chat-attachments-preview .chat-attachment-file__name")]
+        .map((item) => (item.getAttribute("alt") ?? item.textContent ?? "").trim()))()`);
+      const missing = wanted.filter((name) => !drawn.includes(name));
+      if (!names.length && !missing.length) return;
+      if (Date.now() > deadline) {
+        if (names.length) throw new Error(`${selector} still held ${names.join(", ")} after the upload; the page never took the pick.`);
+        throw new Error(`${selector} kept no file after the upload; the page drew no preview of ${missing.join(", ")}.`);
+      }
+      await sleep(100);
+    }
   }
 
   /** Types like a person, one character at a time, into the field the cursor clicked. Focus is set too: after a click in
