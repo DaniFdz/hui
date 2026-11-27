@@ -112,3 +112,63 @@ test("the payment question answers from the page, and says so when it cannot", a
   assert.match(unpaid.text, /does not say the payment went through/u);
   assert.doesNotMatch(unpaid.text, /Payment confirmed/u, "a page without the line is never reported as paid");
 });
+
+// The bots clip's work queue: nine sessions in one turn, one asking the operator a question and one still running.
+test("a bot's chore list starts nine sessions, one of them asking a question and one still running", async () => {
+  const answer = await reply("Queue this week's storefront chores and check the refund copy with me");
+  assert.equal(answer.tools.length, 9);
+  assert.deepEqual(answer.tools.map((tool) => tool.name), Array(9).fill("create_session"));
+  const titles = answer.tools.map((tool) => tool.input.title);
+  assert.equal(new Set(titles).size, 9, "one brief each, under its own title");
+  assert.deepEqual(titles.toSorted(), [
+    "Cart abandon metrics",
+    "Checkout telemetry audit",
+    "Docs: refund states",
+    "Order search filters",
+    "Pricing page spacing",
+    "Refund button copy",
+    "Refund email copy",
+    "Stale test fixtures",
+    "Storefront sitemap",
+  ]);
+  const briefs = answer.tools.map((tool) => String(tool.input.prompt));
+  assert(briefs.every((brief) => brief.length > 20), "every session carries a real brief");
+  const answered = await reply(answer.tools.map((tool) => ({ type: "tool_result", tool_use_id: tool.id, content: JSON.stringify({ status: "accepted" }) })));
+  assert.deepEqual(answered.tools, []);
+  assert.match(answered.text, /^Nine sessions are up/u);
+});
+
+test("the queue's two special briefs ask a question and keep working", async () => {
+  const asking = await reply("[from @chief-of-staff-storefront] Draft the new refund button copy, and ask me which line you should use.");
+  assert.equal(asking.tools[0]?.name, "ask_user_question");
+  const questions = asking.tools[0]?.input.questions as { header: string; options: { label: string }[] }[];
+  assert.equal(questions[0]?.header, "Refund copy");
+  assert.deepEqual(questions[0]?.options.map((option) => option.label), ["Refund order", "Refund this order"]);
+  const running = await reply("[from @chief-of-staff-storefront] Audit the checkout telemetry for duplicate add-to-cart events.");
+  assert.deepEqual([running.tools[0]?.name, running.tools[0]?.input.command], ["bash", "sleep 600 && echo 'checked the week of events'"]);
+});
+
+// The activity trail clip: four real calls in one turn, the last of them failing in the storefront's own checkout.
+test("a trail turn reads, searches, runs and fails, and reports what really happened", async () => {
+  const first = await reply("Tidy the orders export, check the tests and open the pull request");
+  // PI Durable offers read, write, edit and bash: the search is the grep command bash runs, never the grep tool.
+  assert.deepEqual(first.tools.map((tool) => [tool.name, tool.input.path ?? tool.input.command]), [
+    ["read", "src/orders/orders-page.js"],
+    ["bash", "grep -rn 'listOrders' src/"],
+  ]);
+  const results = first.tools.map((tool) => ({ type: "tool_result", tool_use_id: tool.id, content: "ok" }));
+  const second = await reply(results);
+  assert.equal(second.tools[0]?.name, "bash");
+  assert.match(String(second.tools[0]?.input.command), /github\.com\/acme\/storefront\/pull\/482/u, "the URL the summary's PR chip reads");
+  const third = await reply([{ type: "tool_result", tool_use_id: second.tools[0]!.id, content: "41ffac2 Partial refunds endpoint (#148)" }]);
+  assert.equal(third.tools[0]?.name, "bash");
+  assert.equal(third.tools[0]?.input.command, "node --test test/export-csv.test.js");
+  // The failed run is quoted, never reported as a pass: the answer names the missing module it really saw. The scripted
+  // log prints PR #482's URL and nothing about a commit, so the reply claims only the URL it was given.
+  const failed = await reply([{ type: "tool_result", tool_use_id: third.tools[0]!.id, content: "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/acme-storefront/src/orders/export-csv.js'", is_error: true }]);
+  assert.deepEqual(failed.tools, []);
+  assert.match(failed.text, /fails to load/u);
+  assert.match(failed.text, /printed PR #482's URL/u);
+  assert.doesNotMatch(failed.text, /passed/u);
+  assert.doesNotMatch(failed.text, /last commit/u, "the command printed a URL, never a commit");
+});

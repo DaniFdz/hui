@@ -406,6 +406,64 @@ const scripts: Script[] = [
     title: "Flaky checkout test",
     turns: [{ wait: 600, say: "The test is fixed: the click waits for the totals response, and the spec passed ten runs in a row." }],
   },
+  // Bots, the work queue: nine sessions in one turn, one of them asking the operator a question and one still running, so
+  // the panel's lanes are all three and the roster row has something in flight to count.
+  {
+    when: "Queue this week's storefront chores",
+    turns: [
+      { wait: 900, think: "Nine pieces of storefront work: one brief each, and they can run side by side.", say: "Nine briefs, one session each.", calls: [
+        { name: "create_session", input: { title: "Refund email copy", group: "Storefront", watch: false, prompt: "Rewrite the refund confirmation email in emails/refund.js so it names the amount and the day the money arrives, and keep it under 60 words." } },
+        { name: "create_session", input: { title: "Storefront sitemap", group: "Storefront", watch: false, prompt: "Rebuild the storefront sitemap after the URL change: list every product route the router declares and write it to public/sitemap.xml." } },
+        { name: "create_session", input: { title: "Cart abandon metrics", group: "Storefront", watch: false, prompt: "Count abandoned carts in the checkout telemetry, and report every place the counter is incremented." } },
+        { name: "create_session", input: { title: "Order search filters", group: "Storefront", watch: false, prompt: "Add a status filter to the orders table's toolbar: a picker for paid, refunded and pending, defaulting to every order." } },
+        { name: "create_session", input: { title: "Pricing page spacing", group: "Storefront", watch: false, prompt: "Tighten the pricing page's card spacing at 390 px wide, and check that the three tiers still line up." } },
+        { name: "create_session", input: { title: "Docs: refund states", group: "Storefront", watch: false, prompt: "Document the refund states in docs/payments.md, and link the page from the README." } },
+        { name: "create_session", input: { title: "Stale test fixtures", group: "Storefront", watch: false, prompt: "Find the test fixtures nothing imports any more and remove them, then run the suite." } },
+        { name: "create_session", input: { title: "Refund button copy", group: "Storefront", watch: false, prompt: "Draft the new refund button copy, and ask me which line you should use." } },
+        { name: "create_session", input: { title: "Checkout telemetry audit", group: "Storefront", watch: false, prompt: "Audit the checkout telemetry for duplicate add-to-cart events across last week's schema." } },
+      ] },
+      { wait: 1_800, say: "Nine sessions are up, one brief each. The queue in my panel keeps them in lane order, and its badge counts what needs you." },
+    ],
+  },
+  // The queue's question: a session that needs the operator, which is what the Needs you lane and the roster badge read.
+  {
+    when: "Draft the new refund button copy",
+    title: "Refund button copy",
+    turns: [
+      { wait: 900, think: "Two lines read well here, and the call is the operator's.", calls: [{ name: "ask_user_question", input: { questions: [{
+        header: "Refund copy", question: "Which line should the refund button use?", options: [
+          { label: "Refund order", description: "Short, and it names the whole order." },
+          { label: "Refund this order", description: "Plainer, one word longer." },
+        ],
+      }] } }] },
+    ],
+  },
+  // The queue's running turn: a real command that keeps the session working while the clip reads the lanes.
+  {
+    when: "Audit the checkout telemetry",
+    title: "Checkout telemetry audit",
+    turns: [
+      { wait: 500, calls: [{ name: "bash", input: { command: "sleep 600 && echo 'checked the week of events'", timeout: 900 } }] },
+      { say: "The audit's command finished and printed `checked the week of events`: that is all this run checked." },
+    ],
+  },
+  // Activity trail: one turn's real calls in the storefront, all four in one trail, the last of them failing. PI Durable
+  // offers read, write, edit and bash only, so the search is the grep command bash runs rather than the grep tool.
+  {
+    when: "Tidy the orders export",
+    title: "Tidy the orders export",
+    turns: [
+      { wait: 1_500, think: "The export lives in src/orders. Read the page, then find its callers before changing anything.", calls: [
+        { name: "read", input: { path: "src/orders/orders-page.js" } },
+        { name: "bash", input: { command: "grep -rn 'listOrders' src/", timeout: 30 } },
+      ] },
+      { wait: 5_000, calls: [{ name: "bash", input: { command: "git log --oneline -3 && echo 'https://github.com/acme/storefront/pull/482'", timeout: 30 } }] },
+      { wait: 5_000, calls: [{ name: "bash", input: { command: "node --test test/export-csv.test.js", timeout: 60 } }] },
+      { wait: 700, say: (results) => /cannot find|cannot import|MODULE_NOT_FOUND/iu.test(results[0] ?? "")
+        ? "Three calls came back clean: `listOrders` is only used by the orders page, and the command printed PR #482's URL. The export's own test file fails to load: it imports `src/orders/export-csv.js`, which does not exist yet, so that failed run is the one the trail marks."
+        : "The export's test suite ran in this checkout; the trail counts the read and the three commands." },
+    ],
+  },
   // On your phone: the agent opens the checkout, and the operator takes the page to pay.
   {
     when: "Pay for the storefront order",

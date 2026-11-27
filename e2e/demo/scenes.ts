@@ -1,4 +1,7 @@
 /** The demo clips, in overview order. Prompts match the scripted model in provider.ts. */
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { chiefsScene } from "./chiefs-scene.ts";
 import type { Director, Target } from "./record.ts";
 
@@ -76,6 +79,14 @@ function drawSignupGraph(now: number): Promise<string> {
 let pagesHook = "";
 /** The storefront group's Chief of Staff, made in the bots scene's setup: the bot whose started sessions the clip shows. */
 let storefrontChief = { id: "", name: "", handle: "" };
+/** The Attachments clip's fixtures: a folder of its own under the system's temporary directory, made in `setup`. */
+let attachmentDir = "";
+let notesFile = "";
+let photoFile = "";
+/** The clip's picture, 448×252: a sunset drawn once with ffmpeg (a four-stop gradient sky, a sun disc and two hills) and
+ * kept as its bytes, so the clip needs no dependency and no picture in the tree. A dot of a picture reads as a broken
+ * image in a message bubble, so this one is wide enough for the message's own thumbnail to show what it is. */
+const SUNSET_PNG = "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";
 const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
@@ -252,6 +263,114 @@ async function composerWire(d: Director, name: "text" | "prompt"): Promise<strin
   return d.stage<string>(`document.getElementById("app").contentDocument?.querySelector('input[data-testid="composer-markdown"][name="${name}"]')?.value ?? ""`);
 }
 
+/** One element's words, flattened: a count, a lane's name or a badge's number, which no box makes a target that reads
+ * its text rather than its place on screen. */
+async function textOf(d: Director, selector: string): Promise<string> {
+  return d.stage<string>(`(document.getElementById("app").contentDocument?.querySelector(${JSON.stringify(selector)})?.textContent ?? "").replace(/\\s+/g, " ").trim()`);
+}
+
+/** Every matching element's words, in the page's own order. */
+async function textsOf(d: Director, selector: string): Promise<string[]> {
+  return d.stage<string[]>(`(() => [...document.getElementById("app").contentDocument?.querySelectorAll(${JSON.stringify(selector)}) ?? []]
+    .map((element) => (element.textContent ?? "").replace(/\\s+/g, " ").trim()))()`);
+}
+
+/** Waits until every image a selector matches has decoded and none of their figures is marked failed: a failed load keeps
+ * the `img` and its `alt` in the DOM and swaps in a fallback card, so an element naming the picture proves nothing. The
+ * bitmap must be `complete` with a width, which is what the drawn picture has and the fallback's broken one does not. */
+async function decodedImage(d: Director, selector: string, timeout = 15_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const images = await d.stage<{ failed: boolean; complete: boolean; width: number }[]>(`(() =>
+      [...document.getElementById("app").contentDocument.querySelectorAll(${JSON.stringify(selector)})].map((img) => ({
+        failed: Boolean(img.closest("[data-failed]")), complete: img.complete === true, width: img.naturalWidth })))()`);
+    if (images.some((image) => image.failed)) throw new Error(`${selector} failed to load: its figure is marked data-failed.`);
+    if (images.length && images.every((image) => image.complete && image.width > 0)) return;
+    if (Date.now() > deadline) throw new Error(`${selector} never drew a decoded image: ${JSON.stringify(images)}`);
+    await new Promise((done) => setTimeout(done, 100));
+  }
+}
+
+/** Waits until one element reads exactly `expected`: a queue's counts settle in the order its turns finish, never all at
+ * once, so the picture is framed on the state the beat names. */
+async function readsAs(d: Director, selector: string, expected: string, timeout = 120_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await textOf(d, selector) === expected) return;
+    if (Date.now() > deadline) throw new Error(`${selector} never read ${JSON.stringify(expected)}; it reads ${JSON.stringify(await textOf(d, selector))}.`);
+    await new Promise((done) => setTimeout(done, 200));
+  }
+}
+
+/**
+ * A bot's own work (#582), filmed after the Bots clip's handoff beat: the nine sessions the bot starts in one scripted
+ * turn, plus the two sessions it started earlier in the clip, so the queue holds eleven rows. One of the nine asks the
+ * operator a question and one is still running, so the queue's lanes are all three. The panel's Work section draws the
+ * headline, the lanes and eight rows with the rest behind `Show 3 more`, and the roster row counts what is in flight
+ * beside its name. The counts are read off the page, never assumed: the queue settles in the order the sessions finish,
+ * and the scene waits for the state the caption names.
+ */
+async function botWorkQueue(d: Director) {
+  const panel = '[aria-label$="bot panel"]';
+  const work = "section[aria-labelledby$='overview-work']";
+  /** The prompt that starts the nine: one brief each, and the queues' answer after them. */
+  const ask = "Queue this week's storefront chores and check the refund copy with me";
+  await d.cut(async () => {
+    // A bot's panel docks beside its own chat: the roster row opens both. The camera comes back to the wide page first,
+    // or the tab is outside the stage the click lands on.
+    await d.zoom();
+    await d.click({ css: "#sidebar-tab-bots" });
+    await d.click({ css: ".bot-row__name", text: storefrontChief.name });
+    await d.waitFor({ css: ".ProseMirror[aria-label='Message']" }, 60_000);
+    if (!(await d.find({ css: panel })) && (await d.find({ label: "Show the bot panel" }))) await d.click({ label: "Show the bot panel" });
+    await d.waitFor({ css: panel }, 20_000);
+    // A panel left on one of its pages keeps that page: walk back to the overview the Work section lives on.
+    if (await d.find({ css: "button[aria-label^='Back to ']" })) await d.click({ css: "button[aria-label^='Back to ']" });
+    await d.waitFor({ css: `${panel}[data-view='overview']` }, 20_000);
+    // Nine sessions take a while to start one at a time; the cut is what the viewer does not sit through.
+    await send(d, ask);
+    await d.waitFor({ contains: "Nine sessions are up" }, 300_000);
+    // The counts are the queue's settled state: one question waiting, one turn still running, the rest finished.
+    await readsAs(d, ".bot-overview__counts", "1 needs you · 1 working · 9 recent");
+    await scrollIn(d, work);
+    // A tooltip the pointer left open over the chat would sit in the beat's frame; the cursor parks off the page.
+    await park(d);
+    await caughtUp(d);
+  });
+  const lanes = await textsOf(d, ".bot-work__lane-label");
+  if (lanes.join("|") !== "Needs you|Working|Recent") throw new Error(`The Work section draws the lanes ${JSON.stringify(lanes)}.`);
+  const rows = () => textsOf(d, ".bot-work__link");
+  if ((await rows()).length !== 8) throw new Error(`The capped queue drew ${(await rows()).length} rows, not the cap's eight.`);
+  const more = await textOf(d, "button.bot-work__more");
+  if (more !== "Show 3 more") throw new Error(`The queue's toggle reads ${JSON.stringify(more)}, not the three rows behind it.`);
+  await d.zoom({ css: work }, 1.2);
+  await cameraRested(d);
+  await d.caption("Needs you, working, recent");
+  await d.pause(3_000);
+  await d.zoom();
+  // The cap: eight rows and the rest behind one toggle, in place, without leaving the bot.
+  await d.click({ css: "button.bot-work__more" });
+  await d.waitFor({ css: "button.bot-work__more[aria-expanded='true']" }, 10_000);
+  if ((await rows()).length !== 11) throw new Error(`Show more drew ${(await rows()).length} rows, not eleven.`);
+  await d.caption("Eight rows, then the rest");
+  await d.pause(3_000);
+  // The roster's badge counts what the bot has in flight, at the bot's own row in the sidebar.
+  await d.zoom();
+  await d.pause(400);
+  await d.click({ css: "#sidebar-tab-bots" });
+  await scrollIn(d, 'span.bot-row__inflight[data-testid="bot-row-inflight"]');
+  const badge = await d.waitFor({ css: 'span.bot-row__inflight[data-testid="bot-row-inflight"]' }, 10_000);
+  const flights = await textOf(d, 'span.bot-row__inflight[data-testid="bot-row-inflight"]');
+  const row = await d.stage<string>(`(() => [...document.getElementById("app").contentDocument.querySelectorAll("a.bot-row__link")]
+    .find((link) => (link.getAttribute("aria-label") ?? "").startsWith(${JSON.stringify(storefrontChief.name)}))?.getAttribute("aria-label") ?? "")()`);
+  if (flights !== "2") throw new Error(`The roster badge reads ${JSON.stringify(flights)}, not the two sessions in flight.`);
+  if (!row.includes(`${flights} sessions in flight`)) throw new Error(`The roster row's name does not carry its sessions in flight: ${JSON.stringify(row)}`);
+  await d.zoom({ x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 }, 1.8);
+  await cameraRested(d);
+  await d.caption("Two in flight, on the row");
+  await d.pause(3_000);
+}
+
 /** Scrolls an element the clip is about to use into view: a sidebar or a panel list is longer than the window, and a
  * target off it is not visible to `find`. */
 async function scrollIn(d: Director, selector: string, timeout = 30_000) {
@@ -271,6 +390,115 @@ async function scrollIn(d: Director, selector: string, timeout = 30_000) {
 /** The checkout page's Confirm button, in the page's own 390×844 pixels: the pane shows the page's image, so a tap at
  * the same fraction of the frame is the same point on the page. */
 const CHECKOUT = { width: 390, height: 844, x: 195, y: 598 };
+
+/** The composer's selection strip's twelve buttons, in the order the toolbar draws them (`lib/composer/rich/toolbar.ts`). */
+const TOOLBAR_BUTTONS = ["Bold", "Italic", "Strikethrough", "Inline code", "Quote", "Note", "Bullet list", "Code block", "Text", "Cut", "Copy", "Paste"];
+
+/**
+ * The rich composer's own blocks and its selection strip (#578, #580), typed after the Rich chat clip's Datadog beat: a
+ * fence opens on Enter with the language it named, a note opens on its own marker, and a secondary click over the whole
+ * selection opens the twelve-button toolbar whose Quote moves the draft into a quote in one step and one undo. Every
+ * promise is read from the hidden Markdown wire the form submits — the fence's opener, the note's `> [!NOTE]` marker and
+ * the quote's `> ` — so the clip shows what the feature writes, not what the editor happens to draw. `RICH_DRAFT` and the
+ * check that holds it stay exactly as they were.
+ */
+async function composerBlocks(d: Director) {
+  const editor = { css: ".ProseMirror[aria-label='Message']" };
+  const wire = () => composerWire(d, "text");
+  const line = "const total = formatTotal(order.total, order.currency);";
+  const note = "Rollback is one click on the release page.";
+  const sentence = "Ship it once the checks pass.";
+  // Typing aims at the editor itself: a box the scene searched for inside it is not a field, and the search must not
+  // leave the caret anywhere else. One helper keeps every line going into the draft the caret's own.
+  const type = async (text: string) => { await d.find(editor); await d.type(text); };
+  /** The draft's Markdown, held to the words this beat promises; never the whole string, which `RICH_DRAFT` owns. */
+  const carries = async (what: string, markers: string[]) => {
+    const draft = await wire();
+    for (const marker of markers) {
+      if (!draft.includes(marker)) throw new Error(`The draft after ${what} does not carry ${JSON.stringify(marker)}: ${JSON.stringify(draft)}`);
+    }
+    return draft;
+  };
+  await d.zoom();
+  await caughtUp(d);
+  await d.click({ placeholder: "Send a message…" });
+  await d.caption("A fence opens on Enter");
+  await d.pause(1_000);
+  // ```ts and Enter open the block with the language it named instead of sending the draft; the closing line is never
+  // typed. An empty `code` is an inline box of no width, so the language is read off the element rather than searched for.
+  await type("```ts");
+  await d.press("Enter");
+  await d.waitFor({ css: ".ProseMirror pre" }, 10_000);
+  const language = await d.stage<string>(`document.getElementById("app").contentDocument.querySelector(".ProseMirror pre > code")?.getAttribute("class") ?? ""`);
+  if (language !== "language-ts") throw new Error(`The fence opened without its language: ${JSON.stringify(language)}`);
+  await type(line);
+  // Enter twice leaves an empty line inside the fence; Backspace takes it back and puts the caret in the paragraph after.
+  await d.press("Enter");
+  await d.press("Enter");
+  await d.press("Backspace");
+  await d.waitFor({ css: ".ProseMirror p" }, 5_000);
+  await carries("leaving the fence", ["```ts", line]);
+  await d.pause(1_500);
+  // A quote opens on `> ` and its marker turns into the note on Enter, the marker typed once and gone from the draft. The
+  // space is its own stroke: the rule that converts `> ` takes the characters off the draft, so the text a typed word is
+  // checked against would be the one the conversion left, not the one the keystroke wrote.
+  await type(">");
+  await d.press("space");
+  await type("[!NOTE]");
+  await d.press("Enter");
+  await d.waitFor({ css: '.ProseMirror aside.markdown-alert--note[aria-label="Note"]' }, 10_000);
+  await type(note);
+  await d.zoom(editor, 1.25);
+  await d.pause(1_500);
+  await carries("the note", ["> [!NOTE]", `> ${note}`]);
+  await d.caption("A block, and a note");
+  await d.pause(3_000);
+  // Enter, Enter and Backspace leave the note for a plain paragraph below it: the sentence lands outside the callout.
+  await d.press("Enter");
+  await d.press("Enter");
+  await d.press("Backspace");
+  await type(sentence);
+  const draft = await carries("the sentence", ["```ts", line, "> [!NOTE]", `> ${note}`, `\n\n${sentence}`]);
+
+  // The selection toolbar: Control+A selects the whole draft, and a secondary click over the words opens the strip.
+  await d.press("Control+A");
+  const block = await d.find({ css: ".ProseMirror pre" });
+  if (!block) throw new Error("The draft's fence is not on screen to open the strip over.");
+  await d.contextMenu({ x: block.x + 40, y: block.y + block.height / 2 });
+  const strip = await d.waitFor({ css: "div.composer-toolbar[role='toolbar'][aria-label='Format selection']" }, 10_000);
+  const buttons = await d.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
+    .querySelectorAll("div.composer-toolbar[role='toolbar'] button")]
+    .map((button) => button.getAttribute("aria-label") ?? ""))()`);
+  if (buttons.join("|") !== TOOLBAR_BUTTONS.join("|")) throw new Error(`The strip draws ${JSON.stringify(buttons)}, not ${JSON.stringify(TOOLBAR_BUTTONS)}.`);
+  await d.caption("Twelve formats, one strip");
+  await d.zoom({ x: strip.x + strip.width / 2, y: strip.y + strip.height / 2 }, 1.7);
+  await d.pause(3_000);
+  // Quote moves the selected draft into a quote: one action, one undo, and the markers the wire already carried stay.
+  await d.click({ label: "Quote" });
+  const quoted = await wire();
+  if (!quoted.startsWith("> ")) throw new Error(`The quote action wrote no quote prefix: ${JSON.stringify(quoted)}`);
+  for (const marker of ["```ts", line, "> [!NOTE]"]) {
+    if (!quoted.includes(marker)) throw new Error(`Quoting the draft lost ${JSON.stringify(marker)}: ${JSON.stringify(quoted)}`);
+  }
+  // The quoted draft is the beat: the camera comes off the strip so the whole quote is in frame, and it holds long
+  // enough to read before the undo returns the draft the clip typed.
+  await d.zoom(editor, 1.25);
+  await cameraRested(d);
+  await d.caption("The selection becomes a quote");
+  await d.pause(4_500);
+  await d.caption();
+  await d.press("Control+Z");
+  const undone = await wire();
+  if (undone !== draft) throw new Error(`One undo did not put the draft back.\nexpected: ${JSON.stringify(draft)}\nreceived: ${JSON.stringify(undone)}`);
+  // Out of the strip, the draft cleared: the clip ends on the wide page with an empty composer.
+  await d.press("Escape");
+  await d.press("Control+A");
+  await d.press("Delete");
+  await d.waitFor({ placeholder: "Send a message…" }, 5_000);
+  if (await wire() !== "") throw new Error(`The composer still holds a draft: ${JSON.stringify(await wire())}`);
+  await d.caption();
+  await d.zoom();
+}
 
 /** The streamed picture the operator is driving, as the frame it shows: every frame the page paints arrives as a new
  * image, so the source itself is the fingerprint. A hash of it collided for two frames of the same length, and the
@@ -548,11 +776,185 @@ export const scenes: Scene[] = [
       await d.caption("Datadog graphs, from your orgs");
       await d.say("datadog");
       await d.pause(3_000);
-      // The closing line reads the graph; the camera comes back to the wide page under it, so the clip ends clean.
       await d.quiet();
+      await composerBlocks(d);
+      // The closing line reads the graph; the camera comes back to the wide page under it, so the clip ends clean.
       await d.zoom();
       await d.caption();
       await d.pause(1_500);
+    },
+  },
+  {
+    name: "trail",
+    chapter: "Activity trail",
+    viewport: [1280, 720],
+    // The storefront checkout's seeded conversation: the turn below is a follow-up in a session that is already there.
+    path: "/sessions/demo-1",
+    ready: "Apple Pay at checkout",
+    async run({ director: d }) {
+      const summary = { css: "[data-testid='activity-trail']" };
+      const label = '[data-testid="activity-trail"] .chat-activity-trail__label';
+      const trail = { css: ".chat-activity-trail" };
+      await d.caption("One turn, one activity trail");
+      await d.click({ placeholder: "Send a message…" });
+      await d.type("Tidy the orders export, check the tests and open the pull request");
+      await d.press("Enter");
+      // While the turn runs the summary is a clock: two readings seconds apart, a second further on in each reading.
+      // The summary mounts while the turn is still thinking — when its label reads `Thinking…` — so the clock is what the
+      // wait looks for, never the element: the label is read only once it counts.
+      await d.waitFor({ css: label, contains: "Working for" }, 60_000);
+      const live = await textOf(d, label);
+      if (!/^Working for \d+s/u.test(live)) throw new Error(`The running turn's trail is not counting: ${JSON.stringify(live)}`);
+      await d.zoom(trail, 1.35);
+      await cameraRested(d);
+      await d.pause(2_000);
+      const later = await textOf(d, label);
+      // A settled `Worked for …` is not the clock moving: the second reading must still be the live count.
+      if (!/^Working for \d+s/u.test(later)) throw new Error(`The trail stopped counting while the turn runs: ${JSON.stringify(later)}`);
+      if (later === live) throw new Error(`The live trail's clock never moved on from ${JSON.stringify(live)}.`);
+      await d.caption("A clock while it runs");
+      await d.pause(3_000);
+      // The turn settles: the same summary names what the calls did, count by count, and marks the one that failed. The
+      // count wording is the wait because both honest settled forms carry it — the measured clock (`Worked for 12s ·
+      // 1 read, 3 runs`) and the count-only one (`Used 4 tools · 1 read, 3 runs`) — where waiting for `Worked for` alone
+      // would fail on the form the warning below is for. `:not(…--live)` keeps the live count, which carries the same
+      // counts, from standing in for the settled label.
+      await d.waitFor({ css: `${label}:not(.chat-activity-trail__label--live)`, contains: "1 read, 3 runs" }, 120_000);
+      const settled = await textOf(d, label);
+      if (!settled.includes("1 read, 3 runs")) throw new Error(`The settled trail does not count the turn's calls: ${JSON.stringify(settled)}`);
+      // The measured clock is what the feature promises. A scripted model whose tool items carry no timestamps would
+      // leave the count-only wording, which is honest but a proof gap: the run says so instead of inventing a duration.
+      if (!/^Worked for \d+s/u.test(settled)) process.stderr.write(`The trail settled without a measured clock: ${JSON.stringify(settled)}\n`);
+      await d.caption("Every call, counted");
+      await d.pause(3_000);
+      const mark = await d.waitFor({ css: "span.chat-activity-trail__failed" }, 20_000);
+      const failed = await textOf(d, "span.chat-activity-trail__failed");
+      if (failed !== "failed") throw new Error(`The trail's failed mark reads ${JSON.stringify(failed)}.`);
+      await d.zoom(mark, 1.9);
+      await cameraRested(d);
+      await d.caption("Its failed run is marked");
+      await d.pause(3_000);
+      // The chips hang on the folded summary: the file the read named and the pull request a command printed.
+      const file = await d.find({ css: "span.tool-call-chip--file" });
+      if (!file) throw new Error("The trail's summary draws no file chip.");
+      const pull = await d.waitFor({ css: "a.tool-call-chip--pr" }, 20_000);
+      const href = await d.stage<string>(`document.getElementById("app").contentDocument.querySelector("a.tool-call-chip--pr")?.getAttribute("href") ?? ""`);
+      if (href !== "https://github.com/acme/storefront/pull/482") throw new Error(`The pull request chip points at ${JSON.stringify(href)}.`);
+      await d.zoom({ x: (file.x + pull.x + pull.width) / 2, y: pull.y + pull.height / 2 }, 1.6);
+      await cameraRested(d);
+      await d.caption("The files and PRs it touched");
+      await d.pause(3_000);
+      // Opened, the trail draws the base app's tool card: its header counts the calls and every call is a row. The
+      // caption of the fold leaves first, so the click and the card that lands under it are one clean picture.
+      await d.caption();
+      await d.zoom();
+      await d.pause(600);
+      await d.click(summary);
+      await d.waitFor({ contains: "Used 4 tools" }, 20_000);
+      const titles = await textsOf(d, ".tool-call-row__title");
+      if (titles.length !== 4) throw new Error(`The opened trail draws ${titles.length} call rows, not four: ${JSON.stringify(titles)}`);
+      await d.zoom(trail, 1.3);
+      await cameraRested(d);
+      await d.caption("Open it for every call");
+      await d.pause(3_000);
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "attachments",
+    chapter: "Attachments",
+    viewport: [1280, 720],
+    path: "/sessions/demo-1",
+    ready: "Apple Pay at checkout",
+    // A note and a picture for the picker to hand over, made in this clip's own temporary folder: a fixture is never
+    // committed, and the picture is a real 448×252 PNG so the message's own thumbnail draws a photo, not a dot.
+    async setup() {
+      attachmentDir = await mkdtemp(join(tmpdir(), "hui-demo-attachments-"));
+      notesFile = join(attachmentDir, "acme-release-notes.txt");
+      photoFile = join(attachmentDir, "acme-sunset.png");
+      await writeFile(notesFile, "Release 0.2.2\n- The composer keeps its blocks\n- A bot's queue shows what it started\n- The activity trail counts the turn\n");
+      await writeFile(photoFile, Buffer.from(SUNSET_PNG, "base64"));
+    },
+    async run({ director: d }) {
+      const name = basename(notesFile), picture = basename(photoFile);
+      const preview = { css: "ul.chat-attachments-preview" };
+      // The attach menu: the camera, the photo library and a file, over the composer they belong to.
+      await d.click({ label: "Add attachment" });
+      const popup = await d.waitFor({ css: ".agent-chat__attach-popup", contains: "Take photo" }, 15_000);
+      const options = await textsOf(d, ".agent-chat__attach-menu-option [data-part='label']");
+      if (options.join("|") !== "Take photo|Photo|File") throw new Error(`The attach menu offers ${JSON.stringify(options)}.`);
+      await d.caption("A file, a photo or the camera");
+      await d.zoom({ x: popup.x + popup.width / 2, y: popup.y + popup.height / 2 }, 1.25);
+      await cameraRested(d);
+      await d.pause(3_000);
+      // A file and no words at all: the picker's hidden input takes the path, the draft shows the file, and Send opens.
+      await d.upload("input.agent-chat__generic-file-input", [notesFile]);
+      await d.waitFor({ css: preview.css, contains: name }, 15_000);
+      if (await composerWire(d, "text") !== "") throw new Error("The draft is not empty, so the send would prove nothing about a file alone.");
+      await d.zoom();
+      await d.caption("Send the file, with no words");
+      await d.pause(3_000);
+      await d.click({ label: "Send message" });
+      await d.waitFor({ css: ".chat-group.user .chat-assistant-attachment-card__title", text: name }, 30_000);
+      const sent = await d.stage<{ title: string; meta: string; text: string; painted: boolean }>(`(() => {
+        const rows = [...document.getElementById("app").contentDocument.querySelectorAll(".chat-group.user")];
+        const row = rows.at(-1);
+        const text = row?.querySelector('[data-testid="message-text"]');
+        const box = text?.getBoundingClientRect();
+        return {
+          title: row?.querySelector(".chat-assistant-attachment-card__title")?.textContent?.trim() ?? "",
+          meta: row?.querySelector(".chat-assistant-attachment-card__meta")?.textContent?.trim() ?? "",
+          text: (text?.textContent ?? "").trim(),
+          painted: Boolean(box && box.width >= 1 && box.height >= 1),
+        };
+      })()`);
+      if (sent.title !== name) throw new Error(`The sent row's card names ${JSON.stringify(sent.title)}, not ${JSON.stringify(name)}.`);
+      if (sent.meta !== "TXT") throw new Error(`The sent row's card reads ${JSON.stringify(sent.meta)}, not TXT.`);
+      if (sent.text !== "" || sent.painted) throw new Error(`The file-only row drew a text bubble: ${JSON.stringify(sent)}`);
+      await d.caption("The file is the whole prompt");
+      await d.zoom({ css: ".chat-group.user", last: true }, 1.5);
+      await cameraRested(d);
+      await d.pause(3_000);
+      // The same again with a picture alone: its own thumbnail, under the same filename.
+      await gone(d, { css: ".chat-group--working" }, 90_000);
+      await d.zoom();
+      await d.waitFor({ placeholder: "Send a message…" }, 30_000);
+      await d.click({ label: "Add attachment" });
+      await d.waitFor({ css: ".agent-chat__attach-popup", contains: "Photo" }, 15_000);
+      await d.upload("input.agent-chat__photo-input", [photoFile]);
+      await d.waitFor({ css: `${preview.css} img` }, 15_000);
+      const alt = await d.stage<string>(`document.getElementById("app").contentDocument.querySelector("ul.chat-attachments-preview img")?.getAttribute("alt") ?? ""`);
+      if (alt !== picture) throw new Error(`The draft's preview names ${JSON.stringify(alt)}, not ${JSON.stringify(picture)}.`);
+      // The preview is a picture, not an empty frame: its bitmap decoded before the message is sent.
+      await decodedImage(d, `${preview.css} img`);
+      await d.caption("A photo alone sends too");
+      await d.pause(3_000);
+      await d.click({ label: "Send message" });
+      await d.waitFor({ css: "figure.hui-message-attachment-image img.chat-message-image" }, 30_000);
+      const images = await d.stage<string[]>(`(() => [...document.getElementById("app").contentDocument
+        .querySelectorAll("figure.hui-message-attachment-image img.chat-message-image")].map((img) => img.getAttribute("alt") ?? ""))()`);
+      if (!images.includes(picture)) throw new Error(`The transcript's picture is named ${JSON.stringify(images)}, not ${JSON.stringify(picture)}.`);
+      // A failed load keeps the `img` and its `alt` and swaps in the fallback card under it, so the name alone is not the
+      // photo: the figure must not be marked failed and the bitmap must have decoded, before the beat captions it.
+      await decodedImage(d, "figure.hui-message-attachment-image img.chat-message-image");
+      await d.zoom({ css: "figure.hui-message-attachment-image" }, 1.5);
+      await cameraRested(d);
+      await d.pause(3_000);
+      // And nothing typed with nothing attached still refuses: the send is disabled, and is framed, never pressed.
+      await gone(d, { css: ".chat-group--working" }, 90_000);
+      await d.zoom();
+      await d.waitFor({ placeholder: "Send a message…" }, 30_000);
+      const refused = await d.stage<boolean>(`document.getElementById("app").contentDocument.querySelector("button.chat-send-btn")?.disabled === true`);
+      if (!refused) throw new Error("The send button is enabled on an empty composer with nothing attached.");
+      const button = await d.waitFor({ css: "button.chat-send-btn" }, 10_000);
+      // Framed wide: a zoom puts the composer at the bottom of the stage, where the caption band would cover the button
+      // the beat is about. The pointer rests on it instead, so the disabled control is what the eye lands on.
+      await d.move({ x: button.x + button.width / 2, y: button.y + button.height / 2 });
+      await d.caption("Empty still refuses to send");
+      await d.pause(3_000);
+      await d.caption();
+      await rm(attachmentDir, { recursive: true, force: true });
     },
   },
   {
@@ -997,6 +1399,7 @@ export const scenes: Scene[] = [
       await d.say("reply");
       await d.pause(3_000);
       await d.quiet();
+      await botWorkQueue(d);
       await d.zoom();
       await d.caption();
       await d.pause(1_500);
